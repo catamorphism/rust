@@ -1580,7 +1580,7 @@ fn parse_let(p: parser) -> @ast::decl {
     ret @spanned(lo, p.last_span.hi, ast::decl_local(locals));
 }
 
-fn parse_instance_var(p:parser) -> @ast::class_member {
+fn parse_instance_var(p:parser) -> ast::class_member {
     let is_mut = ast::class_immutable;
     expect_word(p, "let");
     if eat_word(p, "mutable") {
@@ -1592,7 +1592,7 @@ fn parse_instance_var(p:parser) -> @ast::class_member {
     let name = parse_ident(p);
     expect(p, token::COLON);
     let ty = parse_ty(p, false);
-    ret @ast::instance_var(name, ty, is_mut, p.get_id());
+    ret ast::instance_var(name, ty, is_mut, p.get_id());
 }
 
 fn parse_stmt(p: parser, first_item_attrs: [ast::attribute]) -> @ast::stmt {
@@ -1965,6 +1965,7 @@ fn parse_item_class(p: parser, attrs: [ast::attribute]) -> @ast::item {
     let ty_params = parse_ty_params(p);
     expect(p, token::LBRACE);
     let items: [@ast::class_item] = [];
+    let ctor_id = p.get_id();
     let the_ctor : option<(ast::fn_decl, ast::blk)> = none;
     while p.token != token::RBRACE {
        alt parse_class_item(p) {
@@ -1985,7 +1986,7 @@ fn parse_item_class(p: parser, attrs: [ast::attribute]) -> @ast::item {
     p.bump();
     alt the_ctor {
        some((ct_d, ct_b)) { ret mk_item(p, lo, p.last_span.hi, class_name,
-                     ast::item_class(ty_params, items, ct_d, ct_b), attrs); }
+         ast::item_class(ty_params, items, ctor_id, ct_d, ct_b), attrs); }
        /*
          Is it strange for the parser to check this?
        */
@@ -1998,11 +1999,11 @@ fn parse_item_class(p: parser, attrs: [ast::attribute]) -> @ast::item {
 // we don't really want just the fn_decl...
 enum class_contents { ctor_decl(ast::fn_decl, ast::blk),
                       // assumed to be public
-                      plain_decl(@ast::class_member),
+                      plain_decl(ast::class_member),
                       // contents of a priv section --
                       // parse_class_item ensures that
                       // none of these are a ctor decl
-                      priv_decls([@ast::class_member])}
+                      priv_decls([ast::class_member])}
 
 fn parse_class_item(p:parser) -> class_contents {
     if eat_word(p, "new") {
@@ -2018,7 +2019,7 @@ fn parse_class_item(p:parser) -> class_contents {
             while p.token != token::RBRACE {
                alt parse_item(p, []) {
                  some(i) {
-                     results += [@ast::class_method(i)];
+                     results += [ast::class_method(i)];
                  }
                  _ {
                      let a_var = parse_instance_var(p);
@@ -2034,7 +2035,7 @@ fn parse_class_item(p:parser) -> class_contents {
         // Probably need to parse attrs
         alt parse_item(p, []) {
          some(i) {
-             ret plain_decl(@ast::class_method(i));
+             ret plain_decl(ast::class_method(i));
          }
          _ {
              let a_var = parse_instance_var(p);

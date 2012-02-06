@@ -424,7 +424,7 @@ fn ty_of_item(tcx: ty::ctxt, mode: mode, it: @ast::item)
         tcx.tcache.insert(local_def(it.id), tpt);
         ret tpt;
       }
-      ast::item_class(_,_,_,_) {
+      ast::item_class(_,_,_,_,_) {
           fail "ty_of_item: implement item_class";
       }
       ast::item_impl(_, _, _, _) | ast::item_mod(_) |

@@ -2,7 +2,7 @@
 import syntax::{ast, ast_util, codemap};
 import syntax::ast::*;
 import ast::{ident, fn_ident, def, def_id, node_id};
-import syntax::ast_util::{local_def, def_id_of_def};
+import syntax::ast_util::{local_def, def_id_of_def, class_item_ident};
 import pat_util::*;
 
 import front::attr;
@@ -56,6 +56,7 @@ enum import_state {
     resolved(option<def>, /* value */
              option<def>, /* type */
              option<def>, /* module */
+             option<def>, /* class */
              @[@_impl], /* impls */
              /* used for reporting unused import warning */
              ast::ident, span),
@@ -65,8 +66,9 @@ enum glob_import_state {
     glob_resolving(span),
     glob_resolved(option<def>,  /* value */
                   option<def>,  /* type */
-                  option<def>), /* module */
-}
+                  option<def>,  /* module */
+                  option<def>   /* class */
+                 )}
 
 type ext_hash = hashmap<{did: def_id, ident: str, ns: namespace}, def>;
 
@@ -78,6 +80,7 @@ fn new_ext_hash() -> ext_hash {
                   ns_val(_) { 1u }
                   ns_type { 2u }
                   ns_module { 3u }
+                  ns_class { 4u }
                 };
     }
     fn eq(v1: key, v2: key) -> bool {
@@ -91,6 +94,8 @@ enum mod_index_entry {
     mie_view_item(ident, node_id, span),
     mie_import_ident(node_id, span),
     mie_item(@ast::item),
+    mie_class_item(node_id, /* parent class name */
+                   @ast::class_item), /* class member */
     mie_native_item(@ast::native_item),
     mie_enum_variant(/* variant index */uint,
                      /*parts of enum item*/ [variant],
@@ -149,7 +154,7 @@ enum dir { inside, outside, }
 // and "any value". This is so that lookup can behave differently
 // when looking up a variable name that's not yet in scope to check
 // if it's already bound to a enum.
-enum namespace { ns_val(ns_value_type), ns_type, ns_module, }
+enum namespace { ns_val(ns_value_type), ns_type, ns_module, ns_class }
 enum ns_value_type { ns_a_enum, ns_any_value, }
 
 fn resolve_crate(sess: session, amap: ast_map::map, crate: @ast::crate) ->
@@ -301,7 +306,7 @@ fn resolve_imports(e: env) {
           todo(node_id, name, path, span, scopes) {
             resolve_import(e, local_def(node_id), name, *path, span, scopes);
           }
-          resolved(_, _, _, _, _, _) | is_glob(_, _, _) { }
+          resolved(_, _, _, _, _, _, _) | is_glob(_, _, _) { }
           _ { e.sess.bug("Shouldn't see a resolving in resolve_imports"); }
         }
     };
@@ -312,7 +317,7 @@ fn resolve_imports(e: env) {
 fn check_unused_imports(e: @env) {
     e.imports.items {|k, v|
         alt v {
-            resolved(_, _, _, _, name, sp) {
+            resolved(_, _, _, _, _, name, sp) {
               if !vec::member(k, e.used_imports.data) {
                 e.sess.span_warn(sp, "unused import " + name);
               }
@@ -631,12 +636,13 @@ fn resolve_import(e: env, defid: ast::def_id, name: ast::ident,
                 name: ast::ident, lookup: fn(namespace) -> option<def>,
                 impls: [@_impl]) {
         let val = lookup(ns_val(ns_any_value)), typ = lookup(ns_type),
-            md = lookup(ns_module);
+            md = lookup(ns_module), cls = lookup(ns_class);
         if is_none(val) && is_none(typ) && is_none(md) &&
            vec::len(impls) == 0u {
             unresolved_err(e, cx, sp, name, "import");
         } else {
-            e.imports.insert(id, resolved(val, typ, md, @impls, name, sp));
+            e.imports.insert(id, resolved(val, typ, md, cls, @impls, name,
+                                          sp));
         }
     }
     // Temporarily disable this import and the imports coming after during
@@ -727,7 +733,8 @@ fn resolve_import(e: env, defid: ast::def_id, name: ast::ident,
     // import
     alt e.imports.find(defid.node) {
       some(resolving(sp)) {
-        e.imports.insert(defid.node, resolved(none, none, none, @[], "", sp));
+          e.imports.insert(defid.node, resolved(none, none, none, none, @[],
+                                                "", sp));
       }
       _ { }
     }
@@ -744,7 +751,8 @@ fn ns_name(ns: namespace) -> str {
               ns_a_enum    { "enum" }
           }
       }
-      ns_module { ret "modulename" }
+      ns_module { "modulename" }
+      ns_class { "class" }
     }
 }
 
@@ -1258,12 +1266,12 @@ fn lookup_import(e: env, defid: def_id, ns: namespace) -> option<def> {
         e.sess.span_err(sp, "cyclic import");
         ret none;
       }
-      resolved(val, typ, md, _, _, _) {
+      resolved(val, typ, md, cls, _, _, _) {
         if e.used_imports.track {
             e.used_imports.data += [defid.node];
         }
         ret alt ns { ns_val(_) { val } ns_type { typ }
-                     ns_module { md } };
+            ns_module { md }  ns_class { cls } };
       }
       is_glob(_,_,_) {
           e.sess.bug("lookup_import: can't handle is_glob");
@@ -1354,17 +1362,19 @@ fn lookup_glob_in_mod(e: env, info: @indexed_mod, sp: span, id: ident,
                                   else { ns_val(ns_any_value) }), dr);
         let typ = lookup_in_globs(e, info.glob_imports, sp, id, ns_type, dr);
         let md = lookup_in_globs(e, info.glob_imports, sp, id, ns_module, dr);
-        info.glob_imported_names.insert(id, glob_resolved(val, typ, md));
+        let cls = lookup_in_globs(e, info.glob_imports, sp, id, ns_class, dr);
+        info.glob_imported_names.insert(id, glob_resolved(val, typ, md, cls));
     }
     alt info.glob_imported_names.get(id) {
       glob_resolving(sp) {
           ret none;
       }
-      glob_resolved(val, typ, md) {
+      glob_resolved(val, typ, md, cls) {
         ret alt wanted_ns {
                 ns_val(_) { val }
                 ns_type { typ }
                 ns_module { md }
+                ns_class { cls }
         };
       }
     }
@@ -1397,6 +1407,18 @@ fn lookup_in_mie(e: env, mie: mod_index_entry, ns: namespace) ->
             }
           }
         }
+      }
+      mie_class_item(parent_id, class_item) {
+          alt class_item.node.decl {
+              instance_var(_,_,_,id) {
+                  ret some(ast::def_class_field(local_def(parent_id),
+                                                local_def(id)));
+              }
+              class_method(it) {
+                  ret some(ast::def_class_method(local_def(parent_id),
+                                                 local_def(it.id)));
+              }
+          }
       }
     }
     ret none;
@@ -1452,8 +1474,21 @@ fn index_mod(md: ast::_mod) -> mod_index {
                 variant_idx += 1u;
             }
           }
-          ast::item_class(_, items, ctor_decl, _) {
-              fail "resolve::index_mod: item_class";
+          ast::item_class(tps, items, ctor_id, ctor_decl, ctor_body) {
+              // add the class name itself
+              add_to_index(index, it.ident, mie_item(it));
+              // add the constructor decl
+              add_to_index(index, it.ident,
+                           mie_item(@{ident: it.ident, attrs: [],
+                                       id: ctor_id,
+                                       node:
+                                         item_fn(ctor_decl, tps, ctor_body),
+                                       span: ctor_body.span}));
+              // add the members
+              for ci in items {
+                 add_to_index(index, class_item_ident(ci),
+                              mie_class_item(it.id, ci));
+              }
           }
         }
     }
@@ -1494,10 +1529,13 @@ fn ns_for_def(d: def) -> namespace {
       ast::def_variant(_, _) { ns_val(ns_a_enum) }
       ast::def_fn(_, _) | ast::def_self(_) |
       ast::def_const(_) | ast::def_arg(_, _) | ast::def_local(_, _) |
-      ast::def_upvar(_, _, _) |  ast::def_self(_) { ns_val(ns_any_value) }
+      ast::def_upvar(_, _, _) |  ast::def_self(_) |
+      ast::def_class_field(_,_) | ast::def_class_method(_,_)
+          { ns_val(ns_any_value) }
       ast::def_mod(_) | ast::def_native_mod(_) { ns_module }
       ast::def_ty(_) | ast::def_binding(_) | ast::def_use(_) |
       ast::def_ty_param(_, _) | ast::def_prim_ty(_) { ns_type }
+      ast::def_class(_) { ns_class }
     }
 }
 
@@ -1582,6 +1620,7 @@ fn mie_span(mie: mod_index_entry) -> span {
           mie_item(item) { item.span }
           mie_enum_variant(_, _, _, span) { span }
           mie_native_item(item) { item.span }
+          mie_class_item(_,item) { item.span }
         };
 }
 
@@ -1786,10 +1825,11 @@ fn check_exports(e: @env) {
                 alt x {
                   mie_import_ident(id, _) {
                     alt e.imports.get(id) {
-                      resolved(v, t, m, _, rid, _) {
+                      resolved(v, t, m, c, _, rid, _) {
                         maybe_add_reexport(e, full_path, v);
                         maybe_add_reexport(e, full_path, t);
                         maybe_add_reexport(e, full_path, m);
+                        maybe_add_reexport(e, full_path, c);
                       }
                       _ { }
                     }
@@ -1901,12 +1941,12 @@ fn find_impls_in_view_item(e: env, vi: @ast::view_item,
     fn lookup_imported_impls(e: env, id: ast::node_id,
                              act: fn(@[@_impl])) {
         alt e.imports.get(id) {
-          resolved(_, _, _, is, _, _) { act(is); }
+         resolved(_, _, _, _, is, _, _) { act(is); }
           todo(node_id, name, path, span, scopes) {
             resolve_import(e, local_def(node_id), name, *path, span,
                            scopes);
             alt e.imports.get(id) {
-              resolved(_, _, _, is, _, _) { act(is); }
+            resolved(_, _, _, _, is, _, _) { act(is); }
               _ {
                   e.sess.bug("Undocumented invariant in \
                     lookup_imported_impls");
