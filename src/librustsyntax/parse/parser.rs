@@ -1541,7 +1541,7 @@ fn parse_pat(p: parser) -> @ast::pat {
                     p.fatal("found " + fieldname + " in binding position");
                 }
                 subpat = @{id: p.get_id(),
-                           node: ast::pat_ident(fieldpath, none),
+                           node: ast::pat_ident(fieldpath, @ast::no_child),
                            span: ast_util::mk_sp(lo, hi)};
             }
             fields += [{ident: fieldname, pat: subpat}];
@@ -1586,28 +1586,42 @@ fn parse_pat(p: parser) -> @ast::pat {
               token::LPAREN | token::LBRACKET | token::LT { false }
               _ { true }
             } {
-            let name = parse_value_path(p);
-            let sub = if eat(p, token::AT) { some(parse_pat(p)) }
-                      else { none };
-            pat = ast::pat_ident(name, sub);
+               let name = parse_value_path(p);
+               let sub = if eat(p, token::AT) { ast::child(parse_pat(p)) }
+                         else { ast::no_child };
+               pat = ast::pat_ident(name, @sub);
         } else {
             let enum_path = parse_path_and_ty_param_substs(p, true);
             hi = enum_path.span.hi;
-            let mut args: [@ast::pat];
+            let mut args: [@ast::pat] = [];
+            let mut child_pat = ast::no_child;
             alt p.token {
               token::LPAREN {
-                let a =
-                    parse_seq(token::LPAREN, token::RPAREN,
-                              seq_sep(token::COMMA), parse_pat, p);
-                args = a.node;
-                hi = a.span.hi;
+                alt p.look_ahead(1u) {
+                  token::BINOP(token::STAR) {
+                    // This is a "top constructor only" pat
+                    child_pat = ast::dont_care;
+                    p.bump(); p.bump();
+                    expect(p, token::RPAREN);
+                  }
+                  _ {
+                   let a =
+                       parse_seq(token::LPAREN, token::RPAREN,
+                                seq_sep(token::COMMA), parse_pat, p);
+                    args = a.node;
+                    hi = a.span.hi;
+                  }
+                }
               }
-              _ { args = []; }
+              _ { child_pat = ast::no_child; }
             }
             // at this point, we're not sure whether it's a enum or a bind
             if vec::len(args) == 0u &&
                vec::len(enum_path.node.idents) == 1u {
-                pat = ast::pat_ident(enum_path, none);
+                pat = ast::pat_ident(enum_path, @ast::no_child);
+            }
+            else if vec::len(args) == 0u && child_pat == ast::dont_care {
+                pat = ast::pat_ident(enum_path, @ast::dont_care);
             }
             else {
                 pat = ast::pat_enum(enum_path, args);

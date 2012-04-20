@@ -334,11 +334,19 @@ fn noop_fold_arm(a: arm, fld: ast_fold) -> arm {
          body: fld.fold_block(a.body)};
 }
 
+fn fold_child_pat(c: @child_pat, fld: ast_fold) -> @child_pat {
+  @(alt *c {
+               dont_care { dont_care }
+               no_child  { no_child }
+               child(p)  { child(fld.fold_pat(p)) }
+    })
+}
+
 fn noop_fold_pat(p: pat_, fld: ast_fold) -> pat_ {
     ret alt p {
           pat_wild { p }
           pat_ident(pth, sub) {
-            pat_ident(fld.fold_path(pth), option::map(sub, fld.fold_pat))
+            pat_ident(fld.fold_path(pth), fold_child_pat(sub, fld))
           }
           pat_lit(e) { pat_lit(fld.fold_expr(e)) }
           pat_enum(pth, pats) {

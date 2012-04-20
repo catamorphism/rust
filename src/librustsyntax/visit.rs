@@ -213,6 +213,13 @@ fn visit_path<E>(p: @path, e: E, v: vt<E>) {
     for p.node.types.each {|tp| v.visit_ty(tp, e, v); }
 }
 
+fn visit_child_pat<E>(c: @child_pat, e: E, v: vt<E>) {
+    alt *c {
+      child(p) { v.visit_pat(p, e, v); }
+      _        {}
+    }
+}
+
 fn visit_pat<E>(p: @pat, e: E, v: vt<E>) {
     alt p.node {
       pat_enum(path, children) {
@@ -228,7 +235,7 @@ fn visit_pat<E>(p: @pat, e: E, v: vt<E>) {
       }
       pat_ident(path, inner) {
           visit_path(path, e, v);
-          option::iter(inner, {|subpat| v.visit_pat(subpat, e, v)});
+          visit_child_pat(inner, e, v);
       }
       pat_lit(ex) { v.visit_expr(ex, e, v); }
       pat_range(e1, e2) { v.visit_expr(e1, e, v); v.visit_expr(e2, e, v); }

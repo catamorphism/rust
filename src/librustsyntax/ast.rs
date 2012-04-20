@@ -147,7 +147,10 @@ enum pat_ {
     // which it is. The resolver determines this, and
     // records this pattern's node_id in an auxiliary
     // set (of "pat_idents that refer to nullary enums")
-    pat_ident(@path, option<@pat>),
+    pat_ident(@path, @child_pat),
+    /* Argh, maybe dont_care should really be under pat_enum
+    FIXME
+    */
     pat_enum(@path, [@pat]),
     pat_rec([field_pat], bool),
     pat_tup([@pat]),
@@ -155,6 +158,14 @@ enum pat_ {
     pat_uniq(@pat),
     pat_lit(@expr),
     pat_range(@expr, @expr),
+}
+
+#[auto_serialize]
+enum child_pat {
+    no_child,   // nullary enum or bound variable without an @
+    child(@pat), // sub-pattern in a foo@(...) pattern
+    dont_care   // corresponds to * in source: says "match any number of
+                // children"
 }
 
 #[auto_serialize]

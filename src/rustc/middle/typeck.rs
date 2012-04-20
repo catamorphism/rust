@@ -2032,7 +2032,7 @@ fn universally_quantify_before_call(fcx: @fn_ctxt,
 }
 
 fn check_pat_variant(pcx: pat_ctxt, pat: @ast::pat, path: @ast::path,
-                     subpats: [@ast::pat], expected: ty::t) {
+                     subpats: subpats, expected: ty::t) {
 
     // Typecheck the path.
     let fcx = pcx.fcx;
@@ -2061,7 +2061,12 @@ fn check_pat_variant(pcx: pat_ctxt, pat: @ast::pat, path: @ast::path,
             // NDM---is this reasonable?
             instantiate_bound_regions(pcx.fcx.ccx.tcx, pcx.pat_region, t)
         };
-        let subpats_len = subpats.len(), arg_len = arg_types.len();
+        let arg_len = arg_types.len(), subpats_len = alt subpats {
+          one_or_no(@ast::child(ps))
+            { fail; /* FIXME: this doesn't make sense */ }
+          one_or_no(@ast::dont_care) { arg_len }
+          one_or_no(@ast::no_child) { 0u }
+          many(ps) { ps.len() }};
         if arg_len > 0u {
             // N-ary variant.
             if arg_len != subpats_len {
@@ -2074,8 +2079,13 @@ fn check_pat_variant(pcx: pat_ctxt, pat: @ast::pat, path: @ast::path,
                 tcx.sess.span_err(pat.span, s);
             }
 
-            vec::iter2(subpats, arg_types) {|subpat, arg_ty|
-                check_pat(pcx, subpat, arg_ty);
+            alt subpats {
+              many(subpats) {
+                vec::iter2(subpats, arg_types) {|subpat, arg_ty|
+                    check_pat(pcx, subpat, arg_ty);
+                }
+              }
+              _ {}
             }
         } else if subpats_len > 0u {
             tcx.sess.span_err
@@ -2094,6 +2104,8 @@ fn check_pat_variant(pcx: pat_ctxt, pat: @ast::pat, path: @ast::path,
       }
     }
 }
+
+enum subpats { many([@ast::pat]), one_or_no(@ast::child_pat) }
 
 // Pattern checking is top-down rather than bottom-up so that bindings get
 // their types immediately.
@@ -2140,15 +2152,15 @@ fn check_pat(pcx: pat_ctxt, pat: @ast::pat, expected: ty::t) {
         }
         fcx.write_ty(pat.id, typ);
         alt sub {
-          some(p) { check_pat(pcx, p, expected); }
+          @ast::child(p) { check_pat(pcx, p, expected); }
           _ {}
         }
       }
-      ast::pat_ident(path, _) {
-        check_pat_variant(pcx, pat, path, [], expected);
+      ast::pat_ident(path, c) {
+        check_pat_variant(pcx, pat, path, one_or_no(c), expected);
       }
       ast::pat_enum(path, subpats) {
-        check_pat_variant(pcx, pat, path, subpats, expected);
+        check_pat_variant(pcx, pat, path, many(subpats), expected);
       }
       ast::pat_rec(fields, etc) {
         let ex_fields = alt structure_of(pcx.fcx, pat.span, expected) {
@@ -3857,7 +3869,7 @@ fn check_enum_variants(ccx: @crate_ctxt, sp: span, vs: [ast::variant],
     }) {
         ccx.tcx.sess.span_err(sp, "illegal recursive enum type. \
                                    wrap the inner value in a box to \
-                                   make it represenable");
+                                   make it representable");
     }
 
     // Check that it is possible to instantiate this enum:

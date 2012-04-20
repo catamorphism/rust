@@ -68,7 +68,7 @@ fn tritv_to_str(fcx: fn_ctxt, v: tritv::t) -> str {
     let mut comma = false;
     for constraints(fcx).each {|p|
         alt tritv_get(v, p.bit_num) {
-          dont_care { }
+          tritv::dont_care { }
           tt {
             s +=
                 if comma { ", " } else { comma = true; "" } +

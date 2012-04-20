@@ -1242,9 +1242,10 @@ fn print_pat(s: ps, &&pat: @ast::pat) {
       ast::pat_wild { word(s.s, "_"); }
       ast::pat_ident(path, sub) {
         print_path(s, path, true);
-        alt sub {
-          some(p) { word(s.s, "@"); print_pat(s, p); }
-          _ {}
+        alt *sub {
+          ast::child(p) { word(s.s, "@"); print_pat(s, p); }
+          ast::dont_care { word(s.s, "(*)"); }
+          ast::no_child {}
         }
       }
       ast::pat_enum(path, args) {

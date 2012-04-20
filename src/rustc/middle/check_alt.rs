@@ -61,7 +61,7 @@ fn check_arms(tcx: ty::ctxt, arms: [arm]) {
 
 fn raw_pat(p: @pat) -> @pat {
     alt p.node {
-      pat_ident(_, some(s)) { raw_pat(s) }
+      pat_ident(_, @child(s)) { raw_pat(s) }
       _ { p }
     }
 }
@@ -213,9 +213,9 @@ fn pattern_supersedes(tcx: ty::ctxt, a: @pat, b: @pat) -> bool {
     }
 
     alt a.node {
-      pat_ident(_, some(p)) { pattern_supersedes(tcx, p, b) }
+      pat_ident(_, @child(p)) { pattern_supersedes(tcx, p, b) }
       pat_wild { true }
-      pat_ident(_, none) {
+      pat_ident(_, @no_child) | pat_ident(_, @dont_care) {
         let opt_def_a = tcx.def_map.find(a.id);
         alt opt_def_a {
           some(def_variant(_, _)) { opt_def_a == tcx.def_map.find(b.id) }
@@ -289,16 +289,18 @@ fn check_local(tcx: ty::ctxt, loc: @local, &&s: (), v: visit::vt<()>) {
 fn is_refutable(tcx: ty::ctxt, pat: @pat) -> bool {
     alt tcx.def_map.find(pat.id) {
       some(def_variant(enum_id, var_id)) {
+        // does this make sense? a 1-ary pattern might still be refutable
         if vec::len(*ty::enum_variants(tcx, enum_id)) != 1u { ret true; }
       }
       _ {}
     }
 
     alt pat.node {
-      pat_box(sub) | pat_uniq(sub) | pat_ident(_, some(sub)) {
+      pat_box(sub) | pat_uniq(sub) | pat_ident(_, @child(sub)) {
         is_refutable(tcx, sub)
       }
-      pat_wild | pat_ident(_, none) { false }
+      pat_wild | pat_ident(_, @no_child) | pat_ident(_, @dont_care)
+          { false } // wrong, I think
       pat_lit(_) | pat_range(_, _) { true }
       pat_rec(fields, _) {
         for fields.each {|it|
@@ -311,6 +313,8 @@ fn is_refutable(tcx: ty::ctxt, pat: @pat) -> bool {
         false
       }
       pat_enum(_, args) {
+        // and why is this true?
+        // something is weird
         for args.each {|p| if is_refutable(tcx, p) { ret true; } }
         false
       }

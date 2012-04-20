@@ -599,7 +599,7 @@ fn pattern_roots(tcx: ty::ctxt, mutbl: option<unsafe_ty>, pat: @ast::pat)
           if !pat_util::pat_is_variant(tcx.def_map, pat) {
             set += [{id: pat.id, name: path_to_ident(nm), mutbl: mutbl,
                         span: pat.span}];
-            alt sub { some(p) { walk(tcx, mutbl, p, set); } _ {} }
+            alt sub { @ast::child(p) { walk(tcx, mutbl, p, set); } _ {} }
           }
           ast::pat_wild | ast::pat_lit(_) | ast::pat_range(_, _) |
           ast::pat_ident(_, _) {}

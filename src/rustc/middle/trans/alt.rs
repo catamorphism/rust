@@ -95,7 +95,7 @@ type match = [match_branch];
 fn has_nested_bindings(m: match, col: uint) -> bool {
     for vec::each(m) {|br|
         alt br.pats[col].node {
-          ast::pat_ident(_, some(_)) { ret true; }
+          ast::pat_ident(_, @ast::child(_)) { ret true; }
           _ {}
         }
     }
@@ -106,7 +106,7 @@ fn expand_nested_bindings(m: match, col: uint, val: ValueRef) -> match {
     let mut result = [];
     for vec::each(m) {|br|
       alt br.pats[col].node {
-          ast::pat_ident(name, some(inner)) {
+          ast::pat_ident(name, @ast::child(inner)) {
             let pats = vec::slice(br.pats, 0u, col) + [inner] +
                 vec::slice(br.pats, col + 1u, br.pats.len());
             result += [@{pats: pats,
@@ -122,6 +122,11 @@ fn expand_nested_bindings(m: match, col: uint, val: ValueRef) -> match {
 
 type enter_pat = fn(@ast::pat) -> option<[@ast::pat]>;
 
+/*
+Note: the difference between no_child and dont_care is just for
+typechecking. In trans, there's no difference.
+FIXME: make sure that's true
+*/
 fn enter_match(dm: def_map, m: match, col: uint, val: ValueRef,
                e: enter_pat) -> match {
     let mut result = [];
@@ -132,7 +137,9 @@ fn enter_match(dm: def_map, m: match, col: uint, val: ValueRef,
                 vec::slice(br.pats, col + 1u, br.pats.len());
             let self = br.pats[col];
             let bound = alt self.node {
-              ast::pat_ident(name, none) if !pat_is_variant(dm, self) {
+              ast::pat_ident(name, @ast::no_child)
+|             ast::pat_ident(name, @ast::dont_care)
+                   if !pat_is_variant(dm, self) {
                 br.bound + [{ident: path_to_ident(name), val: val}]
               }
               _ { br.bound }
@@ -149,7 +156,9 @@ fn enter_default(dm: def_map, m: match, col: uint, val: ValueRef) -> match {
     enter_match(dm, m, col, val) {|p|
         alt p.node {
           ast::pat_wild | ast::pat_rec(_, _) | ast::pat_tup(_) { some([]) }
-          ast::pat_ident(_, none) if !pat_is_variant(dm, p) {
+          ast::pat_ident(_, @ast::no_child) |
+             ast::pat_ident(_, @ast::dont_care)
+          if !pat_is_variant(dm, p) {
             some([])
           }
           _ { none }
@@ -166,7 +175,9 @@ fn enter_opt(tcx: ty::ctxt, m: match, opt: opt, col: uint,
             if opt_eq(tcx, variant_opt(tcx, p.id), opt) { some(subpats) }
             else { none }
           }
-          ast::pat_ident(_, none) if pat_is_variant(tcx.def_map, p) {
+          ast::pat_ident(_, @ast::no_child) |
+          ast::pat_ident(_, @ast::dont_care)
+              if pat_is_variant(tcx.def_map, p) {
             if opt_eq(tcx, variant_opt(tcx, p.id), opt) { some([]) }
             else { none }
           }
@@ -331,7 +342,7 @@ fn pick_col(m: match) -> uint {
     fn score(p: @ast::pat) -> uint {
         alt p.node {
           ast::pat_lit(_) | ast::pat_enum(_, _) | ast::pat_range(_, _) { 1u }
-          ast::pat_ident(_, some(p)) { score(p) }
+          ast::pat_ident(_, @ast::child(p)) { score(p) }
           _ { 0u }
         }
     }
@@ -695,7 +706,8 @@ fn bind_irrefutable_pat(bcx: block, pat: @ast::pat, val: ValueRef,
             add_clean(bcx, alloc, ty);
         } else { bcx.fcx.lllocals.insert(pat.id, local_mem(val)); }
         alt inner {
-          some(pat) { bcx = bind_irrefutable_pat(bcx, pat, val, true); }
+          @ast::child(pat) { bcx = bind_irrefutable_pat(bcx, pat, val,
+                                                        true); }
           _ {}
         }
       }

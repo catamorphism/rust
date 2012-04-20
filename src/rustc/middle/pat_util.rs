@@ -26,12 +26,13 @@ fn pat_id_map(dm: resolve::def_map, pat: @pat) -> pat_id_map {
 fn pat_is_variant(dm: resolve::def_map, pat: @pat) -> bool {
     alt pat.node {
       pat_enum(_, _) { true }
-      pat_ident(_, none) {
+      pat_ident(_, @no_child) {
         alt dm.find(pat.id) {
           some(def_variant(_, _)) { true }
           _ { false }
         }
       }
+      pat_ident(_, @dont_care) { true }
       _ { false }
     }
 }
@@ -54,11 +55,11 @@ fn pat_bindings(dm: resolve::def_map, pat: @pat,
 fn walk_pat(pat: @pat, it: fn(@pat)) {
     it(pat);
     alt pat.node {
-      pat_ident(pth, some(p)) { walk_pat(p, it); }
+      pat_ident(pth, @child(p)) { walk_pat(p, it); }
       pat_rec(fields, _) { for fields.each {|f| walk_pat(f.pat, it); } }
       pat_enum(_, s) | pat_tup(s) { for s.each {|p| walk_pat(p, it); } }
       pat_box(s) | pat_uniq(s) { walk_pat(s, it); }
-      pat_wild | pat_lit(_) | pat_range(_, _) | pat_ident(_, none) {}
+      pat_wild | pat_lit(_) | pat_range(_, _) | pat_ident(_, _) {}
     }
 }
 

@@ -493,7 +493,7 @@ fn resolve_names(e: @env, c: @ast::crate) {
     fn walk_pat(e: @env, pat: @ast::pat, sc: scopes, v: vt<scopes>) {
         visit::visit_pat(pat, sc, v);
         alt pat.node {
-          ast::pat_enum(p, _) {
+         ast::pat_enum(p, _) | ast::pat_ident(p, @ast::dont_care) {
             alt lookup_path_strict(*e, sc, p.span, p.node, ns_val) {
               some(fnd@ast::def_variant(_,_)) {
                 e.def_map.insert(pat.id, fnd);
@@ -507,7 +507,7 @@ fn resolve_names(e: @env, c: @ast::crate) {
           }
           /* Here we determine whether a given pat_ident binds a new
            variable a refers to a nullary enum. */
-          ast::pat_ident(p, none) {
+          ast::pat_ident(p, @ast::no_child) {
               alt lookup_in_scope(*e, sc, p.span, path_to_ident(p),
                                   ns_val, false) {
                 some(fnd@ast::def_variant(_,_)) {
