@@ -156,8 +156,12 @@ fn item_impl_iface(item: ebml::doc, tcx: ty::ctxt, cdata: cmd)
     -> option<ty::t> {
     let mut result = none;
     ebml::tagged_docs(item, tag_impl_iface) {|ity|
-        result = some(parse_ty_data(ity.data, cdata.cnum, ity.start, tcx,
-                             {|did| translate_def_id(cdata, did)}));
+            //  let node_id = parse_def_id(*ity.data);
+        let ty = parse_ty_data(ity.data, cdata.cnum, ity.start, tcx,
+                    {|did| translate_def_id(cdata, did)});
+        result = some(ty);
+        //   let path = item_path(ity);
+        //     let result = some(@{path: path, id: node_id});
     };
     result
 }
@@ -413,11 +417,29 @@ fn get_impls_for_mod(cdata: cmd, m_id: ast::node_id,
                      get_cdata: fn(ast::crate_num) -> cmd)
     -> @[@middle::resolve::_impl] {
     let data = cdata.data;
+    // this fails
     let mod_item = lookup_item(m_id, data);
     let mut result = [];
     ebml::tagged_docs(mod_item, tag_mod_impl) {|doc|
-        let did = parse_def_id(ebml::doc_data(doc));
+            /*
+              Pair of an item did and an iface did.
+              The second one is unneeded if the first id names
+              an impl; disambiguates if it's a class
+             */
+            /*
+              This is wrong -- it just eats the same def_id twice
+             */
+            // need to do the inner tags
+        let did = parse_def_id(ebml::doc_data(ebml::get_doc(doc,
+                                                      tag_mod_impl_use)));
+        #debug("get_impls_for_mod: got %?", did);
+        // iface is optional
+        let iface_did = option::map(ebml::maybe_get_doc(doc,
+                                           tag_mod_impl_iface)) {|d|
+                                     parse_def_id(ebml::doc_data(d))};
+        #debug("get_impls_for_mod: got %?", iface_did);
         let local_did = translate_def_id(cdata, did);
+        let local_iface_did = translate_def_id(cdata, iface_did);
         // The impl may be defined in a different crate. Ask the caller
         // to give us the metadata
         let impl_cdata = get_cdata(local_did.crate);
@@ -427,6 +449,8 @@ fn get_impls_for_mod(cdata: cmd, m_id: ast::node_id,
         if alt name { some(n) { n == nm } none { true } } {
             let base_tps = item_ty_param_count(item);
             result += [@{
+                    // here, we need to... reconstruct the iface_ref?
+                    // probz broken
                 did: local_did, ident: nm,
                 methods: item_impl_methods(impl_cdata, item, base_tps)
             }];

@@ -197,6 +197,25 @@ fn encode_module_item_paths(ebml_w: ebml::writer, ecx: @encode_ctxt,
     }
 }
 
+fn encode_iface_ref(ebml_w: ebml::writer, ecx: @encode_ctxt, t: @iface_ref) {
+    ebml_w.start_tag(tag_impl_iface);
+    //  encode_def_id(ebml_w, local_def(t.id));
+    encode_type(ecx, ebml_w, node_id_to_type(ecx.ccx.tcx, t.id));
+    /*
+    // FIXME: also need to encode ty params
+    alt ecx.ccx.tcx.def_map.find(t.id) {
+      some(def_ty(t_id)) {
+          alt ecx.ccx.tcx.items.find(t_id) {
+            ast_map::node_item(_,path) { encode_path(ebml_w, path); }
+            _ { fail; } // FIXME
+          }
+      }
+      _ { fail; } // FIXME
+    }
+    */
+    ebml_w.end_tag();
+}
+
 fn encode_item_paths(ebml_w: ebml::writer, ecx: @encode_ctxt, crate: @crate)
     -> [entry<str>] {
     let mut index: [entry<str>] = [];
@@ -361,10 +380,57 @@ fn encode_info_for_mod(ecx: @encode_ctxt, ebml_w: ebml::writer, md: _mod,
       list::cons(impls, @list::nil) {
         for vec::each(*impls) {|i|
             if ast_util::is_exported(i.ident, md) {
-                ebml_w.wr_tagged_str(tag_mod_impl, def_to_str(i.did));
-            }
-        }
-      }
+                    // Should figure out what i.did is.
+                    // If it points to an iface_ref, should
+                    // write the pair of class-id/iface-id
+                    // Actually, maybe just always write the pair,
+                    // even for "regular" impls? For consistency?
+                ebml_w.start_tag(tag_mod_impl);
+            /* But wait, there's more! If did stands for an iface
+             ref, we need to map it to its parent class */
+                ebml_w.start_tag(tag_mod_impl_use);
+                let iface_ty = alt ecx.ccx.tcx.items.get(i.did.node) {
+                  ast_map::node_item(it@@{node: cl@item_class(*),_},_) {
+                      ebml_w.wr_str(def_to_str(local_def(it.id)));
+                      #debug("tag_mod_impl: writing %?", it.id);
+                      some(ty::lookup_item_type(ecx.ccx.tcx, i.did).ty)
+                  }
+                  ast_map::node_item(@{node: item_impl(_,some(ifce),_,_),_},_)
+                  { ebml_w.wr_str(def_to_str(i.did));
+                      #debug("tag_mod_impl: writing %?", i.did);
+                    some(ty::node_id_to_type(ecx.ccx.tcx, ifce.id))
+                  }
+                  _ {
+                      #debug("tag_mod_impl: writing %?", i.did);
+                      ebml_w.wr_str(def_to_str(i.did)); none
+                  }
+                };
+                ebml_w.end_tag();
+                
+                /* Write the iface did if it exists */
+                option::iter(iface_ty) {|i|
+                alt ty::get(i).struct {
+                  ty::ty_iface(did, tys) {
+                    // FIXME: tys?
+                      ebml_w.start_tag(tag_mod_impl_iface);
+                      #debug("tag_mod_impl: iface d = %?", did);
+                     ebml_w.wr_str(def_to_str(did));
+                     ebml_w.end_tag();
+                                     
+                  }
+                  t { fail (#fmt("fuck: %s",
+                       util::ppaux::ty_to_str(ecx.ccx.tcx, i))); }
+                          // FIXME
+                }}
+                #debug("tag_mod_impl: closing");
+                ebml_w.end_tag();
+            } // if
+                /*
+                  might be bad b/c some of the defs might be iface_refs?
+                  but we can resolve them, right?
+                 */
+            } // for
+      } // list::cons alt
       _ { ecx.ccx.tcx.sess.bug(#fmt("encode_info_for_mod: empty impl_map \
             entry for %?", path)); }
     }
@@ -496,6 +562,8 @@ fn encode_info_for_item(ecx: @encode_ctxt, ebml_w: ebml::writer, item: @item,
         alt item.node { item_enum(_, _, _) { true } _ { false } };
     if !must_write && !reachable(ecx, item.id) { ret; }
 
+    #debug("encode_info_for_item: %d", item.id);
+
     fn add_to_index_(item: @item, ebml_w: ebml::writer,
                      index: @mut [entry<int>]) {
         *index += [{val: item.id, pos: ebml_w.writer.tell()}];
@@ -571,7 +639,7 @@ fn encode_info_for_item(ecx: @encode_ctxt, ebml_w: ebml::writer, item: @item,
         encode_enum_variant_info(ecx, ebml_w, item.id, variants,
                                  path, index, tps);
       }
-      item_class(tps, _ifaces, items, ctor, rp) {
+      item_class(tps, ifaces, items, ctor, rp) {
         /* First, encode the fields and methods
            These come first because we need to write them to make
            the index, and the index needs to be in the item for the
@@ -589,7 +657,9 @@ fn encode_info_for_item(ecx: @encode_ctxt, ebml_w: ebml::writer, item: @item,
         encode_name(ebml_w, item.ident);
         encode_path(ebml_w, path, ast_map::path_name(item.ident));
         encode_region_param(ebml_w, rp);
-        /* FIXME: encode ifaces */
+        for ifaces.each {|t|
+                #debug("encoding an iface ref: %d", t.id);
+                encode_iface_ref(ebml_w, ecx, t);}
         /* Encode def_ids for each field and method
          for methods, write all the stuff get_iface_method
         needs to know*/
@@ -662,15 +732,7 @@ fn encode_info_for_item(ecx: @encode_ctxt, ebml_w: ebml::writer, item: @item,
             ebml_w.writer.write(str::bytes(def_to_str(local_def(m.id))));
             ebml_w.end_tag();
         }
-        alt ifce {
-          some(t) {
-            let i_ty = ty::node_id_to_type(tcx, t.id);
-            ebml_w.start_tag(tag_impl_iface);
-            write_type(ecx, ebml_w, i_ty);
-            ebml_w.end_tag();
-          }
-          _ {}
-        }
+        option::iter(ifce) {|t| encode_iface_ref(ebml_w, ecx, t)};
         encode_path(ebml_w, path, ast_map::path_name(item.ident));
         ebml_w.end_tag();
 
