@@ -374,17 +374,8 @@ fn convert(ccx: @crate_ctxt, it: @ast::item) {
         let cms = convert_methods(ccx, methods, rp, bounds, selfty);
         for ifaces.each { |ifce|
             check_methods_against_iface(ccx, tps, rp, selfty, ifce, cms);
-
-            // FIXME #2434---this is somewhat bogus, but it seems that
-            // the id of iface_ref is also the id of the impl, and so
-            // we want to store the "self type" of the impl---in this
-            // case, the class.  The reason I say this is somewhat
-            // bogus (and should be refactored) is that the tcache
-            // stores the class type for ifce.id but the node_type
-            // table stores the iface type. Weird. Probably just
-            // adding a "self type" table rather than overloading the
-            // tcache would be ok, or else adding more than one id.
-            tcx.tcache.insert(local_def(ifce.id), tpt);
+            // ifce.impl_id represents (class, iface) pair
+            tcx.tcache.insert(local_def(ifce.impl_id), tpt);
         }
       }
       _ {
@@ -445,9 +436,10 @@ fn instantiate_iface_ref(ccx: @crate_ctxt, t: @ast::iface_ref,
 
     let rscope = type_rscope(rp);
 
-    alt lookup_def_tcx(ccx.tcx, t.path.span, t.id) {
+    alt lookup_def_tcx(ccx.tcx, t.path.span, t.ref_id) {
       ast::def_ty(t_id) {
-        let tpt = astconv::ast_path_to_ty(ccx, rscope, t_id, t.path, t.id);
+        let tpt = astconv::ast_path_to_ty(ccx, rscope, t_id, t.path,
+                                          t.ref_id);
         alt ty::get(tpt.ty).struct {
            ty::ty_iface(*) {
               (t_id, tpt)

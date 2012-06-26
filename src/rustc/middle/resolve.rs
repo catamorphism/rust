@@ -406,7 +406,7 @@ fn maybe_insert(e: @env, id: node_id, def: option<def>) {
 }
 
 fn resolve_iface_ref(p: @iface_ref, sc: scopes, e: @env) {
-    maybe_insert(e, p.id,
+    maybe_insert(e, p.ref_id,
        lookup_path_strict(*e, sc, p.path.span, p.path, ns_type));
 }
 
@@ -2248,7 +2248,7 @@ fn find_impls_in_item(e: env, i: @ast::item, &impls: [@_impl]/~,
           vec::iter(ifces) {|p|
               // The def_id, in this case, identifies the combination of
               // class and iface
-              vec::push(impls, @{did: local_def(p.id),
+              vec::push(impls, @{did: local_def(p.impl_id),
                          ident: i.ident,
                          methods: vec::map(mthds, {|m|
                                       @{did: local_def(m.id),

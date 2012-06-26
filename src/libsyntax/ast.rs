@@ -657,10 +657,15 @@ type attribute_ = {style: attr_style, value: meta_item};
 
 /*
   iface_refs appear in both impls and in classes that implement ifaces.
-  resolve maps each iface_ref's id to its defining iface.
+  resolve maps each iface_ref's ref_id to its defining iface; that's all
+  that the ref_id is for. The impl_id maps to the "self type" of this impl.
+  If this impl is an item_impl, the impl_id is redundant (it could be the
+  same as the impl's node id). If this impl is actually an impl_class, then
+  conceptually, the impl_id stands in for the pair of (this class, this
+  iface)
  */
 #[auto_serialize]
-type iface_ref = {path: @path, id: node_id};
+type iface_ref = {path: @path, ref_id: node_id, impl_id: node_id};
 
 #[auto_serialize]
 enum visibility { public, private }

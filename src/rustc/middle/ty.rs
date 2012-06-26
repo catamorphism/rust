@@ -2530,7 +2530,7 @@ fn impl_iface(cx: ctxt, id: ast::def_id) -> option<t> {
     if id.crate == ast::local_crate {
         alt cx.items.find(id.node) {
            some(ast_map::node_item(@{node: ast::item_impl(
-              _, _, some(@{id: id, _}), _, _), _}, _)) {
+              _, _, some(@{ref_id: id, _}), _, _), _}, _)) {
               some(node_id_to_type(cx, id))
            }
            some(ast_map::node_item(@{node: ast::item_class(_, _, _, _, _, _),

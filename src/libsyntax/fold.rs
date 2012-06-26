@@ -285,7 +285,8 @@ fn noop_fold_item_underscore(i: item_, fld: ast_fold) -> item_ {
 }
 
 fn fold_iface_ref(&&p: @iface_ref, fld: ast_fold) -> @iface_ref {
-    @{path: fld.fold_path(p.path), id: fld.new_id(p.id)}
+    @{path: fld.fold_path(p.path), ref_id: fld.new_id(p.ref_id),
+     impl_id: fld.new_id(p.impl_id)}
 }
 
 fn noop_fold_method(&&m: @method, fld: ast_fold) -> @method {

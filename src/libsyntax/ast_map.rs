@@ -218,7 +218,7 @@ fn map_item(i: @item, cx: ctx, v: vt) {
           let (_, ms) = ast_util::split_class_items(items);
           // Map iface refs to their parent classes. This is
           // so we can find the self_ty
-          vec::iter(ifces) {|p| cx.map.insert(p.id,
+          vec::iter(ifces) {|p| cx.map.insert(p.ref_id,
                                   node_item(i, item_path)); };
           let d_id = ast_util::local_def(i.id);
           let p = extend(cx, i.ident);

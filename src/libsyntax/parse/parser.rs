@@ -1953,7 +1953,7 @@ class parser {
             if option::is_none(ident) {
                 ident = some(vec::last(path.idents));
             }
-            some(@{path: path, id: self.get_id()})
+            some(@{path: path, ref_id: self.get_id(), impl_id: self.get_id()})
         } else { none };
         let ident = alt ident {
           some(name) { name }
@@ -1994,7 +1994,7 @@ class parser {
 
     fn parse_iface_ref() -> @iface_ref {
         @{path: self.parse_path_with_tps(false),
-          id: self.get_id()}
+          ref_id: self.get_id(), impl_id: self.get_id()}
     }
 
     fn parse_iface_ref_list() -> [@iface_ref]/~ {

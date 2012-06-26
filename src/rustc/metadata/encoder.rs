@@ -219,7 +219,7 @@ fn encode_module_item_paths(ebml_w: ebml::writer, ecx: @encode_ctxt,
 
 fn encode_iface_ref(ebml_w: ebml::writer, ecx: @encode_ctxt, t: @iface_ref) {
     ebml_w.start_tag(tag_impl_iface);
-    encode_type(ecx, ebml_w, node_id_to_type(ecx.tcx, t.id));
+    encode_type(ecx, ebml_w, node_id_to_type(ecx.tcx, t.ref_id));
     ebml_w.end_tag();
 }
 
