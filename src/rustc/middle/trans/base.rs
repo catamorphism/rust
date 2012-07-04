@@ -782,7 +782,7 @@ fn trans_class_drop(bcx: block, v0: ValueRef, dtor_did: ast::def_id,
         let llfld_a = GEPi(bcx, classptr, ~[0u, i]);
         bcx = drop_ty(bcx, llfld_a, fld.mt.ty);
      }
-     Store(bcx, C_u8(0u), drop_flag);
+     Store(bcx, C_uint(bcx.ccx(), 0u), drop_flag);
      bcx
   }
 }
