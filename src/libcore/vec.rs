@@ -204,7 +204,7 @@ pure fn from_elem<T: copy>(n_elts: uint, t: T) -> ~[T] {
 }
 
 /// Produces a mut vector from an immutable vector.
-fn to_mut<T>(+v: ~[T]) -> ~[mut T] {
+pure fn to_mut<T>(+v: ~[T]) -> ~[mut T] {
     unsafe { ::unsafe::transmute(v) }
 }
 

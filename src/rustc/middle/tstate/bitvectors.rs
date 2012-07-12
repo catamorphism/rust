@@ -24,9 +24,7 @@ fn promises(fcx: fn_ctxt, p: poststate, c: tsconstr) -> bool {
     ret promises_(bit_num(fcx, c), p);
 }
 
-fn promises_(n: uint, p: poststate) -> bool {
-    ret tritv_get(p, n) == ttrue;
-}
+fn promises_(n: uint, p: poststate) -> bool { p.get(n) == ttrue }
 
 // v "happens after" u
 fn seq_trit(u: trit, v: trit) -> trit {
@@ -37,18 +35,16 @@ fn seq_trit(u: trit, v: trit) -> trit {
 // 1 in q and 0 in p, it's 1 in the result; however,
 // if it's 0 in q and 1 in p, it's 0 in the result
 fn seq_tritv(p: postcond, q: postcond) {
-    let mut i = 0u;
     assert (p.nbits == q.nbits);
-    while i < p.nbits {
-        tritv_set(i, p, seq_trit(tritv_get(p, i), tritv_get(q, i)));
-        i += 1u;
+    for uint::range(0, p.nbits) |i| {
+        p.set(i, seq_trit(p.get(i), q.get(i)));
     }
 }
 
 fn seq_postconds(fcx: fn_ctxt, ps: ~[postcond]) -> postcond {
-    let sz = vec::len(ps);
-    if sz >= 1u {
-        let prev = tritv_clone(ps[0]);
+    let sz = ps.len();
+    if sz >= 1 {
+        let prev = ps[0].clone();
         vec::iter_between(ps, 1u, sz, |p| seq_tritv(prev, p) );
         ret prev;
     } else { ret ann::empty_poststate(num_constraints(fcx.enclosing)); }
@@ -93,9 +89,9 @@ fn seq_preconds(fcx: fn_ctxt, pps: ~[pre_and_post]) -> precond {
 }
 
 fn intersect_states(p: prestate, q: prestate) -> prestate {
-    let rslt = tritv_clone(p);
-    tritv_intersect(rslt, q);
-    ret rslt;
+    let rslt = p.clone();
+    rslt.intersect(q);
+    rslt
 }
 
 fn gen(fcx: fn_ctxt, id: node_id, c: tsconstr) -> bool {
@@ -156,7 +152,7 @@ fn kill_prestate(fcx: fn_ctxt, id: node_id, c: tsconstr) -> bool {
 }
 
 fn kill_all_prestate(fcx: fn_ctxt, id: node_id) {
-    tritv::tritv_kill(node_id_to_ts_ann(fcx.ccx, id).states.prestate);
+    node_id_to_ts_ann(fcx.ccx, id).states.prestate.kill();
 }
 
 
