@@ -229,6 +229,12 @@ fn compile_upto(sess: session, cfg: ast::crate_cfg,
                 impl_map: impl_map, method_map: method_map,
                 vtable_map: vtable_map};
 
+// Deps
+    time(time_passes, ~"dependency generation", ||
+         trans::depgraph::find_deps(crate, ast_map, exp_map, ty_cx,
+                                    method_map));
+// **********
+
     let (llmod, link_meta) = time(time_passes, ~"translation", ||
         trans::base::trans_crate(sess, crate, ty_cx, outputs.obj_filename,
                                  exp_map, maps));

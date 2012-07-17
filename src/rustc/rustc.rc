@@ -49,6 +49,7 @@ mod middle {
         mod debuginfo;
         mod type_use;
         mod reachable;
+        mod depgraph;
     }
     mod ty;
     mod resolve3;
