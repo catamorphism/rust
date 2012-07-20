@@ -4,22 +4,23 @@ Computes item dependency graph
 
 import syntax::ast::*;
 import syntax::{visit, ast_util, ast_map};
-import syntax::ast_util::def_id_of_def;
+import syntax::ast_util::{def_id_of_def, new_def_hash};
 import syntax::attr;
 import syntax::visit::*;
 import syntax::print::pprust::{expr_to_str, path_to_str};
-import std::map::hashmap;
+import std::map::{hashmap, int_hash};
 import driver::session::*;
 import middle::ty::*;
 
 export find_deps;
 
-type map = std::map::hashmap<def_id, ()>;
+// this is pretty sloppy, would rather just use one map
+type seen_deps = std::map::hashmap<def_id, ()>;
 
 type dependency = {source_id: def_id, // Item being depended on
                    target_id: node_id, // Local item that depends on it
                    depender_str: ident,
-                   dependee_str: str};
+                   dependee_str: ~str};
 
 // item A (which is always local) depends on item B
 type adj_list = ~[dependency];
@@ -29,35 +30,60 @@ type ctxt1 = {ast_map: ast_map::map,
             tcx: ty::ctxt,
             method_map: typeck::method_map,
             // "A depends on B"
-            mut graph_nodes: adj_list};
+            mut graph_nodes: adj_list
+             };
 
 type ctx = {// item we're in
             current_item: node_id,
             current_item_name: ident,
-            x: ctxt1
+    // cache to avoid adding duplicate entries to the vec
+            seen_deps: @seen_deps,
+            x: @ctxt1
 };
 
 fn find_deps(crate: @crate, ast_map: ast_map::map,
              exp_map: resolve::exp_map,
              tcx: ty::ctxt, method_map: typeck::method_map) {
-    let cx: ctxt1 = {ast_map: ast_map,
+    #debug("find_deps!");
+    let cx: @ctxt1 = @{ast_map: ast_map,
               exp_map: exp_map, tcx: tcx, method_map: method_map,
               mut graph_nodes: ~[]};
+    #debug("visit_tys");
     visit_tys(cx, crate);
-    print_deps(cx, cx.graph_nodes);
+    #debug("print_deps");
+    print_deps(cx);
 }
 
-fn print_deps(_cx: ctxt1, g: adj_list) {
-    for g.each |d| {
-        // Not printing: ???
-        log(error, #fmt("%s -> %s", *d.depender_str, d.dependee_str));
-    };
+fn print_deps(-cx: @ctxt1) {
+    // tjc: fix file name
+    let opt_w = io::buffered_file_writer(~"deps.dot");
+    alt opt_w {
+      result::err(e) { fail e; }
+      result::ok(w) {
+        for (copy cx.graph_nodes).each |d| {
+            do str::byte_slice(#fmt("%s -> %s;\n", *d.depender_str,
+                                    d.dependee_str)) |s| { w.write(s) };
+        };
+      }
+    }
 }
 
-fn visit_tys(cx: ctxt1, crate: @crate) {
-    let vtor: vt<ctxt1> = visit::mk_vt(@{visit_item:
-      fn@(it: @item, &&cx: ctxt1, &&_vt: vt<ctxt1>) {
+fn visit_tys(cx: @ctxt1, crate: @crate) {
+    #debug("visit_tys!");
+    let vtor: vt<@ctxt1> = visit::mk_vt(@{visit_item:
+      fn@(it: @item, &&cx: @ctxt1, &&vt: vt<@ctxt1>) {
+        alt it.node {
+          // Don't care about modules
+          item_mod(m) {
+            vt.visit_mod(m, it.span, it.id, cx, vt);
+            ret;
+          }
+          _           {}
+        }
+
          let vtor: vt<ctx> = visit::mk_vt(@{visit_ty:
+ // This is probably going to be terrible,
+ // b/c it doesn't consider inferred tys.
  fn@(t: @ast::ty, &&cx: ctx, &&vt: vt<ctx>) {
     visit::visit_ty(t, cx, vt);
     alt t.node {
@@ -66,6 +92,7 @@ fn visit_tys(cx: ctxt1, crate: @crate) {
           some(d) {
             alt d {
               def_ty(d_id) | def_class(d_id) {
+                // Wrong, really, just want the path itself with no ty params
                 let path = path_to_str(p);
                 record_dep(cx, d_id, path);
               }
@@ -75,7 +102,7 @@ fn visit_tys(cx: ctxt1, crate: @crate) {
             }
           }
           none {
-            fail "poo"; // Shouldn't happen
+            fail ~"poo"; // Shouldn't happen
           }
         }
       }
@@ -85,20 +112,33 @@ fn visit_tys(cx: ctxt1, crate: @crate) {
     }} with *visit::default_visitor::<ctx>()});
         visit::visit_item(it, {current_item: it.id,
                                current_item_name: it.ident,
+                               seen_deps: @new_def_hash(),
                                x: cx}, vtor);
     }
-            with *visit::default_visitor::<ctxt1>()});
+            with *visit::default_visitor::<@ctxt1>()});
     visit::visit_crate(*crate, cx, vtor);
 }
 
-fn record_dep(cx: ctx, d_id: def_id, dstr: str) {
+fn record_dep(cx: ctx, d_id: def_id, dstr: ~str) {
+  //  #debug("Recording a dep: %s -> %s", *cx.current_item_name, dstr);
+  //  #debug(">>>> %u", cx.x.graph_nodes.len());
+    // need to avoid duplicates
+    alt cx.seen_deps.find(d_id) {
+      none {
+        cx.seen_deps.insert(d_id, ());
+      }
+      some(_) {
+        ret; // Already in cache
+      }
+    }
     vec::push(cx.x.graph_nodes, {source_id: d_id, target_id: cx.current_item,
                                             depender_str:
                               cx.current_item_name, dependee_str: dstr});
+  //  #debug(">>>> %u", cx.x.graph_nodes.len());
 }
 
 /*
-fuck
+not really
 
 fn walk_ty(cx: ctx, t: ty::t) {
     // Handle any sub-components
