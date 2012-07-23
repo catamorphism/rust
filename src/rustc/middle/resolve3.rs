@@ -4204,6 +4204,9 @@ class Resolver {
     fn search_for_traits_containing_method(name: Atom) -> @dvec<def_id> {
         let found_traits = @dvec();
         let mut search_module = self.current_module;
+
+        // Figure out what's happening here. Do we conclude that brush() is in
+        // a trait?
         loop {
             // Look for the current trait.
             alt copy self.current_trait_refs {

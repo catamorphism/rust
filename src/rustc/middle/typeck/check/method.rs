@@ -96,8 +96,12 @@ class lookup {
               ty::ty_class(did, substs) {
                 self.add_candidates_from_class(did, substs);
               }
+              // Seems wrong. Self might be anything, and we want to
+              // know what impls exist for it.
               _ { }
             }
+
+            #debug("aaaaaaaaaaaa");
 
             // if we found anything, stop now.  otherwise continue to
             // loop for impls in scope.  Note: I don't love these
@@ -105,26 +109,40 @@ class lookup {
             // it.
             if self.candidates.len() > 0u { break; }
 
+            #debug("bbbbbb");
+
             // now look for impls in scope, but don't look for impls that
             // would require doing an implicit borrow of the lhs.
             self.add_candidates_from_scope(false);
+
+            #debug("cccccccccc");
 
             // Look for inherent methods.
             self.add_inherent_and_extension_candidates
                 (optional_inherent_methods, false);
 
+            #debug("dddddd");
+
             // if we found anything, stop before trying borrows
             if self.candidates.len() > 0u { break; }
 
+            #debug("eeeeeeee");
+
             // now look for impls in scope that might require a borrow
             self.add_candidates_from_scope(true);
+
+            #debug("fffffff");
 
             // Again, look for inherent methods.
             self.add_inherent_and_extension_candidates
                 (optional_inherent_methods, true);
 
+            #debug("ggggggg");
+
             // if we found anything, stop before attempting auto-deref.
             if self.candidates.len() > 0u { break; }
+
+            #debug("hhhhhh");
 
             // check whether we can autoderef and if so loop around again.
             alt ty::deref(self.tcx(), self.self_ty, false) {
@@ -334,7 +352,12 @@ class lookup {
         // forms it supports, don't use this method; it'll result in lots of
         // multiple-methods-in-scope errors.
 
+        #debug["/////add_candidates_from_scope: %s", expr_to_str(self.expr)];
+
         if self.fcx.ccx.trait_map.contains_key(self.expr.id) {
+            // And this seems wrong. Why should brush be in the trait map?
+            // It's not a trait method.
+            #debug("%s is in the trait_map", expr_to_str(self.expr));
             ret;
         }
 
