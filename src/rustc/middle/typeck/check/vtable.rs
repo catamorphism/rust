@@ -181,12 +181,35 @@ fn lookup_vtable(fcx: @fn_ctxt,
                     impls_seen.insert(im.did, ());
 
                     // find the trait that im implements (if any)
-                    for vec::each(ty::impl_traits(tcx, im.did)) |of_ty| {
+                    let of_ty_opt =
+                      ty::impl_traits(tcx, im.did).find (|of_ty_| {
                         // it must have the same id as the expected one
                         match ty::get(of_ty).struct {
                           ty::ty_trait(id, _, _) if id != trait_id => again,
                           _ => { /* ok */ }
                         }
+                        });
+
+                    let mut of_ty = expect(tcx.diag, of_ty_opt,
+                                           || { ~"buh" }); // tjc
+
+                    let (n_tps, rp) = alt ty::get(of_ty).struct {
+                        ty::ty_trait(_, substs) {
+                          (substs.tps.len(), is_some(substs.self_r))
+                        }
+                        // tjc
+                        _ { fail; }
+                      };
+
+                    let self_r = if rp {some(fcx.infcx.next_region_var_nb())}
+                                 else {none};
+                    let tps = fcx.infcx.next_ty_vars(n_tps);
+                    let substs = {self_r: self_r, self_ty: none, tps: tps};
+                    of_ty = ty::subst(tcx, substs, of_ty);
+
+                    #debug("of_ty = %s", ty_to_str(fcx.infcx.tcx,
+                                                                of_ty));
+
 
                         // check whether the type unifies with the type
                         // that the impl is for, and continue if not
@@ -220,6 +243,16 @@ fn lookup_vtable(fcx: @fn_ctxt,
                         };
 
                         connect_trait_tps(fcx, expr, substs_f.tps,
+                                          /*
+                                            conflicted code:
+                        // recursively process the bounds
+                        let trait_tps_ = trait_substs.tps;
+                        let trait_tps =
+                          fcx.infcx.next_ty_vars(trait_tps_.len());
+                        let substs_f = fixup_substs(fcx, sp, trait_id,
+                                                    substs);
+                        connect_trait_tps(fcx, sp, substs_f.tps,
+                                          */
                                           trait_tps, im.did);
                         let subres = lookup_vtables(
                             fcx, expr, im_bs, &substs_f,
@@ -227,10 +260,9 @@ fn lookup_vtable(fcx: @fn_ctxt,
                         vec::push(found,
                                   vtable_static(im.did, substs_f.tps,
                                                 subres));
-                    }
-                }
+                  }
             }
-        }
+        };
 
         match found.len() {
           0u => { /* fallthrough */ }
