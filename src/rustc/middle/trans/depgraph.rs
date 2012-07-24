@@ -56,14 +56,17 @@ fn find_deps(crate: @crate, ast_map: ast_map::map,
 
 fn print_deps(-cx: @ctxt1) {
     // tjc: fix file name
-    let opt_w = io::buffered_file_writer(~"deps.dot");
+    let opt_w = io::buffered_file_writer(#fmt("deps_%u.dot",
+                                              cx.graph_nodes.len()));
     alt opt_w {
       result::err(e) { fail e; }
       result::ok(w) {
+        do str::byte_slice("digraph G{\n") |s| {w.write(s)};
         for (copy cx.graph_nodes).each |d| {
             do str::byte_slice(#fmt("%s -> %s;\n", *d.depender_str,
                                     d.dependee_str)) |s| { w.write(s) };
         };
+        do str::byte_slice("\n}") |s| {w.write(s)};
       }
     }
 }
@@ -92,8 +95,7 @@ fn visit_tys(cx: @ctxt1, crate: @crate) {
           some(d) {
             alt d {
               def_ty(d_id) | def_class(d_id) {
-                // Wrong, really, just want the path itself with no ty params
-                let path = path_to_str(p);
+                let path = path_to_str_no_params(p);
                 record_dep(cx, d_id, path);
               }
               _ { /* Not a type, or a param or other type we don't care
@@ -135,6 +137,23 @@ fn record_dep(cx: ctx, d_id: def_id, dstr: ~str) {
                                             depender_str:
                               cx.current_item_name, dependee_str: dstr});
   //  #debug(">>>> %u", cx.x.graph_nodes.len());
+}
+
+fn path_to_str_no_params(path: @path) -> ~str {
+    let mut rs = ~"";
+    let mut first = true;
+    for path.idents.each |id| {
+        // tjc: not underscores
+        if first { first = false; } else { rs += ~"_"; }
+        rs += *id;
+    }
+    // hell
+    if rs == ~"node" {
+        ~"a_node"
+    }
+    else {
+        rs
+    }
 }
 
 /*
