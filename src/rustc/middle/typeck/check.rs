@@ -376,6 +376,28 @@ fn check_class_member(ccx: @crate_ctxt, class_t: ty::t,
     }
 }
 
+fn check_no_duplicate_fields(fields: ~[field_ty]) {
+
+              let field_names = hashmap::<@~str, span>(|x| str::hash(*x),
+                                             |x,y| str::eq(*x, *y));
+              for fields.each |f| {
+                    alt field_names.find(f.node.ident) {
+                        some(orig_sp) {
+                          tcx.sess.span_err(f.span, #fmt("Duplicate field \
+                            name %s in record type declaration",
+                                                         *f.node.ident));
+                          tcx.sess.span_note(orig_sp, ~"First declaration of \
+                             this field occurred here");
+                          break;
+                        }
+                        none {
+                          field_names.insert(f.node.ident, f.span);
+                        }
+                      }
+                  }
+
+}
+
 fn check_item(ccx: @crate_ctxt, it: @ast::item) {
     alt it.node {
       ast::item_const(_, e) { check_const(ccx, it.span, e, it.id); }
@@ -434,23 +456,7 @@ fn check_item(ccx: @crate_ctxt, it: @ast::item) {
         // tjc: Factor this code
         alt t.node {
             ast::ty_rec(fields) {
-              let field_names = hashmap::<@~str, span>(|x| str::hash(*x),
-                                             |x,y| str::eq(*x, *y));
-              for fields.each |f| {
-                    alt field_names.find(f.node.ident) {
-                        some(orig_sp) {
-                          tcx.sess.span_err(f.span, #fmt("Duplicate field \
-                            name %s in record type declaration",
-                                                         *f.node.ident));
-                          tcx.sess.span_note(orig_sp, ~"First declaration of \
-                             this field occurred here");
-                          break;
-                        }
-                        none {
-                          field_names.insert(f.node.ident, f.span);
-                        }
-                      }
-                  }
+              check_no_duplicate_fields(fields);
             }
             _ {}
         }
