@@ -2907,8 +2907,8 @@ class Resolver {
                   // If the def is a ty param, and came from the right
                   // item, it's ok
                   alt def {
-                    def_ty_param(did, _) if self.def_map.find(did.node) ==
-                    some(def_typaram_binder(item_id)) {
+                    def_ty_param(did, _) if self.def_map.find(copy(did.node))
+                      == some(def_typaram_binder(item_id)) {
                       // ok
                     }
                     _ {
