@@ -619,14 +619,20 @@ class liveness {
     fn assigned_on_entry(ln: live_node, var: variable)
         -> option<live_node_kind> {
 
+        debug!("eeeee");
         assert ln.is_valid();
+        debug!("fffff");
         let writer = self.users[self.idx(ln, var)].writer;
-        if writer.is_valid() {some((*self.ir).lnk(writer))} else {none}
+        // Just unconditionally returning a some(...) broke libcore.
+        // What to do?
+        if writer.is_valid()  {debug!("ggggg");
+                              some((*self.ir).lnk(writer))} else {
+            debug!("hhhh"); none}
     }
 
     fn assigned_on_exit(ln: live_node, var: variable)
         -> option<live_node_kind> {
-
+        debug!("ddddd");
         self.assigned_on_entry(copy self.successors[*ln], var)
     }
 
@@ -995,7 +1001,8 @@ class liveness {
           }
 
           expr_ret(o_e) | expr_fail(o_e) { // ignore succ and subst exit_ln:
-            self.propagate_through_opt_expr(o_e, self.s.exit_ln)
+        //    self.propagate_through_opt_expr(o_e, self.s.exit_ln)
+            self.propagate_through_opt_expr(o_e, succ)
           }
 
           expr_break {
@@ -1365,7 +1372,9 @@ fn check_local(local: @local, &&self: @liveness, vt: vt<@liveness>) {
           init_assign {}
         }
         self.warn_about_unused_or_dead_vars_in_pat(local.node.pat);
+        debug!("~~~ %?", local);
         if !local.node.is_mutbl {
+            debug!("aaaa");
             self.check_for_reassignments_in_pat(local.node.pat);
         }
       }
@@ -1637,9 +1646,10 @@ impl check_methods for @liveness {
 
     fn check_for_reassignment(ln: live_node, var: variable,
                               orig_span: span) {
+        debug!("ccccc");
         alt (*self).assigned_on_exit(ln, var) {
           some(lnk_expr(span)) {
-            self.tcx.sess.span_err(
+            self.tcx.sess.span_fatal(
                 span,
                 ~"re-assignment of immutable variable");
 
