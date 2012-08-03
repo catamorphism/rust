@@ -397,6 +397,11 @@ class lookup {
             let impl_ty = transform_self_type_for_method(self.fcx,
                                                          impl_ty,
                                                          *m);
+            /*
+            I'm wondering whether self.self_ty ever gets unified with
+            impl_ty...
+            */
+            debug!("impl_self_ty = %s", ty_to_str(self.fcx.tcx(), impl_ty));
 
             // Depending on our argument, we find potential
             // matches either by checking subtypability or
@@ -523,6 +528,10 @@ class lookup {
         // Make the actual receiver type (cand.self_ty) assignable to the
         // required receiver type (cand.rcvr_ty).  If this method is not
         // from an impl, this'll basically be a no-nop.
+        debug!{"doing mk_assignty %s %s", ty_to_str(self.fcx.tcx(),
+                                                    cand.self_ty),
+               ty_to_str(self.fcx.tcx(), cand.rcvr_ty)};
+
         alt self.fcx.mk_assignty(self.self_expr, self.borrow_lb,
                                  cand.self_ty, cand.rcvr_ty) {
           result::ok(_) {}
@@ -560,6 +569,11 @@ class lookup {
 
         let all_substs = {tps: vec::append(cand.self_substs.tps, m_substs)
                           with cand.self_substs};
+
+        #debug("~~~~ all_substs:");
+        for all_substs.tps.each() |t| {
+            #debug("%s ,", ty_to_str(tcx, t));
+        }
 
          self.fcx.write_ty_substs(self.node_id, cand.fty, all_substs);
 

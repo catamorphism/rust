@@ -1,7 +1,9 @@
 import check::{fn_ctxt, impl_self_ty, methods};
 import infer::{resolve_type, resolve_all, force_all, fixup_err_to_str};
+import syntax::diagnostic::expect;
 import ast_util::new_def_hash;
 import dvec::extensions;
+import option::is_some;
 
 fn has_trait_bounds(tps: ~[ty::param_bounds]) -> bool {
     vec::any(tps, |bs| {
@@ -135,12 +137,40 @@ fn lookup_vtable(fcx: @fn_ctxt, sp: span, ty: ty::t, trait_ty: ty::t,
                     impls_seen.insert(im.did, ());
 
                     // find the trait that im implements (if any)
-                    for vec::each(ty::impl_traits(tcx, im.did)) |of_ty| {
+                    let of_ty_opt =
+                      ty::impl_traits(tcx, im.did).find (|of_ty_| {
                         // it must have the same id as the expected one
-                        alt ty::get(of_ty).struct {
-                          ty::ty_trait(id, _) if id != trait_id { again; }
-                          _ { /* ok */ }
+                        alt ty::get(of_ty_).struct {
+                          ty::ty_trait(id, _) if id != trait_id { false }
+                          ty::ty_trait(_, substs) { true }
+                          _ { false }
                         }
+                        });
+
+                    let mut of_ty = expect(tcx.diag, of_ty_opt,
+                                           || { ~"FAIL" }); // tjc
+
+                    let (n_tps, rp) = alt ty::get(of_ty).struct {
+                        ty::ty_trait(_, substs) {
+                          (substs.tps.len(), is_some(substs.self_r))
+                        }
+                        // tjc
+                        _ { fail; }
+                      };
+
+                    let self_r = if rp {some(fcx.infcx.next_region_var_nb())}
+                                 else {none};
+                    let tps = fcx.infcx.next_ty_vars(n_tps);
+           /*
+           Do the fresh ty vars ever get the correct bounds associated with
+           them?
+           */
+                    let substs = {self_r: self_r, self_ty: none, tps: tps};
+                    of_ty = ty::subst(tcx, substs, of_ty);
+
+                    debug!{"of_ty = %s", ty_to_str(fcx.infcx.tcx,
+                                                   of_ty)};
+
 
                         // check whether the type unifies with the type
                         // that the impl is for, and continue if not
@@ -161,7 +191,14 @@ fn lookup_vtable(fcx: @fn_ctxt, sp: span, ty: ty::t, trait_ty: ty::t,
                         relate_trait_tys(fcx, sp, trait_ty, of_ty);
 
                         // recursively process the bounds
-                        let trait_tps = trait_substs.tps;
+                        let trait_tps_ = trait_substs.tps;
+                        let trait_tps =
+                          fcx.infcx.next_ty_vars(trait_tps_.len());
+            /*
+            Do the new ty vars in trait_tps ever get the correct bounds
+            attached to them? (I'm not sure how the infer ctxt stores or
+            represents bounds on ty vars.)
+            */
                         let substs_f = fixup_substs(fcx, sp, trait_id,
                                                     substs);
                         connect_trait_tps(fcx, sp, substs_f.tps,
@@ -171,10 +208,9 @@ fn lookup_vtable(fcx: @fn_ctxt, sp: span, ty: ty::t, trait_ty: ty::t,
                         vec::push(found,
                                   vtable_static(im.did, substs_f.tps,
                                                 subres));
-                    }
-                }
+                  }
             }
-        }
+        };
 
         alt found.len() {
           0u { /* fallthrough */ }

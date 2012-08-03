@@ -9,6 +9,7 @@ export resolve_type_vars_in_expr;
 
 fn resolve_type_vars_in_type(fcx: @fn_ctxt, sp: span, typ: ty::t) ->
     option<ty::t> {
+    debug!("resolve_type_vars_in_type: %s", ty_to_str(fcx.tcx(), typ));
     if !ty::type_needs_infer(typ) { return some(typ); }
     alt resolve_type(fcx.infcx, typ, resolve_all | force_all) {
       result::ok(new_type) { return some(new_type); }
@@ -78,6 +79,7 @@ fn visit_stmt(s: @ast::stmt, wbcx: wb_ctxt, v: wb_vt) {
     visit::visit_stmt(s, wbcx, v);
 }
 fn visit_expr(e: @ast::expr, wbcx: wb_ctxt, v: wb_vt) {
+    debug!("visit_expr: %s", expr_to_str(e));
     if !wbcx.success { return; }
     resolve_type_vars_for_node(wbcx, e.span, e.id);
     alt e.node {
