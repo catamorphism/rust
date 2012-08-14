@@ -3,7 +3,6 @@
 This is a compiler for Rust, including standard libraries, tools and
 documentation.
 
-
 ## Installation
 
 The Rust compiler is slightly unusual in that it is written in Rust and
