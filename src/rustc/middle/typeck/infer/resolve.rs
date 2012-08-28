@@ -192,6 +192,7 @@ impl resolve_state {
               { ub:_, lb:Some(t) } => self.resolve_type(t),
               { ub:None, lb:None } => {
                 if self.should(force_tvar) {
+                    #debug("eeeeeeeeeeeeeeee");
                     self.err = Some(unresolved_ty(vid));
                 }
                 ty::mk_var(tcx, vid)
