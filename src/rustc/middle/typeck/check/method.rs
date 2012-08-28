@@ -483,17 +483,30 @@ struct lookup {
             // determine the `self` of the impl with fresh
             // variables for each parameter:
             let {substs: impl_substs, ty: impl_ty} =
-                impl_self_ty(self.fcx, self.self_expr, im.did, need_rp);
+                impl_self_ty(self.fcx, im.did);
 
-            let impl_ty = transform_self_type_for_method(
-                self.tcx(), impl_substs.self_r,
-                impl_ty, m.self_type);
+            let impl_ty = transform_self_type_for_method(self.fcx,
+                                                         impl_ty,
+                                                         *m);
+            /*
+            I'm wondering whether self.self_ty ever gets unified with
+            impl_ty...
+            */
+            debug!("impl_self_ty = %s", ty_to_str(self.fcx.tcx(), impl_ty));
 
-            let matches = self.check_type_match(impl_ty, mode);
-            debug!("matches = %?", matches);
-            match matches {
-              result::Err(_) => { /* keep looking */ }
-              result::Ok(_) => {
+            // Depending on our argument, we find potential
+            // matches either by checking subtypability or
+            // type assignability. Collect the matches.
+            let matches = if use_assignability {
+                self.fcx.can_mk_assignty(self.self_expr, self.borrow_lb,
+                                         self.self_ty, impl_ty)
+            } else {
+                self.fcx.can_mk_subty(self.self_ty, impl_ty)
+            };
+            debug!{"matches = %?", matches};
+            alt matches {
+              result::err(_) { /* keep looking */ }
+              result::ok(_) {
                 if !self.candidate_impls.contains_key(im.did) {
                     let fty = self.ty_from_did(m.did);
                     self.candidates.push(
@@ -641,45 +654,25 @@ struct lookup {
         debug!("write_mty_from_candidate(n_tps_m=%u, fty=%s, entry=%?)",
                cand.n_tps_m,
                self.fcx.infcx.ty_to_str(cand.fty),
-               cand.entry);
+               cand.entry};
 
-        match cand.mode {
-            subtyping_mode | assignability_mode => {
-                // Make the actual receiver type (cand.self_ty) assignable to
-                // the required receiver type (cand.rcvr_ty).  If this method
-                // is not from an impl, this'll basically be a no-nop.
-                match self.fcx.mk_assignty(self.self_expr, self.borrow_lb,
-                                           cand.self_ty, cand.rcvr_ty) {
-                  result::Ok(_) => (),
-                  result::Err(_) => {
-                    self.tcx().sess.span_bug(
-                        self.expr.span,
-                        fmt!("%s was assignable to %s but now is not?",
-                             self.fcx.infcx.ty_to_str(cand.self_ty),
-                             self.fcx.infcx.ty_to_str(cand.rcvr_ty)));
-                  }
-                }
-            }
-            immutable_reference_mode => {
-                // Borrow as an immutable reference.
-                let region_var = self.fcx.infcx.next_region_var(
-                    self.self_expr.span,
-                    self.self_expr.id);
-                self.fcx.infcx.borrowings.push({expr_id: self.self_expr.id,
-                                                span: self.self_expr.span,
-                                                scope: region_var,
-                                                mutbl: ast::m_imm});
-            }
-            mutable_reference_mode => {
-                // Borrow as a mutable reference.
-                let region_var = self.fcx.infcx.next_region_var(
-                    self.self_expr.span,
-                    self.self_expr.id);
-                self.fcx.infcx.borrowings.push({expr_id: self.self_expr.id,
-                                                span: self.self_expr.span,
-                                                scope: region_var,
-                                                mutbl: ast::m_mutbl});
-            }
+        // Make the actual receiver type (cand.self_ty) assignable to the
+        // required receiver type (cand.rcvr_ty).  If this method is not
+        // from an impl, this'll basically be a no-nop.
+        debug!{"doing mk_assignty %s %s", ty_to_str(self.fcx.tcx(),
+                                                    cand.self_ty),
+               ty_to_str(self.fcx.tcx(), cand.rcvr_ty)};
+
+        alt self.fcx.mk_assignty(self.self_expr, self.borrow_lb,
+                                 cand.self_ty, cand.rcvr_ty) {
+          result::ok(_) {}
+          result::err(_) {
+            self.tcx().sess.span_bug(
+                self.expr.span,
+                fmt!{"%s was assignable to %s but now is not?",
+                     self.fcx.infcx.ty_to_str(cand.self_ty),
+                     self.fcx.infcx.ty_to_str(cand.rcvr_ty)});
+          }
         }
 
         // Construct the full set of type parameters for the method,
@@ -708,7 +701,12 @@ struct lookup {
         let all_substs = {tps: vec::append(cand.self_substs.tps, m_substs)
                           with cand.self_substs};
 
-        self.fcx.write_ty_substs(self.node_id, cand.fty, all_substs);
+        #debug("~~~~ all_substs:");
+        for all_substs.tps.each() |t| {
+            #debug("%s ,", ty_to_str(tcx, t));
+        }
+
+         self.fcx.write_ty_substs(self.node_id, cand.fty, all_substs);
 
         return cand.entry;
     }

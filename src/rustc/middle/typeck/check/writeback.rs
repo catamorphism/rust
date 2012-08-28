@@ -78,6 +78,7 @@ fn visit_stmt(s: @ast::stmt, wbcx: wb_ctxt, v: wb_vt) {
     visit::visit_stmt(s, wbcx, v);
 }
 fn visit_expr(e: @ast::expr, wbcx: wb_ctxt, v: wb_vt) {
+    debug!("visit_expr: %s", expr_to_str(e));
     if !wbcx.success { return; }
     resolve_type_vars_for_node(wbcx, e.span, e.id);
     match e.node {
