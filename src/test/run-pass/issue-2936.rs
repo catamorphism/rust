@@ -6,8 +6,8 @@ fn foo<T, U: bar<T>>(b: U) -> T {
     b.get_bar()
 }
 
-class cbar : bar<int> {
-    let x: int;
+struct cbar : bar<int> {
+    x: int;
     new(x: int) { self.x = x; }
     fn get_bar() -> int {
         self.x
