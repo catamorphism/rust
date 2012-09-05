@@ -1298,6 +1298,11 @@ fn check_expr_with_unifier(fcx: @fn_ctxt,
         let base_t = do_autoderef(fcx, expr.span, expr_t);
         let mut handled = false;
         let n_tys = vec::len(tys);
+        /*
+        Problem: if we have a class field and trait method with the same
+        name, field always takes priority. can we use is_callee as a hint?
+        (also, what if the field and the trait method have the same type?)
+        */
         match structure_of(fcx, expr.span, base_t) {
           ty::ty_rec(fields) => {
             match ty::field_idx(field, fields) {
@@ -1332,7 +1337,9 @@ fn check_expr_with_unifier(fcx: @fn_ctxt,
           }
           _ => ()
         }
-        if !handled {
+        // ????
+        let mut is_method = false;
+        if is_callee || !handled {
             let tps = vec::map(tys, |ty| fcx.to_ty(ty));
             let is_self_ref = self_ref(fcx, base.id);
 
@@ -1346,6 +1353,7 @@ fn check_expr_with_unifier(fcx: @fn_ctxt,
             match lkup.method() {
                 Some(entry) => {
                     fcx.ccx.method_map.insert(expr.id, entry);
+                    is_method = true;
 
                     // If we have resolved to a method but this is not in
                     // a callee position, error
@@ -1356,7 +1364,10 @@ fn check_expr_with_unifier(fcx: @fn_ctxt,
                               (try writing an anonymous function)");
                     }
                 }
-                None => {
+                None => { /* error later */ }
+            }
+        }
+        if !is_method && !handled {
                     let t_err =
                         fcx.infcx().resolve_type_vars_if_possible(expr_t);
                     let msg =
@@ -1368,8 +1379,6 @@ fn check_expr_with_unifier(fcx: @fn_ctxt,
                     tcx.sess.span_err(expr.span, msg);
                     // NB: Add bogus type to allow typechecking to continue
                     fcx.write_ty(expr.id, fcx.infcx().next_ty_var());
-                }
-            }
         }
         return bot;
     }
