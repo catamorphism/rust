@@ -20,7 +20,7 @@ fn r(v: *int) -> r {
 fn main() unsafe {
     let i1 = ~0;
     let i1p = unsafe::reinterpret_cast(&i1);
-    unsafe::forget(i1);
+    unsafe::forget(move i1);
     let x = @r(i1p);
     failfn();
     log(error, x);
