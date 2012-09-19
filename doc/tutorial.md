@@ -1534,7 +1534,7 @@ fn map<T, U>(vector: &[T], function: fn(T) -> U) -> ~[U] {
     for vector.each |element| {
         vec::push(accumulator, function(element));
     }
-    return accumulator;
+    return (move accumulator);
 }
 ~~~~
 
@@ -1989,26 +1989,6 @@ This defines a rock-solid encryption algorithm. Code outside of the
 module can refer to the `enc::encrypt` and `enc::decrypt` identifiers
 just fine, but it does not have access to `enc::super_secret_number`.
 
-## Namespaces
-
-Rust uses three different namespaces: one for modules, one for types,
-and one for values. This means that this code is valid:
-
-~~~~
-mod buffalo {
-    type buffalo = int;
-    fn buffalo<buffalo>(+buffalo: buffalo) -> buffalo { buffalo }
-}
-fn main() {
-    let buffalo: buffalo::buffalo = 1;
-    buffalo::buffalo::<buffalo::buffalo>(buffalo::buffalo(buffalo));
-}
-~~~~
-
-You don't want to write things like that, but it *is* very practical
-to not have to worry about name clashes between types, values, and
-modules.
-
 ## Resolution
 
 The resolution process in Rust simply goes up the chain of contexts,
@@ -2117,9 +2097,9 @@ use pipes::{stream, Port, Chan};
 
 let (chan, port) = stream();
 
-do spawn {
+do spawn |move chan| {
     let result = some_expensive_computation();
-    chan.send(result);
+    chan.send(move result);
 }
 
 some_other_expensive_computation();
@@ -2149,7 +2129,7 @@ message to the port.  The next statement actually spawns the child:
 # let chan = port.chan();
 do spawn {
     let result = some_expensive_computation();
-    chan.send(result);
+    chan.send(move result);
 }
 ~~~~
 
@@ -2222,7 +2202,7 @@ Here is the code for the parent task:
 
 let (from_child, to_child) = DuplexStream();
 
-do spawn || {
+do spawn |move to_child| {
     stringifier(to_child);
 };
 

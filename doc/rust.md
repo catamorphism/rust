@@ -1091,7 +1091,7 @@ fn iter<T>(seq: ~[T], f: fn(T)) {
 fn map<T, U>(seq: ~[T], f: fn(T) -> U) -> ~[U] {
     let mut acc = ~[];
     for seq.each |elt| { vec::push(acc, f(elt)); }
-    acc
+    move acc
 }
 ~~~~
 
@@ -1327,7 +1327,7 @@ specified, after the `impl` keyword.
 # trait seq<T> { }
 
 impl<T> ~[T]: seq<T> {
-    /* ... */
+    /* implementation methods go here */
 }
 impl u32: seq<bool> {
    /* Treat the integer as a sequence of bits */
