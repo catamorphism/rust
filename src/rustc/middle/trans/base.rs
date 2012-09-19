@@ -1492,7 +1492,8 @@ fn copy_args_to_allocas(fcx: fn_ctxt, bcx: block, args: ~[ast::arg],
         if slf.is_owned {
             let self_val = PointerCast(bcx, slf.v,
                                        T_ptr(type_of(bcx.ccx(), slf.t)));
-            fcx.llself = Some(ValSelfData {v: self_val, ..slf});
+            fcx.llself = Some(ValSelfData {v: self_val, t: slf.t,
+                                           is_owned: true});
             add_clean(bcx, self_val, slf.t);
         }
       }

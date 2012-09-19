@@ -631,7 +631,11 @@ impl Datum {
                         // code in place here to do the right
                         // thing if this change ever goes through.
                         assert ty::type_is_immediate(ty);
-                        Some(Datum {ty: ty, ..self})
+                        Some(Datum {
+                            val: copy self.val,
+                            ty: ty,
+                            mode: self.mode,
+                            source: self.source})
                     }
                 };
             }

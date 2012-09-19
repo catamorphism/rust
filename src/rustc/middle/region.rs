@@ -206,7 +206,13 @@ fn resolve_block(blk: ast::blk, cx: ctxt, visitor: visit::vt<ctxt>) {
     record_parent(cx, blk.node.id);
 
     // Descend.
-    let new_cx: ctxt = ctxt {parent: Some(blk.node.id),.. cx};
+    let new_cx: ctxt = ctxt {
+        sess: cx.sess,
+        def_map: cx.def_map,
+        region_map: cx.region_map,
+        root_exprs: cx.root_exprs,
+        parent: Some(blk.node.id)
+    };
     visit::visit_block(blk, new_cx, visitor);
 }
 
@@ -297,7 +303,13 @@ fn resolve_local(local: @ast::local, cx: ctxt, visitor: visit::vt<ctxt>) {
 
 fn resolve_item(item: @ast::item, cx: ctxt, visitor: visit::vt<ctxt>) {
     // Items create a new outer block scope as far as we're concerned.
-    let new_cx: ctxt = ctxt {parent: None,.. cx};
+    let new_cx: ctxt = ctxt {
+        sess: cx.sess,
+        def_map: cx.def_map,
+        region_map: cx.region_map,
+        root_exprs: cx.root_exprs,
+        parent: None
+    };
     visit::visit_item(item, new_cx, visitor);
 }
 
@@ -309,7 +321,13 @@ fn resolve_fn(fk: visit::fn_kind, decl: ast::fn_decl, body: ast::blk,
       visit::fk_item_fn(*) | visit::fk_method(*) |
       visit::fk_ctor(*) | visit::fk_dtor(*) => {
         // Top-level functions are a root scope.
-        ctxt {parent: Some(id),.. cx}
+        ctxt {
+            sess: cx.sess,
+            def_map: cx.def_map,
+            region_map: cx.region_map,
+            root_exprs: cx.root_exprs,
+            parent: Some(id)
+        }
       }
 
       visit::fk_anon(*) | visit::fk_fn_block(*) => {

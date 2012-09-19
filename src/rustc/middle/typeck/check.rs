@@ -1691,8 +1691,10 @@ fn check_expr_with_unifier(fcx: @fn_ctxt,
             }
             ty::mk_fn(tcx, FnTyBase {
                 meta: fty.meta,
-                sig: FnSig {output: ty::mk_nil(tcx),
-                            ..fty.sig}
+                sig: FnSig {
+                    inputs: copy fty.sig.inputs,
+                    output: ty::mk_nil(tcx)
+                }
             })
           }
           _ => {
@@ -1718,8 +1720,10 @@ fn check_expr_with_unifier(fcx: @fn_ctxt,
           ty::ty_fn(fty) => {
             fcx.write_ty(expr.id, ty::mk_fn(tcx, FnTyBase {
                 meta: fty.meta,
-                sig: FnSig {output: ty::mk_bool(tcx),
-                            ..fty.sig}
+                sig: FnSig {
+                    inputs: copy fty.sig.inputs,
+                    output: ty::mk_bool(tcx)
+                }
             }))
           }
           _ => fail ~"expected fn type"
@@ -2168,8 +2172,26 @@ fn check_block_no_value(fcx: @fn_ctxt, blk: ast::blk) -> bool {
 
 fn check_block(fcx0: @fn_ctxt, blk: ast::blk) -> bool {
     let fcx = match blk.node.rules {
-      ast::unchecked_blk => @fn_ctxt {purity: ast::impure_fn,.. *fcx0},
-      ast::unsafe_blk => @fn_ctxt {purity: ast::unsafe_fn,.. *fcx0},
+      ast::unchecked_blk => @fn_ctxt {
+          self_impl_def_id: fcx0.self_impl_def_id,
+          ret_ty: fcx0.ret_ty,
+          indirect_ret_ty: fcx0.indirect_ret_ty,
+          purity: ast::impure_fn,
+          region_lb: fcx0.region_lb,
+          in_scope_regions: fcx0.in_scope_regions,
+          inh: fcx0.inh,
+          ccx: fcx0.ccx
+      },
+      ast::unsafe_blk => @fn_ctxt {
+          self_impl_def_id: fcx0.self_impl_def_id,
+          ret_ty: fcx0.ret_ty,
+          indirect_ret_ty: fcx0.indirect_ret_ty,
+          purity: ast::unsafe_fn,
+          region_lb: fcx0.region_lb,
+          in_scope_regions: fcx0.in_scope_regions,
+          inh: fcx0.inh,
+          ccx: fcx0.ccx
+      },
       ast::default_blk => fcx0
     };
     do fcx.with_region_lb(blk.node.id) {

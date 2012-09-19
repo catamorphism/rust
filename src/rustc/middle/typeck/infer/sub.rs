@@ -15,14 +15,18 @@ impl Sub: combine {
 
     fn contratys(a: ty::t, b: ty::t) -> cres<ty::t> {
         let opp = combine_fields {
-            a_is_expected: !self.a_is_expected,.. *self
+            infcx: self.infcx,
+            a_is_expected: !self.a_is_expected,
+            span: self.span
         };
         Sub(opp).tys(b, a)
     }
 
     fn contraregions(a: ty::region, b: ty::region) -> cres<ty::region> {
         let opp = combine_fields {
-            a_is_expected: !self.a_is_expected,.. *self
+            infcx: self.infcx,
+            a_is_expected: !self.a_is_expected,
+            span: self.span
         };
         Sub(opp).regions(b, a)
     }

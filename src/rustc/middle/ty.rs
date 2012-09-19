@@ -1269,7 +1269,8 @@ fn fold_regions_and_ty(
         });
         let new_output = fldfnt(f.sig.output);
         ty::mk_fn(cx, FnTyBase {
-            meta: FnMeta {proto: new_proto, ..f.meta},
+            meta: FnMeta {purity: f.meta.purity, proto: new_proto,
+                          bounds: f.meta.bounds, ret_style: f.meta.ret_style},
             sig: FnSig {inputs: new_args,
                         output: new_output}
         })
@@ -3915,7 +3916,10 @@ fn normalize_ty(cx: ctxt, t: t) -> t {
                 proto_vstore(vstore) => proto_vstore(normalize_vstore(vstore))
             };
             mk_fn(cx, FnTyBase {
-                meta: FnMeta {proto: proto, ..fn_ty.meta},
+                meta: FnMeta {purity: fn_ty.meta.purity,
+                              ret_style: fn_ty.meta.ret_style,
+                              bounds: fn_ty.meta.bounds,
+                              proto: proto},
                 sig: fn_ty.sig
             })
         }
