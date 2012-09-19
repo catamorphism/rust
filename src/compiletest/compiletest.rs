@@ -144,7 +144,7 @@ fn make_tests(config: config) -> ~[test::TestDesc] {
             vec::push(tests, make_test(config, file))
         }
     }
-    return tests;
+    move tests
 }
 
 fn is_test(config: config, testfile: &Path) -> bool {
