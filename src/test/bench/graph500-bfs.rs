@@ -114,7 +114,7 @@ fn bfs(graph: graph, key: node_id) -> bfs_result {
     Q.add_back(key);
     marks[key] = key;
 
-    while Q.size() > 0u {
+    while Q.size() > 0 {
         let t = Q.pop_front();
 
         do graph[t].each() |k| {
@@ -126,7 +126,7 @@ fn bfs(graph: graph, key: node_id) -> bfs_result {
         };
     }
 
-    vec::from_mut(marks)
+    vec::from_mut(move marks)
 }
 
 /**
@@ -162,11 +162,11 @@ fn bfs2(graph: graph, key: node_id) -> bfs_result {
         }
     }
 
-    let mut i = 0u;
+    let mut i = 0;
     while vec::any(colors, is_gray) {
         // Do the BFS.
         log(info, fmt!("PBFS iteration %?", i));
-        i += 1u;
+        i += 1;
         colors = do colors.mapi() |i, c| {
             let c : color = c;
             match c {
@@ -233,20 +233,20 @@ fn pbfs(&&graph: arc::ARC<graph>, key: node_id) -> bfs_result {
         }
     }
 
-    let mut i = 0u;
+    let mut i = 0;
     while par::any(colors, is_gray) {
         // Do the BFS.
         log(info, fmt!("PBFS iteration %?", i));
-        i += 1u;
+        i += 1;
         let old_len = colors.len();
 
-        let color = arc::ARC(colors);
+        let color = arc::ARC(move colors);
 
         let color_vec = arc::get(&color); // FIXME #3387 requires this temp
         colors = do par::mapi_factory(*color_vec) {
             let colors = arc::clone(&color);
             let graph = arc::clone(&graph);
-            fn~(i: uint, c: color) -> color {
+            fn~(move graph, move colors, i: uint, c: color) -> color {
                 let c : color = c;
                 let colors = arc::get(&colors);
                 let graph = arc::get(&graph);
@@ -382,7 +382,7 @@ fn validate(edges: ~[(node_id, node_id)],
 fn main(args: ~[~str]) {
     let args = if os::getenv(~"RUST_BENCH").is_some() {
         ~[~"", ~"15", ~"48"]
-    } else if args.len() <= 1u {
+    } else if args.len() <= 1 {
         ~[~"", ~"10", ~"16"]
     } else {
         args
@@ -394,21 +394,21 @@ fn main(args: ~[~str]) {
     let do_sequential = true;
 
     let start = time::precise_time_s();
-    let edges = make_edges(scale, 16u);
+    let edges = make_edges(scale, 16);
     let stop = time::precise_time_s();
 
     io::stdout().write_line(fmt!("Generated %? edges in %? seconds.",
                                  vec::len(edges), stop - start));
 
     let start = time::precise_time_s();
-    let graph = make_graph(1u << scale, edges);
+    let graph = make_graph(1 << scale, edges);
     let stop = time::precise_time_s();
 
-    let mut total_edges = 0u;
+    let mut total_edges = 0;
     vec::each(graph, |edges| { total_edges += edges.len(); true });
 
     io::stdout().write_line(fmt!("Generated graph with %? edges in %? seconds.",
-                                 total_edges / 2u,
+                                 total_edges / 2,
                                  stop - start));
 
     let mut total_seq = 0.0;
