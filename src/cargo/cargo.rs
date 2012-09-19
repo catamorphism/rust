@@ -709,7 +709,7 @@ fn configure(opts: options) -> cargo {
              ~" or package manager to get it to work correctly");
     }
 
-    c
+    move c
 }
 
 fn for_each_package(c: cargo, b: fn(source, package)) {
