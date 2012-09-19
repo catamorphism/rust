@@ -360,7 +360,7 @@ mod test {
         }
         // note really sure how to realiably test/assert
         // this.. mostly just wanting to see it work, atm.
-        let results = result::unwrap(ga_result);
+        let results = result::unwrap(move ga_result);
         log(debug, fmt!("test_get_addr: Number of results for %s: %?",
                         localhost_name, vec::len(results)));
         for vec::each(results) |r| {
@@ -373,7 +373,7 @@ mod test {
         }
         // at least one result.. this is going to vary from system
         // to system, based on stuff like the contents of /etc/hosts
-        assert vec::len(results) > 0;
+        assert !results.is_empty();
     }
     #[test]
     #[ignore(reason = "valgrind says it's leaky")]

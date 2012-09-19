@@ -254,11 +254,11 @@ fn should_sort_failures_before_printing_them() {
         @{out: writer,
           log_out: option::None,
           use_color: false,
-          mut total: 0u,
-          mut passed: 0u,
-          mut failed: 0u,
-          mut ignored: 0u,
-          mut failures: ~[test_b, test_a]};
+          mut total: 0,
+          mut passed: 0,
+          mut failed: 0,
+          mut ignored: 0,
+          mut failures: ~[move test_b, move test_a]};
 
     print_failures(st);
 
@@ -543,9 +543,9 @@ mod tests {
             for vec::each(names) |name| {
             let test = {name: name, testfn: copy testfn, ignore: false,
                         should_fail: false};
-            tests += ~[test];
+            tests += ~[move test];
         }
-        tests
+        move tests
     };
     let filtered = filter_tests(opts, tests);
 
@@ -558,7 +558,7 @@ mod tests {
           ~"test::parse_ignored_flag",
           ~"test::sort_tests"];
 
-    let pairs = vec::zip(expected, filtered);
+    let pairs = vec::zip(expected, move filtered);
 
     for vec::each(pairs) |p| { let (a, b) = copy p; assert (a == b.name); }
 }
