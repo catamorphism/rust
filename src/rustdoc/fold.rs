@@ -66,17 +66,17 @@ fn mk_fold<T:Copy>(
 ) -> fold<T> {
     fold({
         ctxt: ctxt,
-        fold_doc: fold_doc,
-        fold_crate: fold_crate,
-        fold_item: fold_item,
-        fold_mod: fold_mod,
-        fold_nmod: fold_nmod,
-        fold_fn: fold_fn,
-        fold_const: fold_const,
-        fold_enum: fold_enum,
-        fold_trait: fold_trait,
-        fold_impl: fold_impl,
-        fold_type: fold_type
+        fold_doc: move fold_doc,
+        fold_crate: move fold_crate,
+        fold_item: move fold_item,
+        fold_mod: move fold_mod,
+        fold_nmod: move fold_nmod,
+        fold_fn: move fold_fn,
+        fold_const: move fold_const,
+        fold_enum: move fold_enum,
+        fold_trait: move fold_trait,
+        fold_impl: move fold_impl,
+        fold_type: move fold_type
     })
 }
 

@@ -7,7 +7,7 @@ export mk_pass;
 fn mk_pass(name: ~str, +op: fn~(~str) -> ~str) -> pass {
     {
         name: name,
-        f: fn~(srv: astsrv::srv, doc: doc::doc) -> doc::doc {
+        f: fn~(move op, srv: astsrv::srv, doc: doc::doc) -> doc::doc {
             run(srv, doc, op)
         }
     }

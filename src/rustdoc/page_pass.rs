@@ -1,7 +1,7 @@
 /*!
  * Divides the document tree into pages.
  *
- * Each page corresponds is a logical section. There may be pages for
+ * Each page corresponds to a logical section. There may be pages for
  * individual modules, pages for the crate, indexes, etc.
  */
 
@@ -46,7 +46,7 @@ fn make_doc_from_pages(page_port: page_port) -> doc::doc {
     loop {
         let val = comm::recv(page_port);
         if option::is_some(val) {
-            pages += ~[option::unwrap(val)];
+            pages += ~[option::unwrap(move val)];
         } else {
             break;
         }
