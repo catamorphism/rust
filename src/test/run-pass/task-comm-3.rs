@@ -31,8 +31,8 @@ fn test00() {
     while i < number_of_tasks {
         let ch = po.chan();        
         do task::task().future_result(|+r| {
-            vec::push(results, r);
-        }).spawn |copy i| {
+            vec::push(results, move r);
+        }).spawn |move ch, copy i| {
             test00_start(ch, i, number_of_messages)
         }
         i = i + 1;

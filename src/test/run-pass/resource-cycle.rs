@@ -24,10 +24,10 @@ enum t = {
 fn main() unsafe {
     let i1 = ~0;
     let i1p = unsafe::reinterpret_cast(&i1);
-    unsafe::forget(i1);
+    unsafe::forget(move i1);
     let i2 = ~0;
     let i2p = unsafe::reinterpret_cast(&i2);
-    unsafe::forget(i2);
+    unsafe::forget(move i2);
 
     let x1 = @t({
         mut next: None,
@@ -35,7 +35,7 @@ fn main() unsafe {
           let rs = r(i1p);
           debug!("r = %x",
                  unsafe::reinterpret_cast::<*r, uint>(&ptr::addr_of(rs)));
-          rs }
+          move rs }
     });
     
     debug!("x1 = %x, x1.r = %x",
@@ -48,7 +48,7 @@ fn main() unsafe {
           let rs = r(i2p);
           debug!("r2 = %x",
                  unsafe::reinterpret_cast::<*r, uint>(&ptr::addr_of(rs)));
-          rs
+          move rs
             }
     });
     

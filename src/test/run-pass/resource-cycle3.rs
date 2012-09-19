@@ -34,10 +34,10 @@ enum t = {
 fn main() unsafe {
     let i1 = ~0xA;
     let i1p = unsafe::reinterpret_cast(&i1);
-    unsafe::forget(i1);
+    unsafe::forget(move i1);
     let i2 = ~0xA;
     let i2p = unsafe::reinterpret_cast(&i2);
-    unsafe::forget(i2);
+    unsafe::forget(move i2);
 
     let u1 = {a: 0xB, b: 0xC, c: i1p};
     let u2 = {a: 0xB, b: 0xC, c: i2p};
