@@ -233,7 +233,7 @@ fn start_program(prog: &str, args: &[~str]) -> Program {
 
     fn ProgRes(+r: ProgRepr) -> ProgRes {
         ProgRes {
-            r: r
+            r: move r
         }
     }
 

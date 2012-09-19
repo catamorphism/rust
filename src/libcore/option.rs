@@ -275,8 +275,8 @@ impl<T: Eq> Option<T> : Eq {
 fn test_unwrap_ptr() {
     let x = ~0;
     let addr_x = ptr::addr_of(*x);
-    let opt = Some(x);
-    let y = unwrap(opt);
+    let opt = Some(move x);
+    let y = unwrap(move opt);
     let addr_y = ptr::addr_of(*y);
     assert addr_x == addr_y;
 }
@@ -285,8 +285,8 @@ fn test_unwrap_ptr() {
 fn test_unwrap_str() {
     let x = ~"test";
     let addr_x = str::as_buf(x, |buf, _len| ptr::addr_of(buf));
-    let opt = Some(x);
-    let y = unwrap(opt);
+    let opt = Some(move x);
+    let y = unwrap(move opt);
     let addr_y = str::as_buf(y, |buf, _len| ptr::addr_of(buf));
     assert addr_x == addr_y;
 }
@@ -307,8 +307,8 @@ fn test_unwrap_resource() {
     let i = @mut 0;
     {
         let x = R(i);
-        let opt = Some(x);
-        let _y = unwrap(opt);
+        let opt = Some(move x);
+        let _y = unwrap(move opt);
     }
     assert *i == 1;
 }

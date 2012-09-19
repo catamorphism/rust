@@ -311,7 +311,7 @@ impl<A: Copy> DVec<A> {
         do self.swap |v| {
             let mut v = vec::to_mut(move v);
             vec::grow_set(v, idx, initval, val);
-            move vec::from_mut(v)
+            move vec::from_mut(move v)
         }
     }
 

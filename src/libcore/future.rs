@@ -189,8 +189,8 @@ mod test {
     #[test]
     fn test_from_port() {
         let (po, ch) = future_pipe::init();
-        future_pipe::server::completed(ch, ~"whale");
-        let f = from_port(po);
+        future_pipe::server::completed(move ch, ~"whale");
+        let f = from_port(move po);
         assert get(&f) == ~"whale";
     }
 
@@ -248,7 +248,7 @@ mod test {
     fn test_sendable_future() {
         let expected = ~"schlorf";
         let f = do spawn |copy expected| { copy expected };
-        do task::spawn {
+        do task::spawn |move f, move expected| {
             let actual = get(&f);
             assert actual == expected;
         }

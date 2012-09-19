@@ -161,7 +161,7 @@ mod tests {
 
         assert f(20) == 30;
 
-        let original_closure: Closure = unsafe::transmute(f);
+        let original_closure: Closure = unsafe::transmute(move f);
 
         let actual_function_pointer = original_closure.code;
         let environment = original_closure.env;
@@ -171,7 +171,7 @@ mod tests {
             env: environment
         };
 
-        let new_f: fn(int) -> int = unsafe::transmute(new_closure);
+        let new_f: fn(int) -> int = unsafe::transmute(move new_closure);
         assert new_f(20) == 30;
     }
 }

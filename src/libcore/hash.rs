@@ -484,7 +484,7 @@ fn test_siphash() {
     fn to_hex_str(r:  &[u8]/8) -> ~str {
         let mut s = ~"";
         for vec::each(*r) |b| { s += uint::to_str(b as uint, 16u); }
-        return s;
+        move s
     }
 
     while t < 64 {

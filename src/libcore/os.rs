@@ -839,7 +839,7 @@ mod tests {
         let rng: rand::Rng = rand::Rng();
         let n = ~"TEST" + rng.gen_str(10u);
         assert option::is_none(getenv(n));
-        n
+        move n
     }
 
     #[test]
@@ -873,7 +873,7 @@ mod tests {
         let n = make_rand_name();
         setenv(n, s);
         log(debug, s);
-        assert getenv(n) == option::Some(s);
+        assert getenv(n) == option::Some(move s);
     }
 
     #[test]
@@ -899,7 +899,7 @@ mod tests {
             // MingW seems to set some funky environment variables like
             // "=C:=C:\MinGW\msys\1.0\bin" and "!::=::\" that are returned
             // from env() but not visible from getenv().
-            assert option::is_none(v2) || v2 == option::Some(v);
+            assert option::is_none(v2) || v2 == option::Some(move v);
         }
     }
 
@@ -912,7 +912,7 @@ mod tests {
         assert !vec::contains(e, (copy n, ~"VALUE"));
 
         e = env();
-        assert vec::contains(e, (n, ~"VALUE"));
+        assert vec::contains(e, (move n, ~"VALUE"));
     }
 
     #[test]

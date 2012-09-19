@@ -420,20 +420,20 @@ fn splitn<T: Copy>(v: &[T], n: uint, f: fn(T) -> bool) -> ~[~[T]] {
  */
 fn rsplit<T: Copy>(v: &[T], f: fn(T) -> bool) -> ~[~[T]] {
     let ln = len(v);
-    if (ln == 0u) { return ~[] }
+    if (ln == 0) { return ~[] }
 
     let mut end = ln;
     let mut result = ~[mut ];
-    while end > 0u {
-        match rposition_between(v, 0u, end, f) {
+    while end > 0 {
+        match rposition_between(v, 0, end, f) {
           None => break,
           Some(i) => {
-            push(result, slice(v, i + 1u, end));
+            push(result, slice(v, i + 1, end));
             end = i;
           }
         }
     }
-    push(result, slice(v, 0u, end));
+    push(result, slice(v, 0, end));
     reverse(result);
     return from_mut(move result);
 }
@@ -2317,7 +2317,7 @@ mod tests {
     #[test]
     fn test_dedup() {
         fn case(-a: ~[uint], -b: ~[uint]) {
-            let mut v = a;
+            let mut v <- a;
             dedup(v);
             assert(v == b);
         }
@@ -2571,13 +2571,13 @@ mod tests {
         let v1 = ~[1, 2, 3];
         let v2 = ~[4, 5, 6];
 
-        let z1 = zip(v1, v2);
+        let z1 = zip(move v1, move v2);
 
         assert ((1, 4) == z1[0]);
         assert ((2, 5) == z1[1]);
         assert ((3, 6) == z1[2]);
 
-        let (left, right) = unzip(z1);
+        let (left, right) = unzip(move z1);
 
         assert ((1, 4) == (left[0], right[0]));
         assert ((2, 5) == (left[1], right[1]));
@@ -2875,7 +2875,7 @@ mod tests {
         unsafe {
             let x = ~[1, 2, 3];
             let addr = raw::to_ptr(x);
-            let x_mut = to_mut(x);
+            let x_mut = to_mut(move x);
             let addr_mut = raw::to_ptr(x_mut);
             assert addr == addr_mut;
         }
@@ -2886,7 +2886,7 @@ mod tests {
         unsafe {
             let x = ~[mut 1, 2, 3];
             let addr = raw::to_ptr(x);
-            let x_imm = from_mut(x);
+            let x_imm = from_mut(move x);
             let addr_imm = raw::to_ptr(x_imm);
             assert addr == addr_imm;
         }

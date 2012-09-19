@@ -27,7 +27,7 @@ struct Data<T> {
 type Mut<T> = Data<T>;
 
 fn Mut<T>(+t: T) -> Mut<T> {
-    Data {value: t, mode: ReadOnly}
+    Data {value: move t, mode: ReadOnly}
 }
 
 fn unwrap<T>(+m: Mut<T>) -> T {

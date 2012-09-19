@@ -470,14 +470,18 @@ impl TaskBuilder {
                 mut notify_chan: move notify_chan,
                 sched: self.opts.sched
             },
-            gen_body: |body| { wrapper(prev_gen_body(move body)) },
+            // tjc: I think this is the line that gets miscompiled
+            // w/ last-use off, if we leave out the move prev_gen_body?
+            // that makes no sense, though...
+            gen_body: |move prev_gen_body,
+                       body| { wrapper(prev_gen_body(move body)) },
             can_not_copy: None,
             .. *self.consume()
         })
     }
 
     /**
-     * Creates and exucutes a new child task
+     * Creates and executes a new child task
      *
      * Sets up a new task with its own call stack and schedules it to run
      * the provided unique closure. The task has the properties and behavior
@@ -1116,8 +1120,8 @@ fn TCB(me: *rust_task, +tasks: TaskGroupArc, +ancestors: AncestorList,
 
     TCB {
         me: me,
-        tasks: tasks,
-        ancestors: ancestors,
+        tasks: move tasks,
+        ancestors: move ancestors,
         is_main: is_main,
         notifier: move notifier
     }
@@ -1134,7 +1138,7 @@ struct AutoNotify {
 
 fn AutoNotify(+chan: Chan<Notification>) -> AutoNotify {
     AutoNotify {
-        notify_chan: chan,
+        notify_chan: move chan,
         failed: true // Un-set above when taskgroup successfully made.
     }
 }
@@ -1713,7 +1717,7 @@ fn test_spawn_raw_unsupervise() {
         mut notify_chan: None,
         .. default_task_opts()
     };
-    do spawn_raw(opts) {
+    do spawn_raw(move opts) {
         fail;
     }
 }
@@ -1889,7 +1893,7 @@ fn test_spawn_raw_notify_success() {
         notify_chan: Some(move notify_ch),
         .. default_task_opts()
     };
-    do spawn_raw(opts) |move task_ch| {
+    do spawn_raw(move opts) |move task_ch| {
         task_ch.send(get_task());
     }
     let task_ = task_po.recv();
@@ -1905,10 +1909,10 @@ fn test_spawn_raw_notify_failure() {
 
     let opts = {
         linked: false,
-        notify_chan: Some(notify_ch),
+        notify_chan: Some(move notify_ch),
         .. default_task_opts()
     };
-    do spawn_raw(opts) {
+    do spawn_raw(move opts) |move task_ch| {
         task_ch.send(get_task());
         fail;
     }
@@ -1932,7 +1936,7 @@ fn test_add_wrapper() {
     let ch = comm::Chan(po);
     let b0 = task();
     let b1 = do b0.add_wrapper |body| {
-        fn~() {
+        fn~(move body) {
             body();
             comm::send(ch, ());
         }
@@ -1945,14 +1949,15 @@ fn test_add_wrapper() {
 #[ignore(cfg(windows))]
 fn test_future_result() {
     let mut result = None;
-    do task().future_result(|+r| { result = Some(r); }).spawn { }
-    assert future::get(&option::unwrap(result)) == Success;
+    do task().future_result(|+r| { result = Some(move r); }).spawn { }
+    assert future::get(&option::unwrap(move result)) == Success;
 
     result = None;
-    do task().future_result(|+r| { result = Some(r); }).unlinked().spawn {
+    do task().future_result(|+r|
+        { result = Some(move r); }).unlinked().spawn {
         fail;
     }
-    assert future::get(&option::unwrap(result)) == Failure;
+    assert future::get(&option::unwrap(move result)) == Failure;
 }
 
 #[test] #[should_fail] #[ignore(cfg(windows))]
@@ -1982,7 +1987,7 @@ fn test_spawn_conversation() {
     let (recv_str, send_int) = do spawn_conversation |recv_int, send_str| {
         let input = comm::recv(recv_int);
         let output = int::str(input);
-        comm::send(send_str, output);
+        comm::send(send_str, move output);
     };
     comm::send(send_int, 1);
     assert comm::recv(recv_str) == ~"1";
@@ -2135,7 +2140,7 @@ fn avoid_copying_the_body(spawnfn: fn(+fn~())) {
     let x = ~1;
     let x_in_parent = ptr::addr_of(*x) as uint;
 
-    do spawnfn {
+    do spawnfn |move x| {
         let x_in_child = ptr::addr_of(*x) as uint;
         comm::send(ch, x_in_child);
     }
@@ -2161,7 +2166,7 @@ fn test_avoid_copying_the_body_spawn_listener() {
 #[test]
 fn test_avoid_copying_the_body_task_spawn() {
     do avoid_copying_the_body |f| {
-        do task().spawn {
+        do task().spawn |move f| {
             f();
         }
     }
@@ -2179,7 +2184,7 @@ fn test_avoid_copying_the_body_spawn_listener_1() {
 #[test]
 fn test_avoid_copying_the_body_try() {
     do avoid_copying_the_body |f| {
-        do try {
+        do try |move f| {
             f()
         };
     }
@@ -2188,7 +2193,7 @@ fn test_avoid_copying_the_body_try() {
 #[test]
 fn test_avoid_copying_the_body_unlinked() {
     do avoid_copying_the_body |f| {
-        do spawn_unlinked {
+        do spawn_unlinked |move f| {
             f();
         }
     }
@@ -2217,8 +2222,8 @@ fn test_unkillable() {
         move opts
     };
     // We want to do this after failing
-    do spawn_raw(opts) {
-        for iter::repeat(10u) { yield() }
+    do spawn_raw(move opts) {
+        for iter::repeat(10) { yield() }
         ch.send(());
     }
 
@@ -2232,12 +2237,12 @@ fn test_unkillable() {
     unsafe {
         do unkillable {
             let p = ~0;
-            let pp: *uint = unsafe::transmute(p);
+            let pp: *uint = unsafe::transmute(move p);
 
             // If we are killed here then the box will leak
             po.recv();
 
-            let _p: ~int = unsafe::transmute(pp);
+            let _p: ~int = unsafe::transmute(move pp);
         }
     }
 
@@ -2257,8 +2262,8 @@ fn test_unkillable_nested() {
         opts.linked = false;
         move opts
     };
-    do spawn_raw(opts) {
-        for iter::repeat(10u) { yield() }
+    do spawn_raw(move opts) |move ch| {
+        for iter::repeat(10) { yield() }
         ch.send(());
     }
 
@@ -2273,12 +2278,12 @@ fn test_unkillable_nested() {
         do unkillable {
             do unkillable {} // Here's the difference from the previous test.
             let p = ~0;
-            let pp: *uint = unsafe::transmute(p);
+            let pp: *uint = unsafe::transmute(move p);
 
             // If we are killed here then the box will leak
             po.recv();
 
-            let _p: ~int = unsafe::transmute(pp);
+            let _p: ~int = unsafe::transmute(move pp);
         }
     }
 
@@ -2433,7 +2438,7 @@ fn test_tls_cleanup_on_failure() unsafe {
 fn test_sched_thread_per_core() {
     let (chan, port) = pipes::stream();
 
-    do spawn_sched(ThreadPerCore) {
+    do spawn_sched(ThreadPerCore) |move chan| {
         let cores = rustrt::rust_num_threads();
         let reported_threads = rustrt::sched_threads();
         assert(cores as uint == reported_threads as uint);

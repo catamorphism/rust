@@ -179,8 +179,8 @@ mod linear {
                     debug!("insert fresh (%?->%?) at idx %?, hash %?",
                            k, v, idx, hash);
                     self.buckets[idx] = Some(Bucket {hash: hash,
-                                                     key: k,
-                                                     value: v});
+                                                     key: move k,
+                                                     value: move v});
                     self.size += 1;
                     true
                 }
@@ -188,8 +188,8 @@ mod linear {
                     debug!("insert overwrite (%?->%?) at idx %?, hash %?",
                            k, v, idx, hash);
                     self.buckets[idx] = Some(Bucket {hash: hash,
-                                                     key: k,
-                                                     value: v});
+                                                     key: move k,
+                                                     value: move v});
                     false
                 }
             }

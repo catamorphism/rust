@@ -369,7 +369,8 @@ fn BufferResource<T: Send>(+b: ~Buffer<T>) -> BufferResource<T> {
     atomic_add_acq(&mut b.header.ref_count, 1);
 
     BufferResource {
-        buffer: b
+        // tjc: ????
+        buffer: move b
     }
 }
 
@@ -467,7 +468,12 @@ fn try_recv<T: Send, Tbuffer: Send>(+p: RecvPacketBuffered<T, Tbuffer>)
     let this = rustrt::rust_get_task();
     rustrt::task_clear_event_reject(this);
     rustrt::rust_task_ref(this);
+    debug!("blocked = %x this = %x", p.header.blocked_task as uint,
+           this as uint);
     let old_task = swap_task(&mut p.header.blocked_task, this);
+    debug!("blocked = %x this = %x old_task = %x",
+           p.header.blocked_task as uint,
+           this as uint, old_task as uint);
     assert old_task.is_null();
     let mut first = true;
     let mut count = SPIN_COUNT;
@@ -1230,7 +1236,7 @@ mod test {
 
         c1.send(~"abc");
 
-        match (p1, p2).select() {
+        match (move p1, move p2).select() {
           Right(_) => fail,
           _ => ()
         }
@@ -1242,8 +1248,8 @@ mod test {
     fn test_oneshot() {
         let (c, p) = oneshot::init();
 
-        oneshot::client::send(c, ());
+        oneshot::client::send(move c, ());
 
-        recv_one(p)
+        recv_one(move p)
     }
 }
