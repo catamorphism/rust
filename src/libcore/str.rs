@@ -66,6 +66,7 @@ export
 
    // Comparing strings
    eq,
+   eqqq,
    eq_slice,
    le,
    hash,
@@ -765,6 +766,11 @@ pure fn eq_slice(a: &str, b: &str) -> bool {
 #[cfg(notest)]
 #[lang="uniq_str_eq"]
 pure fn eq(a: &~str, b: &~str) -> bool {
+    eq_slice(*a, *b)
+}
+
+#[lang="bunny"]
+pure fn eqqq(a: &~str, b: &~str) -> bool {
     eq_slice(*a, *b)
 }
 

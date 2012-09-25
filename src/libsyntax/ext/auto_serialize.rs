@@ -606,7 +606,11 @@ fn mk_ser_fn(cx: ext_ctxt, span: span, name: ast::ident,
                          ast::impure_fn,
                          ser_tps,
                          ser_blk),
-      vis: ast::public,
+      /*
+      I'm not sure this is right, but making it public flips the switch
+      that says "this whole module should have explicit pub/priv"
+      */
+      vis: ast::inherited,
       span: span}
 }
 
@@ -812,7 +816,7 @@ fn mk_deser_fn(cx: ext_ctxt, span: span,
                          ast::impure_fn,
                          deser_tps,
                          deser_blk),
-      vis: ast::public,
+      vis: ast::inherited,
       span: span}
 }
 

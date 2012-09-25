@@ -467,8 +467,8 @@ fn Module(parent_link: ParentLink,
         exported_names: atom_hashmap(),
         legacy_exports: legacy_exports,
         import_resolutions: atom_hashmap(),
-        glob_count: 0u,
-        resolved_import_count: 0u
+        glob_count: 0,
+        resolved_import_count: 0
     }
 }
 
@@ -992,6 +992,18 @@ impl Resolver {
           ModuleReducedGraphParent(m) => m.legacy_exports
         };
 
+        // Is this exported? If so, add it into the containing module's
+        // exported_names
+        let module_ = self.get_module_from_parent(parent);
+        match item.vis {
+          public => {
+            debug!("Item thingamabob! %s %d",
+                   self.session.str_of(item.ident), item.id);
+            module_.exported_names.insert(item.ident, item.id);
+          }
+          _ => ()
+        }
+
         match item.node {
             item_mod(module_) => {
               let legacy = has_legacy_export_attr(item.attrs);
@@ -1000,6 +1012,9 @@ impl Resolver {
 
                 let parent_link = self.get_parent_link(new_parent, atom);
                 let def_id = { crate: 0, node: item.id };
+
+//              self.session.span_note(sp, fmt!("calling define_module: %?",
+  //                                            def_id));
               (*name_bindings).define_module(parent_link, Some(def_id),
                                              legacy, sp);
 
@@ -1184,6 +1199,22 @@ impl Resolver {
                                         variant.span);
         let privacy = self.visibility_to_privacy(variant.node.vis, legacy);
 
+        // Is this exported? If so, add it into the containing module's
+        // exported_names
+        let module_ = self.get_module_from_parent(parent);
+        match privacy { // is it right to match on "privacy"?
+          Public => {
+            debug!("Variant thingy: %s",
+                   self.session.str_of(variant.node.name));
+            module_.exported_names.insert(atom, variant.node.id);
+          }
+            _ => {
+                debug!("Variant thingy is non-public: %s %?",
+                       self.session.str_of(variant.node.name),
+                       variant.node.vis);
+            }
+        }
+
         match variant.node.kind {
             tuple_variant_kind(_) => {
                 (*child).define_value(privacy,
@@ -1217,7 +1248,6 @@ impl Resolver {
     fn build_reduced_graph_for_view_item(view_item: @view_item,
                                          parent: ReducedGraphParent,
                                          &&_visitor: vt<ReducedGraphParent>) {
-
         match view_item.node {
             view_item_import(view_paths) => {
                 for view_paths.each |view_path| {
@@ -1229,7 +1259,7 @@ impl Resolver {
                     match view_path.node {
                         view_path_simple(_, full_path, _, _) => {
                             let path_len = full_path.idents.len();
-                            assert path_len != 0u;
+                            assert path_len != 0;
 
                             for full_path.idents.eachi |i, ident| {
                                 if i != path_len - 1u {
@@ -1249,7 +1279,7 @@ impl Resolver {
                     // Build up the import directives.
                     let module_ = self.get_module_from_parent(parent);
                     match view_path.node {
-                        view_path_simple(binding, full_path, ns, _) => {
+                        view_path_simple(binding, full_path, ns, nid) => {
                             let ns = match ns {
                                 module_ns => ModuleNSOnly,
                                 type_value_ns => AnyNS
@@ -1263,6 +1293,23 @@ impl Resolver {
                                                         module_path,
                                                         subclass,
                                                         view_path.span);
+
+                          // The test case is a "simple" thing, but should
+                          // we support list and glob too? (Probably)
+                        if view_item.vis == public {
+                            self.session.span_note(view_item.span,
+                             #fmt("A pub use! %s Adding it to exported names for \
+                                   %?",
+                                   self.session.str_of(source_ident),
+                                   module_.def_id));
+                            
+                            // also make sure this is public?
+
+                            // unsure about the id
+                            module_.exported_names.insert(source_ident, nid);
+                        }
+
+
                         }
                         view_path_list(_, source_idents, _) => {
                             for source_idents.each |source_ident| {
@@ -1297,7 +1344,7 @@ impl Resolver {
                                                       ~"cannot export under \
                                                        a new name");
                             }
-                            if full_path.idents.len() != 1u {
+                            if full_path.idents.len() != 1 {
                                 self.session.span_err(
                                     view_item.span,
                                     ~"cannot export an item \
@@ -1305,6 +1352,8 @@ impl Resolver {
                                       module");
                             }
 
+                          debug!("export: exportd_names adding %s",
+                                 self.session.str_of(ident));
                             module_.exported_names.insert(ident, ident_id);
                         }
 
@@ -1315,8 +1364,8 @@ impl Resolver {
                         }
 
                         view_path_list(path, path_list_idents, _) => {
-                            if path.idents.len() == 1u &&
-                                    path_list_idents.len() == 0u {
+                            if path.idents.len() == 1 &&
+                                    path_list_idents.len() == 0 {
 
                                 self.session.span_warn(view_item.span,
                                                        ~"this syntax for \
@@ -1326,7 +1375,7 @@ impl Resolver {
                                                         variants \
                                                         individually");
                             } else {
-                                if path.idents.len() != 0u {
+                                if path.idents.is_not_empty() {
                                     self.session.span_err(view_item.span,
                                                           ~"cannot export an \
                                                            item that is not \
@@ -1336,8 +1385,10 @@ impl Resolver {
                                 for path_list_idents.each |path_list_ident| {
                                     let atom = path_list_ident.node.name;
                                     let id = path_list_ident.node.id;
+                                    debug!("path list thingy, exported name \
+                                       %s", self.session.str_of(atom));
                                     module_.exported_names.insert(atom, id);
-                                }
+                                } 
                             }
                         }
                     }
@@ -1355,7 +1406,9 @@ impl Resolver {
                         let def_id = { crate: crate_id, node: 0 };
                         let parent_link = ModuleParentLink
                             (self.get_module_from_parent(new_parent), name);
-
+                      
+//                        self.session.span_note(view_item.span,
+//                              fmt!("calling define_module: %?", def_id));
                         (*child_name_bindings).define_module(parent_link,
                                                              Some(def_id),
                                                              false,
@@ -1640,11 +1693,11 @@ impl Resolver {
             SingleImport(target, _, _) => {
                 match module_.import_resolutions.find(target) {
                     Some(resolution) => {
-                        resolution.outstanding_references += 1u;
+                        resolution.outstanding_references += 1;
                     }
                     None => {
                         let resolution = @ImportResolution(span);
-                        resolution.outstanding_references = 1u;
+                        resolution.outstanding_references = 1;
                         module_.import_resolutions.insert(target, resolution);
                     }
                 }
@@ -1653,11 +1706,11 @@ impl Resolver {
                 // Set the glob flag. This tells us that we don't know the
                 // module's exports ahead of time.
 
-                module_.glob_count += 1u;
+                module_.glob_count += 1;
             }
         }
 
-        self.unresolved_imports += 1u;
+        self.unresolved_imports += 1;
     }
 
     // Import resolution
@@ -2547,9 +2600,26 @@ impl Resolver {
     }
 
     fn name_is_exported(module_: @Module, name: Atom) -> bool {
+        if module_.exported_names.size() != 0  &&
+          !module_.exported_names.contains_key(name) {
+            debug!("%s is \
+              not exported because its module %? has exported names",
+              self.session.str_of(name), module_.def_id);
+            for module_.exported_names.each_key() |k| {
+                debug!("for example: %s", self.session.str_of(k));
+            }
+        }
+
         return !module_.legacy_exports ||
-            module_.exported_names.size() == 0u ||
+            module_.exported_names.size() == 0 ||
             module_.exported_names.contains_key(name);
+/*
+        debug!("+*+* %u %?", module_.exported_names.size(),
+               module_.exported_names.contains_key(name));
+
+        return module_.exported_names.size() == 0 ||
+                module_.exported_names.contains_key(name);
+*/
     }
 
     /**
@@ -2927,12 +2997,18 @@ impl Resolver {
     fn add_exports_for_legacy_module(exports2: &mut ~[Export2],
                                      module_: @Module) {
         for module_.exported_names.each |name, _exp_node_id| {
+
+            debug!("An exported name: %s %d",
+                   self.session.str_of(name), _exp_node_id);
+
             for self.namespaces.each |namespace| {
                 match self.resolve_definition_of_name_in_module(module_,
                                                                 name,
                                                                 *namespace,
                                                                 Xray) {
                     NoNameDefinition => {
+                        debug!("NoNameDefinition for %s",
+                               self.session.str_of(name));
                         // Nothing to do.
                     }
                     ChildNameDefinition(target_def) => {
@@ -2959,6 +3035,16 @@ impl Resolver {
                     }
                 }
             }
+/*
+            debug!("Inserting some exports: module=%?, %d",
+                   module_.def_id,
+                   node_id);
+            debug!("Exports are ...");
+            for exports2.each() |e| {
+                debug!("...%s", e.name);
+            }
+            self.export_map.insert(node_id, exports);
+*/
         }
     }
 
@@ -4201,6 +4287,7 @@ impl Resolver {
                 match (*child_name_bindings).def_for_namespace(namespace) {
                     Some(def) if def.privacy == Public || xray == Xray => {
                         // Found it. Stop the search here.
+                        debug!("rd... a");
                         return ChildNameDefinition(def.def);
                     }
                     Some(_) | None => {
@@ -4220,25 +4307,31 @@ impl Resolver {
                     Some(target) => {
                         match (*target.bindings)
                             .def_for_namespace(namespace) {
-                            Some(def) if def.privacy == Public => {
+                            Some(def) if (def.privacy == Public ||
+                                          // or it's exported?
+                   containing_module.exported_names.contains_key(name)) => {
                                 // Found it.
+                                debug!("rd... b");
                                 import_resolution.used = true;
                                 return ImportNameDefinition(def.def);
                             }
                             Some(_) | None => {
                                 // This can happen with external impls, due to
                                 // the imperfect way we read the metadata.
-
+                                debug!("rd... c: [%?], %?", namespace, 
+                                       (*target.bindings).def_for_namespace(namespace));
                                 return NoNameDefinition;
                             }
                         }
                     }
                     None => {
+                        debug!("rd... d");
                         return NoNameDefinition;
                     }
                 }
             }
             None => {
+                debug!("rd... e");
                 return NoNameDefinition;
             }
         }
@@ -4945,6 +5038,11 @@ fn resolve_crate(session: session, lang_items: LanguageItems, crate: @crate)
 
     let resolver = @Resolver(session, lang_items, crate);
     resolver.resolve(resolver);
+    let mut ls1 = ~[];
+//    for resolver.export_map.each_key() |k| { ks1 += ~[k]; }
+    for resolver.export_map2.each_key() |k| { ls1 += ~[k]; }
+
+    debug!("resolve_crate: %?", ls1);
     return {
         def_map: resolver.def_map,
         exp_map2: resolver.export_map2,

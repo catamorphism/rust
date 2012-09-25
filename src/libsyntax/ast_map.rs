@@ -312,6 +312,20 @@ fn map_view_item(vi: @view_item, cx: ctx, _v: vt) {
         };
         cx.map.insert(id, node_export(*vp, extend(cx, name)));
       },
+      view_item_import(vps) => for vps.each |vp| {
+        match vi.vis {
+          public => {
+            match vp.node {
+              view_path_simple(nm, _, _, id) => {
+                cx.map.insert(id, node_export(*vp, extend(cx, copy nm)));
+              }
+              // ???
+              _ => ()
+            }
+          }
+          _ => { /* Not a reexport */ }
+        }
+      },
       _ => ()
     }
 }

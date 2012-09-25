@@ -18,7 +18,7 @@ mod intrinsic {
         // Remaining fields not listed
     };
 
-    trait TyVisitor {
+    pub trait TyVisitor {
         fn visit_bot() -> bool;
         fn visit_nil() -> bool;
         fn visit_bool() -> bool;

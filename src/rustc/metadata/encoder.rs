@@ -15,6 +15,7 @@ use middle::ty;
 use middle::ty::node_id_to_type;
 use middle::resolve;
 use syntax::ast_map;
+use syntax::ast_map::path_to_str;
 use syntax::attr;
 use str::to_bytes;
 use syntax::ast;
@@ -515,7 +516,13 @@ fn encode_info_for_item(ecx: @encode_ctxt, ebml_w: ebml::Writer, item: @item,
           | item_trait(*) | item_class(*) => true,
           _ => false
         };
+    debug!("encode: item = %s %s [%d] must_write=%? rch=%?",
+           path_to_str(path, ecx.tcx.sess.intr()),
+           ecx.tcx.sess.str_of(item.ident), item.id,
+           must_write, reachable(ecx, item.id));
     if !must_write && !reachable(ecx, item.id) { return; }
+    debug!("encode: gonna encode, \
+            item = %s", ecx.tcx.sess.str_of(item.ident));
 
     fn add_to_index_(item: @item, ebml_w: ebml::Writer,
                      index: @mut ~[entry<int>]) {

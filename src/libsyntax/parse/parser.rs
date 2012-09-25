@@ -3219,7 +3219,10 @@ impl parser {
                             (~[{ty: ty, id: self.get_id()}]),
                          id: self.get_id(),
                          disr_expr: None,
-                         vis: public});
+                         // ??? Why was this public?
+                         // and shouldn't it depend on the
+                         // actually-parsed visibility?
+                         vis: inherited});
             return (id, item_enum(enum_def({ variants: ~[variant],
                                              common: None }),
                                   ty_params), None);
@@ -3262,14 +3265,9 @@ impl parser {
         maybe_whole!(iovi self,nt_item);
         let lo = self.span.lo;
 
-        let visibility;
-        if self.eat_keyword(~"pub") {
-            visibility = public;
-        } else if self.eat_keyword(~"priv") {
-            visibility = private;
-        } else {
-            visibility = inherited;
-        }
+        let visibility = if self.eat_keyword(~"pub") { public }
+                         else if self.eat_keyword(~"priv") { private }
+                         else { inherited };
 
         if items_allowed && self.eat_keyword(~"const") {
             let (ident, item_, extra_attrs) = self.parse_item_const();

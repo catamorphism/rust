@@ -4,7 +4,10 @@ Runtime type reflection
 
 */
 
-use intrinsic::{TyDesc, get_tydesc, visit_tydesc, TyVisitor};
+// use intrinsic::{TyDesc, visit_tydesc, TyVisitor};
+use intrinsic::TyDesc;
+use intrinsic::visit_tydesc;
+use intrinsic::TyVisitor;
 use libc::c_void;
 
 /**
@@ -13,7 +16,7 @@ use libc::c_void;
  * data structure, and implement both `MovePtr` for it as well as `TyVisitor`;
  * then build a MovePtrAdaptor wrapped around your struct.
  */
-trait MovePtr {
+pub trait MovePtr {
     fn move_ptr(adjustment: fn(*c_void) -> *c_void);
 }
 

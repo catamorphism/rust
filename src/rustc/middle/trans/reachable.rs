@@ -42,6 +42,54 @@ fn traverse_exports(cx: ctx, mod_id: node_id) -> bool {
         };
       }
       None => ()
+/*
+Doesn't seem to deal with `pub` qualifier at all!
+*/
+/*
+fn traverse_exports(cx: ctx, vis: ~[@view_item]) -> bool {
+    let mut found_export = false;
+    let mut stuff = ~[];
+    for vec::each(vis) |vi| {
+        match vi.node {
+          view_item_export(vps) => {
+            found_export = true;
+            for vec::each(vps) |vp| {
+                match vp.node {
+                  view_path_simple(_, _, _, id) | view_path_glob(_, id) |
+                  view_path_list(_, _, id) => {
+                    stuff += ~[id];
+                    traverse_export(cx, id);
+                  }
+                }
+            }
+          }
+          view_item_import(vps) if vi.vis == public => {
+            for vec::each(vps) |vp| {
+                match vp.node {
+                  view_path_simple(_, _, _, id) => {
+                    found_export = true;
+                    stuff += ~[id];
+                    traverse_export(cx, id);
+                  }
+                  _ => ()
+                }
+            }
+          }
+          _ => ()
+        }
+    }
+    debug!("=== traverse_export: %?", stuff);
+    found_export
+}
+
+fn traverse_export(cx: ctx, exp_id: node_id) {
+    debug!("traverse_exports 3: %d", exp_id);
+    do option::iter(cx.exp_map.find(exp_id)) |defs| {
+        for vec::each(defs) |def| {
+            debug!("traverse_def_id: %?", def.id);
+            traverse_def_id(cx, def.id);
+        }
+*/
     }
     return found_export;
 }
@@ -69,14 +117,26 @@ fn traverse_def_id(cx: ctx, did: def_id) {
 
 fn traverse_public_mod(cx: ctx, mod_id: node_id, m: _mod) {
     if !traverse_exports(cx, mod_id) {
+/*
+fn traverse_public_mod(cx: ctx, m: _mod) {
+    debug!("In traverse_public_mod!");
+    if !traverse_exports(cx, m.view_items) {
+        debug!("traverse_exports was false!");
+*/
         // No exports, so every local item is exported
         for vec::each(m.items) |item| {
             traverse_public_item(cx, *item);
         }
     }
+    else {
+        debug!("traverse_exports was true and we already \
+                traversed the exports!");
+    }
 }
 
 fn traverse_public_item(cx: ctx, item: @item) {
+    debug!("REACHABILITY item: %s [%d]",
+           cx.tcx.sess.str_of(item.ident), item.id);
     if cx.rmap.contains_key(item.id) { return; }
     cx.rmap.insert(item.id, ());
     match item.node {
