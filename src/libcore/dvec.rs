@@ -117,7 +117,7 @@ priv impl<A> DVec<A> {
 impl<A> DVec<A> {
     /// Reserves space for N elements
     fn reserve(count: uint) {
-        vec::reserve(&mut self.data, count)
+        vec::reserve(self.data, count)
     }
 
     /**
@@ -192,9 +192,9 @@ impl<A> DVec<A> {
     /// Remove and return the first element
     fn shift() -> A {
         do self.check_out |v| {
-            let mut v = move v;
+            let v = &mut(move v);
             let result = vec::shift(v);
-            self.give_back(move v);
+            self.give_back(move (*v));
             move result
         }
     }
@@ -243,7 +243,7 @@ impl<A: Copy> DVec<A> {
         do self.swap |v| {
             let mut v <- v;
             let new_len = vec::len(v) + to_idx - from_idx;
-            vec::reserve(&mut v, new_len);
+            vec::reserve(v, new_len);
             let mut i = from_idx;
             while i < to_idx {
                 vec::push(v, ts[i]);

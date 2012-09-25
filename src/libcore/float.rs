@@ -123,7 +123,7 @@ fn to_str_common(num: float, digits: uint, exact: bool) -> ~str {
     let mut frac = num - (trunc as float);
 
     // stack of digits
-    let mut fractionalParts = ~[];
+    let fractionalParts = ~[];
 
     // FIXME: (#2608)
     // This used to return right away without rounding, as "~[-]num",

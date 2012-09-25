@@ -1912,7 +1912,7 @@ pure fn as_buf<T>(s: &str, f: fn(*u8, uint) -> T) -> T {
 fn reserve(s: &const ~str, n: uint) {
     unsafe {
         let v: *mut ~[u8] = cast::transmute(copy s);
-        vec::reserve(&mut *v, n + 1);
+        vec::reserve(*v, n + 1);
     }
 }
 
@@ -2133,7 +2133,7 @@ mod raw {
         let v: **vec::raw::VecRepr = cast::transmute(copy v);
         let repr: *vec::raw::VecRepr = *v;
         (*repr).unboxed.fill = new_len + 1u;
-        let null = ptr::mut_offset(ptr::mut_addr_of(&((*repr).unboxed.data)),
+        let null = ptr::mut_offset(ptr::mut_addr_of((*repr).unboxed.data),
                                    new_len);
         *null = 0u8;
     }

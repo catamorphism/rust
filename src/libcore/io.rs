@@ -683,7 +683,7 @@ impl BytesWriter: Writer {
             let buf_len = buf.len();
 
             let count = uint::max(buf_len, self.pos + v_len);
-            vec::reserve(&mut buf, count);
+            vec::reserve(buf, count);
             unsafe { vec::raw::set_len(buf, count); }
 
             let view = vec::mut_view(buf, self.pos, count);
