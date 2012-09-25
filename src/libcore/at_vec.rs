@@ -32,7 +32,7 @@ extern mod rusti {
 pure fn capacity<T>(&&v: @[const T]) -> uint {
     unsafe {
         let repr: **raw::VecRepr =
-            ::cast::reinterpret_cast(&addr_of(v));
+            ::cast::reinterpret_cast(&addr_of(&v));
         (**repr).unboxed.alloc / sys::size_of::<T>()
     }
 }
@@ -165,13 +165,13 @@ mod raw {
      */
     #[inline(always)]
     unsafe fn set_len<T>(&&v: @[const T], new_len: uint) {
-        let repr: **VecRepr = ::cast::reinterpret_cast(&addr_of(v));
+        let repr: **VecRepr = ::cast::reinterpret_cast(&addr_of(&v));
         (**repr).unboxed.fill = new_len * sys::size_of::<T>();
     }
 
     #[inline(always)]
     unsafe fn push<T>(&v: @[const T], +initval: T) {
-        let repr: **VecRepr = ::cast::reinterpret_cast(&addr_of(v));
+        let repr: **VecRepr = ::cast::reinterpret_cast(&addr_of(&v));
         let fill = (**repr).unboxed.fill;
         if (**repr).unboxed.alloc > fill {
             push_fast(v, move initval);
@@ -183,10 +183,10 @@ mod raw {
     // This doesn't bother to make sure we have space.
     #[inline(always)] // really pretty please
     unsafe fn push_fast<T>(&v: @[const T], +initval: T) {
-        let repr: **VecRepr = ::cast::reinterpret_cast(&addr_of(v));
+        let repr: **VecRepr = ::cast::reinterpret_cast(&addr_of(&v));
         let fill = (**repr).unboxed.fill;
         (**repr).unboxed.fill += sys::size_of::<T>();
-        let p = ptr::addr_of((**repr).unboxed.data);
+        let p = ptr::addr_of(&((**repr).unboxed.data));
         let p = ptr::offset(p, fill) as *mut T;
         rusti::move_val_init(*p, move initval);
     }
@@ -210,7 +210,7 @@ mod raw {
     unsafe fn reserve<T>(&v: @[const T], n: uint) {
         // Only make the (slow) call into the runtime if we have to
         if capacity(v) < n {
-            let ptr = addr_of(v) as **VecRepr;
+            let ptr = addr_of(&v) as **VecRepr;
             rustrt::vec_reserve_shared_actual(sys::get_type_desc::<T>(),
                                               ptr, n as libc::size_t);
         }

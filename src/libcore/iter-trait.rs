@@ -25,7 +25,7 @@ impl<A> IMPL_T<A>: iter::ExtendedIter<A> {
 
 impl<A: Eq> IMPL_T<A>: iter::EqIter<A> {
     pure fn contains(x: A) -> bool { iter::contains(self, x) }
-    pure fn count(x: A) -> uint { iter::count(self, x) }
+    pure fn count(x: &A) -> uint { iter::count(self, x) }
 }
 
 impl<A: Copy> IMPL_T<A>: iter::CopyableIter<A> {

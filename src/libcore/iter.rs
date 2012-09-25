@@ -24,7 +24,7 @@ trait ExtendedIter<A> {
 
 trait EqIter<A:Eq> {
     pure fn contains(x: A) -> bool;
-    pure fn count(x: A) -> uint;
+    pure fn count(x: &A) -> uint;
 }
 
 trait Times {
@@ -137,10 +137,10 @@ pure fn contains<A:Eq,IA:BaseIter<A>>(self: IA, x: A) -> bool {
     return false;
 }
 
-pure fn count<A:Eq,IA:BaseIter<A>>(self: IA, x: A) -> uint {
-    do foldl(self, 0u) |count, value| {
-        if value == x {
-            count + 1u
+pure fn count<A:Eq,IA:BaseIter<A>>(self: IA, x: &A) -> uint {
+    do foldl(self, 0) |count, value| {
+        if value == *x {
+            count + 1
         } else {
             count
         }

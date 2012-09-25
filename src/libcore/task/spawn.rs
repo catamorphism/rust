@@ -66,7 +66,7 @@ use rt::rust_task;
 use rt::rust_closure;
 
 macro_rules! move_it (
-    { $x:expr } => { unsafe { let y <- *ptr::addr_of($x); move y } }
+    { $x:expr } => { unsafe { let y <- *ptr::addr_of(&($x)); move y } }
 )
 
 type TaskSet = send_map::linear::LinearMap<*rust_task,()>;
@@ -509,7 +509,7 @@ fn spawn_raw(+opts: TaskOpts, +f: fn~()) {
 
             let child_wrapper = make_child_wrapper(new_task, move child_tg,
                   move ancestors, is_main, move notify_chan, move f);
-            let fptr = ptr::addr_of(child_wrapper);
+            let fptr = ptr::addr_of(&child_wrapper);
             let closure: *rust_closure = cast::reinterpret_cast(&fptr);
 
             // Getting killed between these two calls would free the child's
