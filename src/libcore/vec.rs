@@ -136,9 +136,9 @@ pure fn same_length<T, U>(xs: &[const T], ys: &[const U]) -> bool {
  * * v - A vector
  * * n - The number of elements to reserve space for
  */
-fn reserve<T>(+v: &mut ~[T], +n: uint) {
+fn reserve<T>(+v: ~[T], +n: uint) {
     // Only make the (slow) call into the runtime if we have to
-    if capacity(*v) < n {
+    if capacity(v) < n {
         unsafe {
             let ptr: **raw::VecRepr = cast::transmute(v);
             rustrt::vec_reserve_shared(sys::get_type_desc::<T>(),
@@ -162,7 +162,7 @@ fn reserve<T>(+v: &mut ~[T], +n: uint) {
  * * v - A vector
  * * n - The number of elements to reserve space for
  */
-fn reserve_at_least<T>(v: &mut ~[T], n: uint) {
+fn reserve_at_least<T>(v: ~[T], n: uint) {
     reserve(v, uint::next_power_of_two(n));
 }
 
@@ -218,7 +218,7 @@ pure fn from_slice<T: Copy>(t: &[T]) -> ~[T] {
 
 pure fn with_capacity<T>(capacity: uint) -> ~[T] {
     let mut vec = ~[];
-    unsafe { reserve(&mut vec, capacity); }
+    unsafe { reserve(vec, capacity); }
     return move vec;
 }
 
@@ -450,23 +450,23 @@ fn rsplit<T: Copy>(v: &[T], f: fn(T) -> bool) -> ~[~[T]] {
  */
 fn rsplitn<T: Copy>(v: &[T], n: uint, f: fn(T) -> bool) -> ~[~[T]] {
     let ln = len(v);
-    if (ln == 0u) { return ~[] }
+    if (ln == 0) { return ~[] }
 
     let mut end = ln;
     let mut count = n;
     let mut result = ~[];
-    while end > 0u && count > 0u {
-        match rposition_between(v, 0u, end, f) {
+    while end > 0 && count > 0 {
+        match rposition_between(v, 0, end, f) {
           None => break,
           Some(i) => {
-            push(result, slice(v, i + 1u, end));
+            push(result, slice(v, i + 1, end));
             // Make sure to skip the separator.
             end = i;
-            count -= 1u;
+            count -= 1;
           }
         }
     }
-    push(result, slice(v, 0u, end));
+    push(result, slice(v, 0, end));
     reverse(result);
     move result
 }
@@ -474,22 +474,22 @@ fn rsplitn<T: Copy>(v: &[T], n: uint, f: fn(T) -> bool) -> ~[~[T]] {
 // Mutators
 
 /// Removes the first element from a vector and return it
-fn shift<T>(v: ~[T]) -> T {
+fn shift<T>(v: &mut ~[T]) -> T {
     let ln = v.len();
     assert (ln > 0);
 
     let mut vv = ~[];
-    v <-> vv;
+    *v <-> vv;
 
     unsafe {
-        let mut rr;
+        let mut rr: *T;
         {
-            let vv = raw::to_ptr(vv);
-            rr <- *vv;
+            let vv: *T = raw::to_ptr(vv);
+            rr <- vv;
 
             for uint::range(1, ln) |i| {
                 let r <- *ptr::offset(vv, i);
-                push(v, move r);
+                push(*v, move r);
             }
         }
         raw::set_len(vv, 0);
@@ -499,11 +499,11 @@ fn shift<T>(v: ~[T]) -> T {
 }
 
 /// Prepend an element to the vector
-fn unshift<T>(v: ~[T], +x: T) {
-    let mut vv = ~[move x];
+fn unshift<T>(v: &mut ~[T], +x: T) {
+    let mut vv = &mut ~[move x];
     v <-> vv;
-    while len(vv) > 0 {
-        push(v, shift(vv));
+    while vv.is_not_empty() {
+        push(*v, shift(vv));
     }
 }
 
@@ -535,7 +535,7 @@ fn pop<T>(v: ~[const T]) -> T {
     if ln == 0 {
         fail ~"sorry, cannot vec::pop an empty vector"
     }
-    let valptr = ptr::mut_addr_of(&v[ln - 1]);
+    let valptr = ptr::mut_addr_of(v[ln - 1]);
     unsafe {
         let val <- *valptr;
         raw::set_len(v, ln - 1);
@@ -554,11 +554,11 @@ fn swap_remove<T>(v: ~[const T], index: uint) -> T {
     if index >= ln {
         fail fmt!("vec::swap_remove - index %u >= length %u", index, ln);
     }
-    let lastptr = ptr::mut_addr_of(&v[ln - 1]);
+    let lastptr = ptr::mut_addr_of(v[ln - 1]);
     unsafe {
         let mut val <- *lastptr;
         if index < ln - 1 {
-            let valptr = ptr::mut_addr_of(&v[index]);
+            let valptr = ptr::mut_addr_of(v[index]);
             *valptr <-> val;
         }
         raw::set_len(v, ln - 1);
@@ -594,13 +594,13 @@ unsafe fn push_fast<T>(v: ~[T], +initval: T) {
 
 #[inline(never)]
 fn push_slow<T>(v: ~[T], +initval: T) {
-    reserve_at_least(&mut v, v.len() + 1u);
+    reserve_at_least(v, v.len() + 1);
     unsafe { push_fast(v, move initval) }
 }
 
 #[inline(always)]
 fn push_all<T: Copy>(v: ~[T], rhs: &[const T]) {
-    reserve(&mut v, v.len() + rhs.len());
+    reserve(v, v.len() + rhs.len());
 
     for uint::range(0, rhs.len()) |i| {
         push(v, unsafe { raw::get(rhs, i) })
@@ -609,7 +609,7 @@ fn push_all<T: Copy>(v: ~[T], rhs: &[const T]) {
 
 #[inline(always)]
 fn push_all_move<T>(v: ~[T], -rhs: ~[const T]) {
-    reserve(&mut v, v.len() + rhs.len());
+    reserve(v, v.len() + rhs.len());
     unsafe {
         do as_imm_buf(rhs) |p, len| {
             for uint::range(0, len) |i| {
@@ -702,7 +702,7 @@ pure fn append_mut<T: Copy>(+lhs: ~[mut T], rhs: &[const T]) -> ~[mut T] {
  * * initval - The value for the new elements
  */
 fn grow<T: Copy>(v: ~[T], n: uint, initval: T) {
-    reserve_at_least(&mut v, len(v) + n);
+    reserve_at_least(v, len(v) + n);
     let mut i = 0;
 
     while i < n { push(v, initval); i += 1; }
@@ -722,7 +722,7 @@ fn grow<T: Copy>(v: ~[T], n: uint, initval: T) {
  *             value
  */
 fn grow_fn<T>(v: ~[T], n: uint, op: iter::InitOp<T>) {
-    reserve_at_least(&mut v, len(v) + n);
+    reserve_at_least(v, len(v) + n);
     let mut i = 0;
     while i < n { push(v, op(i)); i += 1u; }
 }
