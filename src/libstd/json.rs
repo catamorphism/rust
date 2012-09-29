@@ -747,7 +747,7 @@ pub impl Deserializer: serialization2::Deserializer {
         }
     }
 
-    fn read_enum<T>(&self, name: ~str, f: fn() -> T) -> T {
+    fn read_enum<T>(&self, name: &str, f: fn() -> T) -> T {
         debug!("read_enum(%s)", name);
         if name != ~"option" { fail ~"only supports the option enum" }
         f()
@@ -810,17 +810,17 @@ pub impl Deserializer: serialization2::Deserializer {
         value
     }
 
-    fn read_rec_field<T>(&self, f_name: ~str, f_idx: uint,
+    fn read_rec_field<T>(&self, f_name: &~str, f_idx: uint,
                          f: fn() -> T) -> T {
-        debug!("read_rec_field(%s, idx=%u)", f_name, f_idx);
+        debug!("read_rec_field(%s, idx=%u)", *f_name, f_idx);
         let top = self.peek();
         match *top {
             Object(ref obj) => {
                 // FIXME(#3148) This hint should not be necessary.
                 let obj: &self/~Object = obj;
 
-                match obj.find_ref(&f_name) {
-                    None => fail fmt!("no such field: %s", f_name),
+                match obj.find_ref(f_name) {
+                    None => fail fmt!("no such field: %s", *f_name),
                     Some(json) => {
                         self.stack.push(json);
                         f()
