@@ -1,4 +1,4 @@
-% Rust Language Tutorial
+% The Rust Language Tutorial
 
 # Introduction
 
@@ -15,27 +15,23 @@ As a multi-paradigm language, Rust supports writing code in
 procedural, functional and object-oriented styles. Some of its
 pleasant high-level features include:
 
-* **Pattern matching and algebraic data types (enums).** As
-  popularized by functional languages, pattern matching on ADTs
-  provides a compact and expressive way to encode program logic.
-* **Type inference.** Type annotations on local variable
-  declarations are optional.
-* **Task-based concurrency.** Rust uses lightweight tasks that do
-  not share memory.
-* **Higher-order functions.** Rust's efficient and flexible closures
-  are heavily relied on to provide iteration and other control
-  structures
-* **Parametric polymorphism (generics).** Functions and types can be
-  parameterized over type variables with optional trait-based type
-  constraints.
-* **Trait polymorphism.** Rust's type system features a unique
-  combination of type classes and object-oriented interfaces.
+* **Type inference.** Type annotations on local variable declarations
+  are optional.
+* **Safe task-based concurrency.** Rust's lightweight tasks do not share
+  memory and communicate through messages.
+* **Higher-order functions.** Efficient and flexible closures provide
+  iteration and other control structures
+* **Pattern matching and algebraic data types.** Pattern matching on
+  Rust's enums is a compact and expressive way to encode program
+  logic.
+* **Polymorphism.** Rust has type-parameric functions and
+  types, type classes and OO-style interfaces.
 
 ## Scope
 
 This is an introductory tutorial for the Rust programming language. It
 covers the fundamentals of the language, including the syntax, the
-type system and memory model, and generics.  [Additional
+type system and memory model, generics, and modules. [Additional
 tutorials](#what-next) cover specific language features in greater
 depth.
 
@@ -132,19 +128,7 @@ fn main() {
 
 If the Rust compiler was installed successfully, running `rustc
 hello.rs` will produce an executable called `hello` (or `hello.exe` on
-Windows) which, upon running, will likely do exactly what you expect
-(unless you are on Windows, in which case what it does is subject
-to local weather conditions).
-
-> ***Note:*** That may or may not be hyperbole, but there are some
-> 'gotchas' to be aware of on Windows. First, the MinGW environment
-> must be set up perfectly. Please read [the
-> wiki][wiki-started]. Second, `rustc` may need to be [referred to as
-> `rustc.exe`][bug-3319]. It's a bummer, I know, and I am so very
-> sorry.
-
-[bug-3319]: https://github.com/mozilla/rust/issues/3319
-[wiki-started]:	https://github.com/mozilla/rust/wiki/Note-getting-started-developing-Rust
+Windows) which, upon running, will likely do exactly what you expect.
 
 The Rust compiler tries to provide useful information when it runs
 into an error. If you modify the program to make it invalid (for
@@ -163,6 +147,15 @@ compiled to an executable. Rust does not allow code that's not a
 declaration to appear at the top level of the file—all statements must
 live inside a function.  Rust programs can also be compiled as
 libraries, and included in other programs.
+
+> ***Note:*** There are some 'gotchas' to be aware of on
+> Windows. First, the MinGW environment must be set up
+> perfectly. Please read [the wiki][wiki-started]. Second, `rustc` may
+> need to be [referred to as `rustc.exe`][bug-3319]. It's a bummer, I
+> know.
+
+[bug-3319]: https://github.com/mozilla/rust/issues/3319
+[wiki-started]:	https://github.com/mozilla/rust/wiki/Note-getting-started-developing-Rust
 
 ## Editing Rust code
 
@@ -183,7 +176,7 @@ mode for your favorite editor, let us know so that we can link to it.
 [sublime]: http://github.com/dbp/sublime-rust
 [sublime-pkg]: http://wbond.net/sublime_packages/package_control
 
-# Syntax Basics
+# Syntax basics
 
 Assuming you've programmed in any C-family language (C++, Java,
 JavaScript, C#, or PHP), Rust will feel familiar. Code is arranged
@@ -690,19 +683,7 @@ For more involved iteration, such as going over the elements of a
 collection, Rust uses higher-order functions. We'll come back to those
 in a moment.
 
-# Basic datatypes
-
-The core datatypes of Rust are structs, enums (tagged unions, algebraic data
-types), and tuples. They are immutable by default.
-
-~~~~
-struct Point { x: float, y: float }
-
-enum Shape {
-    Circle(Point, float),
-    Rectangle(Point, Point)
-}
-~~~~
+# Data structures
 
 ## Structs
 
@@ -863,12 +844,12 @@ get at their contents. All variant constructors can be used as
 patterns, as in this definition of `area`:
 
 ~~~~
-# type Point = {x: float, y: float};
+# struct Point {x: float, y: float}
 # enum Shape { Circle(Point, float), Rectangle(Point, Point) }
 fn area(sh: Shape) -> float {
     match sh {
         Circle(_, size) => float::consts::pi * size * size,
-        Rectangle({x, y}, {x: x2, y: y2}) => (x2 - x) * (y2 - y)
+        Rectangle(Point {x, y}, Point {x: x2, y: y2}) => (x2 - x) * (y2 - y)
     }
 }
 ~~~~
@@ -879,7 +860,7 @@ their introductory form, nullary enum patterns are written without
 parentheses.
 
 ~~~~
-# type Point = {x: float, y: float};
+# struct Point {x: float, y: float}
 # enum Direction { North, East, South, West }
 fn point_from_direction(dir: Direction) -> Point {
     match dir {
@@ -1354,13 +1335,12 @@ stored on the stack, the local heap, or the exchange heap. Borrowed
 pointers to vectors are also called 'slices'.
 
 ~~~
-enum Crayon {
-    Almond, AntiqueBrass, Apricot,
-    Aquamarine, Asparagus, AtomicTangerine,
-    BananaMania, Beaver, Bittersweet,
-    Black, BlizzardBlue, Blue
-}
-
+# enum Crayon {
+#     Almond, AntiqueBrass, Apricot,
+#     Aquamarine, Asparagus, AtomicTangerine,
+#     BananaMania, Beaver, Bittersweet,
+#     Black, BlizzardBlue, Blue
+# }
 // A fixed-size stack vector
 let stack_crayons: [Crayon * 3] = [Almond, AntiqueBrass, Apricot];
 
@@ -1387,8 +1367,7 @@ let your_crayons = ~[BananaMania, Beaver, Bittersweet];
 // Add two vectors to create a new one
 let our_crayons = my_crayons + your_crayons;
 
-// += will append to a vector, provided it leves
-// in a mutable slot
+// += will append to a vector, provided it lives in a mutable slot
 let mut my_crayons = move my_crayons;
 my_crayons += your_crayons;
 ~~~~
@@ -1639,10 +1618,8 @@ call_twice(bare_function);
 
 ## Do syntax
 
-The `do` expression is syntactic sugar for use with functions which
-take a closure as a final argument, because closures in Rust
-are so frequently used in combination with higher-order
-functions.
+The `do` expression provides a way to treat higher-order functions
+(functions that take closures as arguments) as control structures.
 
 Consider this function which iterates over a vector of
 integers, passing in a pointer to each integer in the vector:
@@ -1657,20 +1634,22 @@ fn each(v: &[int], op: fn(v: &int)) {
 }
 ~~~~
 
-The reason we pass in a *pointer* to an integer rather than the
-integer itself is that this is how the actual `each()` function for
-vectors works.  Using a pointer means that the function can be used
-for vectors of any type, even large structs that would be impractical
-to copy out of the vector on each iteration.  As a caller, if we use a
-closure to provide the final operator argument, we can write it in a
-way that has a pleasant, block-like structure.
+As an aside, the reason we pass in a *pointer* to an integer rather
+than the integer itself is that this is how the actual `each()`
+function for vectors works. `vec::each` though is a
+[generic](#generics) function, so must be efficient to use for all
+types. Passing the elements by pointer avoids copying potentially
+large objects.
+
+As a caller, if we use a closure to provide the final operator
+argument, we can write it in a way that has a pleasant, block-like
+structure.
 
 ~~~~
 # fn each(v: &[int], op: fn(v: &int)) { }
-# fn do_some_work(i: int) { }
+# fn do_some_work(i: &int) { }
 each(&[1, 2, 3], |n| {
-    debug!("%i", *n);
-    do_some_work(*n);
+    do_some_work(n);
 });
 ~~~~
 
@@ -1679,10 +1658,9 @@ call that can be written more like a built-in control structure:
 
 ~~~~
 # fn each(v: &[int], op: fn(v: &int)) { }
-# fn do_some_work(i: int) { }
+# fn do_some_work(i: &int) { }
 do each(&[1, 2, 3]) |n| {
-    debug!("%i", *n);
-    do_some_work(*n);
+    do_some_work(n);
 }
 ~~~~
 
@@ -1691,7 +1669,9 @@ final closure inside the argument list it is moved outside of the
 parenthesis where it looks visually more like a typical block of
 code.
 
-`do` is often used for task spawning.
+`do` is often used to create tasks with the `task::spawn` function.
+`spawn` has the signature `spawn(fn: fn~())`. In other words, it
+is a function that takes an owned closure that takes no arguments.
 
 ~~~~
 use task::spawn;
@@ -1701,9 +1681,9 @@ do spawn() || {
 }
 ~~~~
 
-That's nice, but look at all those bars and parentheses - that's two empty
-argument lists back to back. Wouldn't it be great if they weren't
-there?
+Look at all those bars and parentheses - that's two empty argument
+lists back to back. Since that is so unsightly, empty argument lists
+may be omitted from `do` expressions.
 
 ~~~~
 # use task::spawn;
@@ -1711,8 +1691,6 @@ do spawn {
    debug!("Kablam!");
 }
 ~~~~
-
-Empty argument lists can be omitted from `do` expressions.
 
 ## For loops
 
@@ -2044,13 +2022,11 @@ However, consider this function:
 # type Circle = int; type Rectangle = int;
 # impl int: Drawable { fn draw() {} }
 # fn new_circle() -> int { 1 }
-
 trait Drawable { fn draw(); }
 
 fn draw_all<T: Drawable>(shapes: ~[T]) {
     for shapes.each |shape| { shape.draw(); }
 }
-
 # let c: Circle = new_circle();
 # draw_all(~[c]);
 ~~~~
@@ -2062,7 +2038,7 @@ needed, a trait name can alternately be used as a type.
 
 ~~~~
 # trait Drawable { fn draw(); }
-fn draw_all(shapes: ~[@Drawable]) {
+fn draw_all(shapes: &[@Drawable]) {
     for shapes.each |shape| { shape.draw(); }
 }
 ~~~~
@@ -2077,7 +2053,7 @@ to cast a value to a trait type:
 # trait Drawable { fn draw(); }
 # fn new_circle() -> Circle { 1 }
 # fn new_rectangle() -> Rectangle { true }
-# fn draw_all(shapes: ~[Drawable]) {}
+# fn draw_all(shapes: &[@Drawable]) {}
 
 impl @Circle: Drawable { fn draw() { ... } }
 
@@ -2085,7 +2061,7 @@ impl @Rectangle: Drawable { fn draw() { ... } }
 
 let c: @Circle = @new_circle();
 let r: @Rectangle = @new_rectangle();
-draw_all(~[c as @Drawable, r as @Drawable]);
+draw_all(&[c as @Drawable, r as @Drawable]);
 ~~~~
 
 Note that, like strings and vectors, trait types have dynamic size
@@ -2119,62 +2095,123 @@ This usage of traits is similar to Java interfaces.
 
 # Modules and crates
 
-The Rust namespace is divided into modules. Each source file starts
-with its own module.
-
-## Local modules
-
-The `mod` keyword can be used to open a new, local module. In the
-example below, `chicken` lives in the module `farm`, so, unless you
-explicitly import it, you must refer to it by its long name,
-`farm::chicken`.
+The Rust namespace is arranged in a hierarchy of modules. Each source
+(.rs) file represents a single module and may in turn contain
+additional modules.
 
 ~~~~
-#[legacy_exports]
 mod farm {
-    fn chicken() -> ~str { ~"cluck cluck" }
-    fn cow() -> ~str { ~"mooo" }
+    pub fn chicken() -> ~str { ~"cluck cluck" }
+    pub fn cow() -> ~str { ~"mooo" }
 }
+
 fn main() {
     io::println(farm::chicken());
 }
 ~~~~
 
-Modules can be nested to arbitrary depth.
+The contents of modules can be imported into the current scope
+with the `use` keyword, optionally giving it an alias. `use`
+may appear at the beginning of crates, `mod`s, `fn`s, and other
+blocks.
+
+~~~
+# mod farm { pub fn chicken() { } }
+# fn main() {
+// Bring `chicken` into scope
+use farm::chicken;
+
+fn chicken_farmer() {
+    // The same, but name it `my_chicken`
+    use my_chicken = farm::chicken;
+    ...
+}
+# }
+~~~
+
+These farm animal functions have a new keyword, `pub`, attached to
+them.  This is a visibility modifier that allows item to be accessed
+outside of the module in which they are declared, using `::`, as in
+`farm::chicken`. Items, like `fn`, `struct`, etc. are private by
+default.
+
+Visibility restrictions in Rust exist only at module boundaries. This
+is quite different from most object-oriented languages that also enforce
+restrictions on objects themselves. That's not to say that Rust doesn't
+support encapsulation - both struct fields and methods can be private -
+but it is at the module level, not the class level. Note that fields
+and methods are _public_ by default.
+
+~~~
+mod farm {
+# pub fn make_me_a_farm() -> farm::Farm { farm::Farm { chickens: ~[], cows: ~[], farmer: Human(0) } }
+    pub struct Farm {
+        priv mut chickens: ~[Chicken],
+        priv mut cows: ~[Cow],
+        farmer: Human
+    }
+
+    // Note - visibility modifiers on impls currently have no effect
+    impl Farm {
+        priv fn feed_chickens() { ... }
+        priv fn feed_cows() { ... }
+        fn add_chicken(c: Chicken) { ... }
+    }
+
+    pub fn feed_animals(farm: &Farm) {
+        farm.feed_chickens();
+        farm.feed_cows();
+    }
+}
+
+fn main() {
+     let f = make_me_a_farm();
+     f.add_chicken(make_me_a_chicken());
+     farm::feed_animals(&f);
+     f.farmer.rest();
+}
+# type Chicken = int;
+# type Cow = int;
+# enum Human = int;
+# fn make_me_a_farm() -> farm::Farm { farm::make_me_a_farm() }
+# fn make_me_a_chicken() -> Chicken { 0 }
+# impl Human { fn rest() { } }
+~~~
 
 ## Crates
 
-The unit of independent compilation in Rust is the crate. Libraries
-tend to be packaged as crates, and your own programs may consist of
-one or more crates.
+The unit of independent compilation in Rust is the crate - rustc
+compiles a single crate at a time, from which it produces either a
+library or executable.
 
 When compiling a single `.rs` file, the file acts as the whole crate.
 You can compile it with the `--lib` compiler switch to create a shared
 library, or without, provided that your file contains a `fn main`
 somewhere, to create an executable.
 
-It is also possible to include multiple files in a crate. For this
-purpose, you create a `.rc` crate file, which references any number of
-`.rs` code files. A crate file could look like this:
+Larger crates typically span multiple files and are compiled from
+a crate (.rc) file. Crate files contain their own syntax for loading
+modules from .rs files and typically include metadata about the crate.
 
-~~~~ {.ignore}
+~~~~ { .xfail-test }
 #[link(name = "farm", vers = "2.5", author = "mjh")];
 #[crate_type = "lib"];
+
 mod cow;
 mod chicken;
 mod horse;
 ~~~~
 
 Compiling this file will cause `rustc` to look for files named
-`cow.rs`, `chicken.rs`, `horse.rs` in the same directory as the `.rc`
-file, compile them all together, and, depending on the presence of the
-`crate_type = "lib"` attribute, output a shared library or an executable.
-(If the line `#[crate_type = "lib"];` was omitted, `rustc` would create an
-executable.)
+`cow.rs`, `chicken.rs`, and `horse.rs` in the same directory as the
+`.rc` file, compile them all together, and, based on the presence of
+the `crate_type = "lib"` attribute, output a shared library or an
+executable.  (If the line `#[crate_type = "lib"];` was omitted,
+`rustc` would create an executable.)
 
-The `#[link(...)]` part provides meta information about the module,
-which other crates can use to load the right module. More about that
-later.
+The `#[link(...)]` attribute provides meta information about the
+module, which other crates can use to load the right module. More
+about that later.
 
 To have a nested directory structure for your source files, you can
 nest mods in your `.rc` file:
@@ -2191,56 +2228,65 @@ The compiler will now look for `poultry/chicken.rs` and
 and `poultry::turkey`. You can also provide a `poultry.rs` to add
 content to the `poultry` module itself.
 
-The compiler then builds the crate as a platform-specific shared library or
-executable which can be distributed.
+When compiling .rc files, if rustc finds a .rs file with the same
+name, then that .rs file provides the top-level content of the crate.
+
+~~~ {.xfail-test}
+// foo.rc
+#[link(name = "foo", vers="1.0")];
+
+mod bar;
+~~~
+
+~~~ {.xfail-test}
+// foo.rs
+fn main() { bar::baz(); }
+~~~
+
+> ***Note***: The way rustc looks for .rs files to pair with .rc
+> files is a major source of confusion and will change. It's likely
+> that the crate and source file grammars will merge.
+
+> ***Note***: The way that directory modules are handled will also
+> change. The code for directory modules currently lives in a .rs
+> file with the same name as the directory, _next to_ the directory.
+> A new scheme will make that file live _inside_ the directory.
 
 ## Using other crates
 
-Having compiled a crate that contains the `#[crate_type = "lib"]`
-attribute, you can use it in another crate with a `use`
-directive. We've already seen `extern mod std` in several of the
-examples, which loads in the [standard library][std].
+Having compiled a crate into a library you can use it in another crate
+with an `extern mod` directive. `extern mod` can appear at the top of
+a crate file or at the top of modules. It will cause the compiler to
+look in the library search path (which you can extend with `-L`
+switch) for a compiled Rust library with the right name, then add a
+module with that crate's name into the local scope.
 
-[std]: http://doc.rust-lang.org/doc/std/index/General.html
+For example, `extern mod std` links the [standard library].
 
-`use` directives can appear in a crate file, or at the top level of a
-single-file `.rs` crate. They will cause the compiler to search its
-library search path (which you can extend with `-L` switch) for a Rust
-crate library with the right name.
+[standard library]: std/index.html
 
-It is possible to provide more specific information when using an
-external crate.
-
-~~~~ {.ignore}
-extern mod myfarm (name = "farm", vers = "2.7");
-~~~~
-
-When a comma-separated list of name/value pairs is given after `use`,
-these are matched against the attributes provided in the `link`
+When a comma-separated list of name/value pairs is given after `extern
+mod`, these are matched against the attributes provided in the `link`
 attribute of the crate file, and a crate is only used when the two
 match. A `name` value can be given to override the name used to search
-for the crate. So the above would import the `farm` crate under the
-local name `myfarm`.
+for the crate.
 
 Our example crate declared this set of `link` attributes:
 
-~~~~ {.ignore}
+~~~~ {.xfail-test}
 #[link(name = "farm", vers = "2.5", author = "mjh")];
 ~~~~
 
-The version does not match the one provided in the `use` directive, so
-unless the compiler can find another crate with the right version
-somewhere, it will complain that no matching crate was found.
+Which can then be linked with any (or all) of the following:
 
-## The core library
+~~~~ {.xfail-test}
+extern mod farm;
+extern mod my_farm (name = "farm", vers = "2.5");
+extern mod my_auxiliary_farm (name = "farm", author = "mjh");
+~~~~
 
-A set of basic library routines, mostly related to built-in datatypes
-and the task system, are always implicitly linked and included in any
-Rust program.
-
-This library is documented [here][core].
-
-[core]: core/index.html
+If any of the requested metadata does not match then the crate
+will not be compiled successfully.
 
 ## A minimal example
 
@@ -2253,7 +2299,7 @@ these two files:
 fn explore() -> ~str { ~"world" }
 ~~~~
 
-~~~~ {.ignore}
+~~~~ {.xfail-test}
 // main.rs
 extern mod world;
 fn main() { io::println(~"hello " + world::explore()); }
@@ -2268,113 +2314,33 @@ Now compile and run like this (adjust to your platform if necessary):
 "hello world"
 ~~~~
 
-## Importing
+Notice that the library produced contains the version in the filename
+as well as an inscrutable string of alphanumerics. These are both
+part of Rust's library versioning scheme. The alphanumerics are
+a hash representing the crate metadata.
 
-When using identifiers from other modules, it can get tiresome to
-qualify them with the full module path every time (especially when
-that path is several modules deep). Rust allows you to import
-identifiers at the top of a file, module, or block.
+## The core library
 
-~~~~
-extern mod std;
-use io::println;
-fn main() {
-    println(~"that was easy");
-}
-~~~~
+The Rust [core] library acts as the language runtime and contains
+required memory management and task scheduling code as well as a
+number of modules necessary for effective usage of the primitive
+types. Methods on [vectors] and [strings], implementations of most
+comparison and math operators, and pervasive types like [`Option`]
+and [`Result`] live in core.
 
+All Rust programs link to the core library and import its contents,
+as if the following were written at the top of the crate.
 
-It is also possible to import just the name of a module (`use
-std::list;`, then use `list::find`), to import all identifiers exported
-by a given module (`use io::*`), or to import a specific set
-of identifiers (`use math::{min, max, pi}`).
+~~~ {.xfail-test}
+extern mod core;
+use core::*;
+~~~
 
-Rust uses different namespaces for modules, types, and values.  You
-can also rename an identifier when importing using the `=` operator:
-
-~~~~
-use prnt = io::println;
-~~~~
-
-## Exporting
-
-By default, a module exports everything that it defines. This can be
-restricted with `export` directives at the top of the module or file.
-
-~~~~
-mod enc {
-    export encrypt, decrypt;
-    const SUPER_SECRET_NUMBER: int = 10;
-    fn encrypt(n: int) -> int { n + SUPER_SECRET_NUMBER }
-    fn decrypt(n: int) -> int { n - SUPER_SECRET_NUMBER }
-}
-~~~~
-
-This defines a rock-solid encryption algorithm. Code outside of the
-module can refer to the `enc::encrypt` and `enc::decrypt` identifiers
-just fine, but it does not have access to `enc::super_secret_number`.
-
-## Resolution
-
-The resolution process in Rust simply goes up the chain of contexts,
-looking for the name in each context. Nested functions and modules
-create new contexts inside their parent function or module. A file
-that's part of a bigger crate will have that crate's context as its
-parent context.
-
-Identifiers can shadow each other. In this program, `x` is of type
-`int`:
-
-~~~~
-type MyType = ~str;
-fn main() {
-    type MyType = int;
-    let x: MyType = 17;
-}
-~~~~
-
-An `use` directive will only import into the namespaces for which
-identifiers are actually found. Consider this example:
-
-~~~~
-mod foo {
-   fn bar() {}
-}
-
-fn main() {
-    let bar = 10;
-
-    {
-        use foo::bar;
-        let quux = bar;
-        assert quux == 10;
-    }
-}
-~~~~
-
-When resolving the type name `bar` in the `quux` definition, the
-resolver will first look at local block context for `baz`. This has an
-import named `bar`, but that's function, not a value, So it continues
-to the `baz` function context and finds a value named `bar` defined
-there.
-
-Normally, multiple definitions of the same identifier in a scope are
-disallowed. Local variables defined with `let` are an exception to
-this—multiple `let` directives can redefine the same variable in a
-single scope. When resolving the name of such a variable, the most
-recent definition is used.
-
-~~~~
-fn main() {
-    let x = 10;
-    let x = x + 10;
-    assert x == 20;
-}
-~~~~
-
-This makes it possible to rebind a variable without actually mutating
-it, which is mostly useful for destructuring (which can rebind, but
-not assign).
+[core]: core/index.html
+[vectors]: core/vec.html
+[strings]: core/str.html
+[`Option`]: core/option.html
+[`Result`]: core/result.html
 
 # What next?
 
