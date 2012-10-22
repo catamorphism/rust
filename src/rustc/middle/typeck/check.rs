@@ -2116,7 +2116,7 @@ fn check_decl_local(fcx: @fn_ctxt, local: @ast::local) -> bool {
     match local.node.init {
         Some(init) => {
             bot = check_decl_initializer(fcx, local.node.id, init);
-            is_lvalue = ty::expr_is_lval(tcx, fcx.ccx.method_map, init.expr);
+            is_lvalue = ty::expr_is_lval(tcx, fcx.ccx.method_map, init);
         }
         _ => {
             is_lvalue = true;

@@ -952,8 +952,7 @@ impl Liveness {
         // initialization, which is mildly more complex than checking
         // once at the func header but otherwise equivalent.
 
-        let opt_init = local.node.init.map(|i| i.expr );
-        let succ = self.propagate_through_opt_expr(opt_init, succ);
+        let succ = self.propagate_through_opt_expr(local.node.init, succ);
         self.define_bindings_in_pat(local.node.pat, succ)
     }
 
@@ -1360,14 +1359,9 @@ impl Liveness {
 
 fn check_local(local: @local, &&self: @Liveness, vt: vt<@Liveness>) {
     match local.node.init {
-      Some({op: op, expr: expr}) => {
+      Some(_) => {
 
         // Initializer:
-
-        match op {
-          init_move => self.check_move_from_expr(expr, vt),
-          init_assign => ()
-        }
         self.warn_about_unused_or_dead_vars_in_pat(local.node.pat);
         if !local.node.is_mutbl {
             self.check_for_reassignments_in_pat(local.node.pat);

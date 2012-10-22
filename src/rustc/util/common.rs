@@ -78,7 +78,7 @@ fn may_break(b: ast::blk) -> bool {
 
 fn local_rhs_span(l: @ast::local, def: span) -> span {
     match l.node.init {
-      Some(i) => return i.expr.span,
+      Some(i) => return i.span,
       _ => return def
     }
 }
