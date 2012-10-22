@@ -40,7 +40,7 @@ use ast::{_mod, add, arg, arm, attribute,
              expr_struct, expr_tup, expr_unary, expr_unary_move, expr_vec,
              expr_vstore, expr_while, extern_fn, field, fn_decl, foreign_item,
              foreign_item_const, foreign_item_fn, foreign_mod, ident,
-             impure_fn, infer, inherited, init_assign, init_move, initializer,
+             impure_fn, infer, inherited,
              item, item_, item_class, item_const, item_enum, item_fn,
              item_foreign_mod, item_impl, item_mac, item_mod, item_trait,
              item_ty, lit, lit_, lit_bool, lit_float, lit_int,
@@ -1781,23 +1781,13 @@ impl Parser {
         return e;
     }
 
-    fn parse_initializer() -> Option<initializer> {
+    fn parse_initializer() -> Option<@expr> {
         match self.token {
           token::EQ => {
             self.bump();
-            return Some({op: init_assign, expr: self.parse_expr()});
+            return Some(self.parse_expr());
           }
-          token::LARROW => {
-            self.bump();
-            return Some({op: init_move, expr: self.parse_expr()});
-          }
-          // Now that the the channel is the first argument to receive,
-          // combining it with an initializer doesn't really make sense.
-          // case (token::RECV) {
-          //     self.bump();
-          //     return Some(rec(op = init_recv,
-          //                  expr = self.parse_expr()));
-          // }
+            // tjc: should do the OBSOLETE thingy
           _ => {
             return None;
           }

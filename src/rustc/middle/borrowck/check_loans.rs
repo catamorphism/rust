@@ -583,12 +583,6 @@ fn check_loans_in_fn(fk: visit::fn_kind, decl: ast::fn_decl, body: ast::blk,
 fn check_loans_in_local(local: @ast::local,
                         &&self: check_loan_ctxt,
                         vt: visit::vt<check_loan_ctxt>) {
-    match local.node.init {
-      Some({op: ast::init_move, expr: expr}) => {
-        self.check_move_out(expr);
-      }
-      Some({op: ast::init_assign, _}) | None => {}
-    }
     visit::visit_local(local, self, vt);
 }
 

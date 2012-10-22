@@ -1436,11 +1436,8 @@ fn print_decl(s: ps, decl: @ast::decl) {
             match loc.node.init {
               Some(init) => {
                 nbsp(s);
-                match init.op {
-                  ast::init_assign => word_space(s, ~"="),
-                  ast::init_move => word_space(s, ~"<-")
-                }
-                print_expr(s, init.expr);
+                word_space(s, ~"=");
+                print_expr(s, init);
               }
               _ => ()
             }

@@ -3974,7 +3974,7 @@ impl Resolver {
                 // Nothing to do.
             }
             Some(initializer) => {
-                self.resolve_expr(initializer.expr, visitor);
+                self.resolve_expr(initializer, visitor);
             }
         }
 

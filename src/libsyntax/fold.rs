@@ -611,14 +611,7 @@ fn noop_fold_local(l: local_, fld: ast_fold) -> local_ {
     return {is_mutbl: l.is_mutbl,
          ty: fld.fold_ty(l.ty),
          pat: fld.fold_pat(l.pat),
-         init:
-             match l.init {
-               option::None::<initializer> => l.init,
-               option::Some::<initializer>(init) => {
-                 option::Some::<initializer>({op: init.op,
-                                              expr: fld.fold_expr(init.expr)})
-               }
-             },
+         init: l.init.map(|e| fld.fold_expr(*e)),
          id: fld.new_id(l.id)};
 }
 

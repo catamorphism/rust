@@ -2100,9 +2100,9 @@ fn require_integral(fcx: @fn_ctxt, sp: span, t: ty::t) {
 }
 
 fn check_decl_initializer(fcx: @fn_ctxt, nid: ast::node_id,
-                          init: ast::initializer) -> bool {
-    let lty = ty::mk_var(fcx.ccx.tcx, lookup_local(fcx, init.expr.span, nid));
-    return check_expr_with(fcx, init.expr, lty);
+                          init: @ast::expr) -> bool {
+    let lty = ty::mk_var(fcx.ccx.tcx, lookup_local(fcx, init.span, nid));
+    return check_expr_with(fcx, init, lty);
 }
 
 fn check_decl_local(fcx: @fn_ctxt, local: @ast::local) -> bool {

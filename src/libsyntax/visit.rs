@@ -116,7 +116,7 @@ fn visit_local<E>(loc: @local, e: E, v: vt<E>) {
     v.visit_ty(loc.node.ty, e, v);
     match loc.node.init {
       None => (),
-      Some(i) => v.visit_expr(i.expr, e, v)
+      Some(ex) => v.visit_expr(ex, e, v)
     }
 }
 
