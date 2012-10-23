@@ -753,7 +753,7 @@ impl @fn_ctxt {
     fn with_region_lb<R>(lb: ast::node_id, f: fn() -> R) -> R {
         let old_region_lb = self.region_lb;
         self.region_lb = lb;
-        let v <- f();
+        let v = move f();
         self.region_lb = old_region_lb;
         move v
     }

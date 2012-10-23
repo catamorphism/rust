@@ -1099,9 +1099,9 @@ impl Liveness {
             // propagate_through_lvalue_components()
 
             // I count swaps as `used` cause it might be something like:
-            //    foo.bar <-> x
+            //    foo.bar = move x
             // and I am too lazy to distinguish this case from
-            //    y <-> x
+            //    y = move x
             // (where both x, y are unused) just for a warning.
             let succ = self.write_lvalue(r, succ, ACC_WRITE|ACC_READ|ACC_USE);
             let succ = self.write_lvalue(l, succ, ACC_WRITE|ACC_READ|ACC_USE);
@@ -1299,7 +1299,7 @@ impl Liveness {
 
         We model control flow like this:
 
-              (cond) <--+
+              (cond) = move-+
                 |       |
                 v       |
           +-- (expr)    |
@@ -1347,7 +1347,7 @@ impl Liveness {
         let bl = self.break_ln, cl = self.cont_ln;
         self.break_ln = break_ln;
         self.cont_ln = cont_ln;
-        let r <- f();
+        let r = move f();
         self.break_ln = bl;
         self.cont_ln = cl;
         move r

@@ -8,7 +8,7 @@ fn indent<R>(op: fn() -> R) -> R {
     // Use in conjunction with the log post-processor like `src/etc/indenter`
     // to make debug output more readable.
     debug!(">>");
-    let r <- op();
+    let r = move op();
     debug!("<< (Result = %?)", r);
     move r
 }

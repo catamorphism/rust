@@ -104,7 +104,7 @@ fn trans_while(bcx: block, cond: @ast::expr, body: ast::blk)
     //             |
     //          loop_bcx
     //             |
-    //         cond_bcx_in  <--------+
+    //         cond_bcx_in  = move-------+
     //             |                 |
     //         cond_bcx_out          |
     //           |      |            |
