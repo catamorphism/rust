@@ -2992,7 +2992,6 @@ fn expr_kind(tcx: ctxt,
         ast::expr_while(*) |
         ast::expr_loop(*) |
         ast::expr_assign(*) |
-        ast::expr_move(*) |
         ast::expr_swap(*) |
         ast::expr_assign_op(*) => {
             RvalueStmtExpr

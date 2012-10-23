@@ -603,10 +603,6 @@ fn check_loans_in_expr(expr: @ast::expr,
         self.check_assignment(at_swap, l);
         self.check_assignment(at_swap, r);
       }
-      ast::expr_move(dest, src) => {
-        self.check_assignment(at_straight_up, dest);
-        self.check_move_out(src);
-      }
       ast::expr_unary_move(src) => {
         self.check_move_out(src);
       }

@@ -537,7 +537,7 @@ fn visit_expr(expr: @expr, &&self: @IrMaps, vt: vt<@IrMaps>) {
       expr_loop_body(*) | expr_do_body(*) | expr_cast(*) |
       expr_unary(*) | expr_fail(*) |
       expr_break(_) | expr_again(_) | expr_lit(_) | expr_ret(*) |
-      expr_block(*) | expr_move(*) | expr_unary_move(*) | expr_assign(*) |
+      expr_block(*) | expr_unary_move(*) | expr_assign(*) |
       expr_swap(*) | expr_assign_op(*) | expr_mac(*) | expr_struct(*) |
       expr_repeat(*) => {
           visit::visit_expr(expr, self, vt);
@@ -1086,7 +1086,7 @@ impl Liveness {
             self.cont_ln
           }
 
-          expr_move(l, r) | expr_assign(l, r) => {
+          expr_assign(l, r) => {
             // see comment on lvalues in
             // propagate_through_lvalue_components()
             let succ = self.write_lvalue(l, succ, ACC_WRITE);
@@ -1425,13 +1425,6 @@ fn check_expr(expr: @expr, &&self: @Liveness, vt: vt<@Liveness>) {
       expr_assign(l, r) => {
         self.check_lvalue(l, vt);
         vt.visit_expr(r, self, vt);
-
-        visit::visit_expr(expr, self, vt);
-      }
-
-      expr_move(l, r) => {
-        self.check_lvalue(l, vt);
-        self.check_move_from_expr(r, vt);
 
         visit::visit_expr(expr, self, vt);
       }

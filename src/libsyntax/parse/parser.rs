@@ -36,7 +36,7 @@ use ast::{_mod, add, arg, arm, attribute,
              expr_call, expr_cast, expr_copy, expr_do_body, expr_fail,
              expr_field, expr_fn, expr_fn_block, expr_if, expr_index,
              expr_lit, expr_log, expr_loop, expr_loop_body, expr_mac,
-             expr_move, expr_path, expr_rec, expr_repeat, expr_ret, expr_swap,
+             expr_path, expr_rec, expr_repeat, expr_ret, expr_swap,
              expr_struct, expr_tup, expr_unary, expr_unary_move, expr_vec,
              expr_vstore, expr_while, extern_fn, field, fn_decl, foreign_item,
              foreign_item_const, foreign_item_fn, foreign_mod, ident,
@@ -1507,11 +1507,6 @@ impl Parser {
             self.get_id(); // see ast_util::op_expr_callee_id
             return self.mk_expr(lo, rhs.span.hi,
                                 expr_assign_op(aop, lhs, rhs));
-          }
-          token::LARROW => {
-            self.bump();
-            let rhs = self.parse_expr();
-            return self.mk_expr(lo, rhs.span.hi, expr_move(lhs, rhs));
           }
           token::DARROW => {
             self.bump();

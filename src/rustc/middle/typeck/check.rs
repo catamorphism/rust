@@ -1644,9 +1644,6 @@ fn check_expr_with_unifier(fcx: @fn_ctxt,
         bot = check_expr(fcx, a, expected);
         fcx.write_ty(id, fcx.expr_ty(a));
       }
-      ast::expr_move(lhs, rhs) => {
-        bot = check_assignment(fcx, expr.span, lhs, rhs, id);
-      }
       ast::expr_assign(lhs, rhs) => {
         bot = check_assignment(fcx, expr.span, lhs, rhs, id);
       }
