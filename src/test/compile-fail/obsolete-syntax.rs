@@ -56,4 +56,12 @@ fn obsolete_with() {
     //~^ ERROR obsolete syntax: with
 }
 
+fn obsolete_moves() {
+    let mut x = 0;
+    let y <- x;
+    //~^ ERROR obsolete syntax: initializer-by-move
+    y <- x; 
+    //~^ ERROR obsolete syntax: binary move
+}
+
 fn main() { }

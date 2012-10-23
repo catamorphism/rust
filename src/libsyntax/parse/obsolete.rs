@@ -23,7 +23,9 @@ pub enum ObsoleteSyntax {
     ObsoleteClassTraits,
     ObsoletePrivSection,
     ObsoleteModeInFnType,
-    ObsoleteByMutRefMode
+    ObsoleteByMutRefMode,
+    ObsoleteMoveInit,
+    ObsoleteBinaryMove
 }
 
 impl ObsoleteSyntax : cmp::Eq {
@@ -99,6 +101,14 @@ impl Parser : ObsoleteReporter {
                 "by-mutable-reference mode",
                 "Declare an argument of type &mut T instead"
             ),
+            ObsoleteMoveInit => (
+                "initializer-by-move",
+                "Write `let foo = move bar` instead"
+            ),
+            ObsoleteBinaryMove => (
+                "binary move",
+                "Write `foo = move bar` instead"
+            )
         };
 
         self.report(sp, kind, kind_str, desc);

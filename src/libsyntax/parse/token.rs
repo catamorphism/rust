@@ -132,7 +132,7 @@ fn to_str(in: @ident_interner, t: Token) -> ~str {
       COLON => ~":",
       MOD_SEP => ~"::",
       RARROW => ~"->",
-      LARROW => ~"= move",
+      LARROW => ~"<-",
       DARROW => ~"<->",
       FAT_ARROW => ~"=>",
       LPAREN => ~"(",

@@ -20,7 +20,8 @@ use obsolete::{
     ObsoleteLowerCaseKindBounds, ObsoleteLet,
     ObsoleteFieldTerminator, ObsoleteStructCtor,
     ObsoleteWith, ObsoleteClassMethod, ObsoleteClassTraits,
-    ObsoleteModeInFnType, ObsoleteByMutRefMode
+    ObsoleteModeInFnType, ObsoleteByMutRefMode,
+    ObsoleteMoveInit, ObsoleteBinaryMove,
 };
 use ast::{_mod, add, arg, arm, attribute,
              bind_by_ref, bind_by_implicit_ref, bind_by_value, bind_by_move,
@@ -1508,6 +1509,15 @@ impl Parser {
             return self.mk_expr(lo, rhs.span.hi,
                                 expr_assign_op(aop, lhs, rhs));
           }
+          token::LARROW => {
+              self.obsolete(copy self.span, ObsoleteBinaryMove);
+              // Bogus value (but it's an error)
+              self.bump(); // <-
+              self.bump(); // rhs
+              self.bump(); // ;
+              return self.mk_expr(lo, self.span.hi,
+                                  expr_break(None));
+          }
           token::DARROW => {
             self.bump();
             let rhs = self.parse_expr();
@@ -1782,7 +1792,12 @@ impl Parser {
             self.bump();
             return Some(self.parse_expr());
           }
-            // tjc: should do the OBSOLETE thingy
+          token::LARROW => {
+              self.obsolete(copy self.span, ObsoleteMoveInit);
+              self.bump();
+              self.bump();
+              return None;
+          }
           _ => {
             return None;
           }
