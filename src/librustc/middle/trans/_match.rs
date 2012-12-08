@@ -336,14 +336,15 @@ struct Match {
 fn match_to_str(bcx: block, m: &Match) -> ~str {
     if bcx.sess().verbose() {
         // for many programs, this just take too long to serialize
-        fmt!("%?", m.pats.map(|p| pat_to_str(*p, bcx.sess().intr())))
+        let pats_to_print = m.pats.map(|p| pat_to_str(*p, bcx.sess().intr()));
+        fmt!("%s", str::connect(pats_to_print, ", "))
     } else {
         fmt!("%u pats", m.pats.len())
     }
 }
 
 fn matches_to_str(bcx: block, m: &[@Match]) -> ~str {
-    fmt!("%?", m.map(|n| match_to_str(bcx, *n)))
+    fmt!("%s", str::connect(m.map(|n| match_to_str(bcx, *n)), ";"))
 }
 
 fn has_nested_bindings(m: &[@Match], col: uint) -> bool {
@@ -388,7 +389,8 @@ fn expand_nested_bindings(bcx: block, m: &[@Match/&r],
     }
 }
 
-type enter_pat = fn(@ast::pat) -> Option<~[@ast::pat]>;
+// bool arg: "Is this pattern guarded?"
+type enter_pat = fn(@ast::pat, bool) -> Option<~[@ast::pat]>;
 
 fn assert_is_binding_or_wild(bcx: block, p: @ast::pat) {
     if !pat_is_binding_or_wild(bcx.tcx().def_map, p) {
@@ -412,7 +414,7 @@ fn enter_match(bcx: block, dm: DefMap, m: &[@Match/&r],
 
     let mut result = ~[];
     for vec::each(m) |br| {
-        match e(br.pats[col]) {
+        match e(br.pats[col], br.data.arm.guard.is_some()) {
             Some(sub) => {
                 let pats =
                     vec::append(
@@ -453,12 +455,18 @@ fn enter_default(bcx: block, dm: DefMap, m: &[@Match/&r],
            bcx.val_str(val));
     let _indenter = indenter();
 
-    do enter_match(bcx, dm, m, col, val) |p| {
-        match p.node {
-          ast::pat_wild | ast::pat_rec(_, _) | ast::pat_tup(_) |
-          ast::pat_struct(*) => Some(~[]),
-          ast::pat_ident(_, _, None) if pat_is_binding(dm, p) => Some(~[]),
-          _ => None
+    do enter_match(bcx, dm, m, col, val) |p, guarded| {
+        if guarded {
+            None // a guarded pattern is never a default
+        }
+        else {
+            match p.node {
+                ast::pat_wild | ast::pat_rec(_, _) | ast::pat_tup(_) |
+                    ast::pat_struct(*) => Some(~[]),
+                ast::pat_ident(_, _, None) if pat_is_binding(dm, p) =>
+                    Some(~[]),
+                _ => None
+            }
         }
     }
 }
@@ -500,7 +508,7 @@ fn enter_opt(bcx: block, m: &[@Match/&r], opt: &Opt, col: uint,
 
     let tcx = bcx.tcx();
     let dummy = @ast::pat {id: 0, node: ast::pat_wild, span: dummy_sp()};
-    do enter_match(bcx, tcx.def_map, m, col, val) |p| {
+    do enter_match(bcx, tcx.def_map, m, col, val) |p, _| {
         match /*bad*/copy p.node {
             ast::pat_enum(_, subpats) => {
                 if opt_eq(tcx, &variant_opt(tcx, p.id), opt) {
@@ -601,7 +609,7 @@ fn enter_rec_or_struct(bcx: block, dm: DefMap, m: &[@Match/&r], col: uint,
     let _indenter = indenter();
 
     let dummy = @ast::pat {id: 0, node: ast::pat_wild, span: dummy_sp()};
-    do enter_match(bcx, dm, m, col, val) |p| {
+    do enter_match(bcx, dm, m, col, val) |p, _| {
         match /*bad*/copy p.node {
             ast::pat_rec(fpats, _) | ast::pat_struct(_, fpats, _) => {
                 let mut pats = ~[];
@@ -633,7 +641,7 @@ fn enter_tup(bcx: block, dm: DefMap, m: &[@Match/&r],
     let _indenter = indenter();
 
     let dummy = @ast::pat {id: 0, node: ast::pat_wild, span: dummy_sp()};
-    do enter_match(bcx, dm, m, col, val) |p| {
+    do enter_match(bcx, dm, m, col, val) |p, _| {
         match /*bad*/copy p.node {
             ast::pat_tup(elts) => {
                 Some(elts)
@@ -658,7 +666,7 @@ fn enter_tuple_struct(bcx: block, dm: DefMap, m: &[@Match/&r], col: uint,
     let _indenter = indenter();
 
     let dummy = @ast::pat {id: 0, node: ast::pat_wild, span: dummy_sp()};
-    do enter_match(bcx, dm, m, col, val) |p| {
+    do enter_match(bcx, dm, m, col, val) |p, _| {
         match /*bad*/copy p.node {
             ast::pat_enum(_, Some(elts)) => Some(elts),
             _ => {
@@ -681,7 +689,7 @@ fn enter_box(bcx: block, dm: DefMap, m: &[@Match/&r],
     let _indenter = indenter();
 
     let dummy = @ast::pat {id: 0, node: ast::pat_wild, span: dummy_sp()};
-    do enter_match(bcx, dm, m, col, val) |p| {
+    do enter_match(bcx, dm, m, col, val) |p, _| {
         match p.node {
             ast::pat_box(sub) => {
                 Some(~[sub])
@@ -706,7 +714,7 @@ fn enter_uniq(bcx: block, dm: DefMap, m: &[@Match/&r],
     let _indenter = indenter();
 
     let dummy = @ast::pat {id: 0, node: ast::pat_wild, span: dummy_sp()};
-    do enter_match(bcx, dm, m, col, val) |p| {
+    do enter_match(bcx, dm, m, col, val) |p, _| {
         match p.node {
             ast::pat_uniq(sub) => {
                 Some(~[sub])
@@ -731,7 +739,7 @@ fn enter_region(bcx: block, dm: DefMap, m: &[@Match/&r],
     let _indenter = indenter();
 
     let dummy = @ast::pat { id: 0, node: ast::pat_wild, span: dummy_sp() };
-    do enter_match(bcx, dm, m, col, val) |p| {
+    do enter_match(bcx, dm, m, col, val) |p, _| {
         match p.node {
             ast::pat_region(sub) => {
                 Some(~[sub])

@@ -15,11 +15,11 @@ enum meal { to_go(order), for_here(order) }
 
 fn foo(m: @meal, cond: bool) {
     match *m {
-      to_go(_) => { }
-      for_here(_) if cond => {}
-      for_here(hamburger) => {}
-      for_here(fries(_s)) => {}
-      for_here(shake) => {}
+        to_go(_) => { }
+        for_here(_) if cond => {}
+        for_here(hamburger) => {}
+        for_here(fries(_s)) => {}
+        for_here(shake) => {}
     }
 }
 
