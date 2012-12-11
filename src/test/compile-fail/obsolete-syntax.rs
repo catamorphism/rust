@@ -64,4 +64,9 @@ fn obsolete_moves() {
     //~^ ERROR obsolete syntax: binary move
 }
 
+fn obsolete_syntax_ext() {
+    awesome_macro#(1, 2, 3);
+    //~^ ERROR obsolete syntax: syntax extension with `#`
+}
+
 fn main() { }

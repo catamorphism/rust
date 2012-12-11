@@ -21,6 +21,7 @@ use obsolete::{
     ObsoleteFieldTerminator, ObsoleteStructCtor,
     ObsoleteWith, ObsoleteClassMethod, ObsoleteClassTraits,
     ObsoleteModeInFnType, ObsoleteMoveInit, ObsoleteBinaryMove,
+    ObsoleteSyntaxExtension
 };
 use ast::{_mod, add, arg, arm, attribute,
              bind_by_ref, bind_infer, bind_by_value, bind_by_move,
@@ -1027,6 +1028,7 @@ impl Parser {
             self.bump();
             return self.mk_mac_expr(lo, self.span.hi, mac_ellipsis);
         } else if self.token == token::POUND {
+            self.obsolete(copy self.span, ObsoleteSyntaxExtension);
             let ex_ext = self.parse_syntax_ext();
             hi = ex_ext.span.hi;
             ex = ex_ext.node;
@@ -3654,6 +3656,7 @@ impl Parser {
     }
 
     fn parse_item(+attrs: ~[attribute]) -> Option<@ast::item> {
+        debug!("In parse_item! %?", attrs.len());
         match self.parse_item_or_view_item(attrs, true, false, true) {
             iovi_none =>
                 None,

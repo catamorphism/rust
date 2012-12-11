@@ -34,7 +34,8 @@ pub enum ObsoleteSyntax {
     ObsoletePrivSection,
     ObsoleteModeInFnType,
     ObsoleteMoveInit,
-    ObsoleteBinaryMove
+    ObsoleteBinaryMove,
+    ObsoleteSyntaxExtension
 }
 
 impl ObsoleteSyntax : cmp::Eq {
@@ -108,6 +109,10 @@ impl Parser {
             ObsoleteBinaryMove => (
                 "binary move",
                 "Write `foo = move bar` instead"
+            ),
+            ObsoleteSyntaxExtension => (
+                "syntax extension with `#`",
+                "Syntax extension names now end with `!`"
             )
         };
 

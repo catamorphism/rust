@@ -1033,6 +1033,8 @@ fn decode_item_ast(par_doc: ebml::Doc) -> @ast::item {
 trait fake_ext_ctxt {
     fn cfg() -> ast::crate_cfg;
     fn parse_sess() -> parse::parse_sess;
+    fn ident_of(~str) -> ast::ident;
+    fn call_site() -> span;
 }
 
 #[cfg(test)]
@@ -1042,6 +1044,10 @@ type fake_session = parse::parse_sess;
 impl fake_session: fake_ext_ctxt {
     fn cfg() -> ast::crate_cfg { ~[] }
     fn parse_sess() -> parse::parse_sess { self }
+    fn ident_of(st: ~str) -> ast::ident {
+        self.parse_sess().interner.intern(@st)
+    }
+    fn call_site() -> span { ast_util::dummy_sp() }
 }
 
 #[cfg(test)]
@@ -1074,45 +1080,46 @@ fn roundtrip(in_item: @ast::item) {
 #[test]
 fn test_basic() {
     let ext_cx = mk_ctxt();
-    roundtrip(#ast[item]{
-        fn foo() {}
-    });
+    roundtrip(quote_item!(
+        {  fn foo() {} }
+    ).expect(~"test_basic failed"));
 }
 
+ignore! {
 #[test]
 fn test_smalltalk() {
     let ext_cx = mk_ctxt();
-    roundtrip(#ast[item]{
+    roundtrip(quote_item!({
         fn foo() -> int { 3 + 4 } // first smalltalk program ever executed.
-    });
+    }).expect(~"test_smalltalk failed"));
 }
 
 #[test]
 fn test_more() {
     let ext_cx = mk_ctxt();
-    roundtrip(#ast[item]{
+    roundtrip(quote_item!({
         fn foo(x: uint, y: uint) -> uint {
             let z = x + y;
             return z;
         }
-    });
+    }).expect(~"test_more failed"));
 }
 
 #[test]
 fn test_simplification() {
     let ext_cx = mk_ctxt();
-    let item_in = ast::ii_item(#ast[item] {
+    let item_in = ast::ii_item(quote_item!({
         fn new_int_alist<B: Copy>() -> alist<int, B> {
             fn eq_int(&&a: int, &&b: int) -> bool { a == b }
             return {eq_fn: eq_int, mut data: ~[]};
         }
-    });
+    }).expect(~"test_simplification failed"));
     let item_out = simplify_ast(item_in);
-    let item_exp = ast::ii_item(#ast[item] {
+    let item_exp = ast::ii_item(quote_item!({
         fn new_int_alist<B: Copy>() -> alist<int, B> {
             return {eq_fn: eq_int, mut data: ~[]};
         }
-    });
+    }).expect(~"test_simplification failed"));
     match (item_out, item_exp) {
       (ast::ii_item(item_out), ast::ii_item(item_exp)) => {
         assert pprust::item_to_str(item_out, ext_cx.parse_sess().interner)
@@ -1120,4 +1127,5 @@ fn test_simplification() {
       }
       _ => fail
     }
+}
 }
