@@ -1649,6 +1649,8 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
                     (Some(sig), cenv.purity, cenv.sigil, cenv.onceness)
                 }
                 _ => {
+                    // Error, isn't it?
+                    error_happened = true;
                     (None, ast::impure_fn, ast::BorrowedSigil, ast::Many)
                 }
             }
@@ -1957,14 +1959,9 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
                                            class_fields,
                                            fields,
                                            base_expr.is_none());
-
-// tjc: ....
-/*
-// Wrong: should be, if *any* of the field types contain errors...
         if ty::type_is_error(fcx.node_ty(id)) {
             struct_type = ty::mk_err(tcx);
         }
-*/
 
         // Check the base expression if necessary.
         match base_expr {

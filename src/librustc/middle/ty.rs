@@ -1496,6 +1496,13 @@ pub fn type_is_error(ty: t) -> bool {
         // (output type, in this case)
 }
 
+pub fn type_is_error(ty: t) -> bool {
+    (get(ty).flags & (has_ty_err as uint)) != 0
+ // ugh, why would this work? subcomponent gets unified
+        // with error... then it doesn't propagate up
+        // (output type, in this case)
+}
+
 pub fn type_is_ty_var(ty: t) -> bool {
     match get(ty).sty {
       ty_infer(TyVar(_)) => true,
