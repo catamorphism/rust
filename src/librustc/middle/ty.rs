@@ -309,7 +309,8 @@ enum tbox_flag {
     has_self = 2,
     needs_infer = 4,
     has_regions = 8,
-    has_ty_err = 16,
+    has_ty_err = 16, // Used internally only
+    has_ty_bot = 32, // Used internally only
 
     // a meta-flag: subst may be required if the type has parameters, a self
     // type, or references bound regions
@@ -354,9 +355,6 @@ pub pure fn type_needs_infer(t: t) -> bool {
 }
 pub pure fn type_has_regions(t: t) -> bool {
     tbox_has_flag(get(t), has_regions)
-}
-pub pure fn type_contains_err(t: t) -> bool {
-    tbox_has_flag(get(t), has_ty_err)
 }
 pub pure fn type_def_id(t: t) -> Option<ast::def_id> { get(t).o_def_id }
 pub pure fn type_id(t: t) -> uint { get(t).id }
@@ -861,7 +859,7 @@ fn mk_t(cx: ctxt, +st: sty) -> t { mk_t_with_id(cx, st, None) }
 
 // Interns a type/name combination, stores the resulting box in cx.interner,
 // and returns the box as cast to an unsafe ptr (see comments for t above).
-fn mk_t_with_id(cx: ctxt, +st: sty, o_def_id: Option<ast::def_id>) -> t {
+fn mk_t_with_id(cx: ctxt, +mut st: sty, o_def_id: Option<ast::def_id>) -> t {
     let key = intern_key { sty: to_unsafe_ptr(&st), o_def_id: o_def_id };
     match cx.interner.find(&key) {
       Some(t) => unsafe { return cast::reinterpret_cast(&t); },
@@ -920,6 +918,16 @@ fn mk_t_with_id(cx: ctxt, +st: sty, o_def_id: Option<ast::def_id>) -> t {
         for f.sig.inputs.each |a| { flags |= get(a.ty).flags; }
         flags |= get(f.sig.output).flags;
       }
+    }
+
+    // If any subcomponent is err, the result is err
+    if flags & (has_ty_err as uint) != 0 {
+        st = ty_err;
+    }
+    // Since Rust is strict, a type with _|_ as a
+    // component is just _|_
+    if flags & (has_ty_bot as uint) != 0 {
+        st = ty_bot;
     }
 
     let t = @t_box_ {
@@ -1466,6 +1474,8 @@ pub fn subst_substs(cx: ctxt, sup: &substs, sub: &substs) -> substs {
 pub fn type_is_nil(ty: t) -> bool { get(ty).sty == ty_nil }
 
 pub fn type_is_bot(ty: t) -> bool { get(ty).sty == ty_bot }
+
+pub fn type_is_error(ty: t) -> bool { get(ty).sty == ty_err }
 
 pub fn type_is_ty_var(ty: t) -> bool {
     match get(ty).sty {

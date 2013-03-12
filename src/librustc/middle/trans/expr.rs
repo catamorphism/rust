@@ -1403,8 +1403,8 @@ fn trans_addr_of(bcx: block, expr: @ast::expr,
     return immediate_rvalue_bcx(bcx, llval, expr_ty(bcx, expr));
 }
 
-// Important to get types for both lhs and rhs, because one might be _|_
-// and the other not.
+// Important to get types for both lhs and rhs, because rhs might be _|_
+// and lhs not
 fn trans_eager_binop(bcx: block,
                      binop_expr: @ast::expr,
                      binop_ty: ty::t,
@@ -1421,10 +1421,10 @@ fn trans_eager_binop(bcx: block,
     let rhs = rhs_datum.to_appropriate_llval(bcx);
     let rhs_t = rhs_datum.ty;
 
-    let intype = {
-        if ty::type_is_bot(lhs_t) { rhs_t }
-        else { lhs_t }
-    };
+    // The typechecker should guarantee that lhs_t is not bot
+    fail_unless!(!ty::type_is_bot(lhs_t));
+    let intype = lhs_t;
+
     let is_float = ty::type_is_fp(intype);
 
     let rhs = base::cast_shift_expr_rhs(bcx, op, lhs, rhs);
@@ -1567,6 +1567,11 @@ fn trans_binary(bcx: block,
         _ => {
             let mut bcx = bcx;
             let lhs_datum = unpack_datum!(bcx, trans_to_datum(bcx, lhs));
+            if ty::type_is_bot(expr_ty(bcx, lhs)) {
+                // In this case, the rhs is unreachable, so
+                // don't generate code for it
+                return DatumBlock{bcx: bcx, datum: lhs_datum};
+            }
             let rhs_datum = unpack_datum!(bcx, trans_to_datum(bcx, rhs));
             let binop_ty = expr_ty(bcx, binop_expr);
             trans_eager_binop(bcx, binop_expr, binop_ty, op,
