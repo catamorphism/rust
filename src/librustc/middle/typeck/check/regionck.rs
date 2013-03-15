@@ -150,7 +150,7 @@ pub fn visit_local(l: @ast::local, &&rcx: @mut Rcx, v: rvt) {
     // Note: we do this here rather than in visit_pat because we do
     // not wish to constrain the regions in *patterns* in quite the
     // same way.  `visit_node()` guarantees that the region encloses
-    // the node in question, which ultimately constraints the regions
+    // the node in question, which ultimately constrains the regions
     // in patterns to enclose the match expression as a whole.  But we
     // want them to enclose the *arm*.  However, regions in patterns
     // must either derive from the discriminant or a ref pattern: in

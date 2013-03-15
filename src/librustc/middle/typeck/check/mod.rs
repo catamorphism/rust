@@ -364,7 +364,8 @@ pub fn check_fn(ccx: @mut CrateCtxt,
     };
 
     gather_locals(fcx, decl, body, arg_tys, self_info);
-    check_block(fcx, body);
+    // tjc: ????
+    check_block_with_expected(fcx, body, Some(ret_ty));
 
     // We unify the tail expr's type with the
     // function result type, if there is a tail expr.
@@ -1633,6 +1634,7 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
         // block syntax lambdas; that is, lambdas without explicit
         // sigils.
         let expected_sty = unpack_expected(fcx, expected, |x| Some(copy *x));
+        let mut error_happened = false;
         let (expected_tys,
              expected_purity,
              expected_sigil,
@@ -1647,6 +1649,8 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
                     (Some(sig), cenv.purity, cenv.sigil, cenv.onceness)
                 }
                 _ => {
+                    // Error, isn't it?
+                    error_happened = true;
                     (None, ast::impure_fn, ast::BorrowedSigil, ast::Many)
                 }
             }
@@ -1665,23 +1669,42 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
             sigil, purity, expected_onceness,
             None, decl, expected_tys, expr.span);
 
-        let fty = ty::mk_closure(tcx, copy fn_ty);
+        let mut fty_sig;
+        let fty = if error_happened {
+            fty_sig = FnSig {
+                inputs: fn_ty.sig.inputs.map(|an_arg| {
+                    arg { mode: an_arg.mode,
+                         ty: ty::mk_err(tcx)
+                        }}),
+                output: ty::mk_err(tcx)
+            };
+            ty::mk_err(tcx)
+        }
+        else {
+            let fn_ty_copy = copy fn_ty;
+            fty_sig = copy fn_ty.sig;
+            ty::mk_closure(tcx, fn_ty_copy)
+        };
 
         debug!("check_expr_fn_with_unifier %s fty=%s",
                fcx.expr_to_str(expr),
                fcx.infcx().ty_to_str(fty));
 
         fcx.write_ty(expr.id, fty);
+        // what about error?
 
         let inherited_purity =
             ty::determine_inherited_purity(fcx.purity, purity,
-                                           fn_ty.sigil);
+                                           sigil);
 
         // We inherit the same self info as the enclosing scope,
         // since the function we're checking might capture `self`
         check_fn(fcx.ccx, fcx.self_info, inherited_purity,
-                 &fn_ty.sig, decl, body, fn_kind,
+                 &fty_sig, decl, body, fn_kind,
                  fcx.in_scope_regions, fcx.inh);
+
+        debug!("Hello, check_expr_fn... after check_fn, %s ty= %s",
+               fcx.expr_to_str(expr), fcx.infcx().ty_to_str(fty));
     }
 
 
@@ -1699,7 +1722,7 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
         let (base_t, derefs) = do_autoderef(fcx, expr.span, expr_t);
 
         match structure_of(fcx, expr.span, base_t) {
-           ty::ty_struct(base_id, ref substs) => {
+            ty::ty_struct(base_id, ref substs) => {
                 // This is just for fields -- the same code handles
                 // methods in both classes and traits
 
@@ -1845,6 +1868,8 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
                                        str::connect(missing_fields, ~", ")));
              }
         }
+// tjc: ok to take this out?
+/*
         // This is probably a bad idea. In the common case, we call write_ty
         // twice--tjc
         if !error_happened {
@@ -1852,6 +1877,7 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
                                 // tjc: bad copy
                                 class_id, copy *substitutions));
         }
+*/
     }
 
     fn check_struct_constructor(fcx: @mut FnCtxt,
@@ -1923,10 +1949,14 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
                                            class_fields,
                                            fields,
                                            base_expr.is_none());
+
+// tjc: ....
+/*
 // Wrong: should be, if *any* of the field types contain errors...
         if ty::type_is_error(fcx.node_ty(id)) {
             struct_type = ty::mk_err(tcx);
         }
+*/
 
         // Check the base expression if necessary.
         match base_expr {
@@ -2060,15 +2090,7 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
                             fty.sig.output,
                             None);
                         err_happened = true;
-
-                        // Kind of a hack: create a function type with
-                        // the result replaced with ty_err, to
-                        // suppress derived errors.
-                                         // Wait, why was that necessary?
-                       //let t = ty::replace_closure_return_type(
-                       //     tcx, ty::mk_closure(tcx, copy *fty),
-                       //     ty::mk_err(tcx));
-                        fcx.write_ty(expr.id, ty::mk_err(tcx));
+                        fcx.write_error(expr.id);
                         ty::mk_err(tcx)
                     }
                 }
@@ -2137,7 +2159,7 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
 
     let tcx = fcx.ccx.tcx;
     let id = expr.id;
-     match /*bad*/copy expr.node {
+    match /*bad*/copy expr.node {
       ast::expr_vstore(ev, vst) => {
         let typ = match /*bad*/copy ev.node {
           ast::expr_lit(@codemap::spanned { node: ast::lit_str(s), _ }) => {
@@ -2487,22 +2509,18 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
         _match::check_match(fcx, expr, discrim, (/*bad*/copy *arms));
         let discrim_ty = fcx.expr_ty(discrim);
         let arm_tys = arms.map(|a| fcx.node_ty(a.body.node.id));
-          debug!("Oh hey, a match");
         if ty::type_is_error(discrim_ty) ||
             arm_tys.any(|t| ty::type_is_error(*t)) {
-            debug!("err case");
             fcx.write_error(id);
         }
-          // keep in mind that `all` returns true in the empty vec case,
-          // which is what we want
+        // keep in mind that `all` returns true in the empty vec case,
+        // which is what we want
         else if ty::type_is_bot(discrim_ty) ||
             arm_tys.all(|t| ty::type_is_bot(*t)) {
             fcx.write_bot(id);
         }
         else {
-            // Hacky -- find the first non-_|_ arm.
-            // Really it should be an LUB, but with our
-            // subtyping structure, this will do.
+            // Find the first non-_|_ arm.
             // We know there's at least one because we already checked
             // for n=0 as well as all arms being _|_ in the previous
             // `if`.
@@ -2555,7 +2573,6 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
         fcx.write_ty(expr.id, fcx.node_ty(b.id));
       }
       ast::expr_block(ref b) => {
-        // If this is an unchecked block, turn off purity-checking
         check_block_with_expected(fcx, b, expected);
         fcx.write_ty(id, fcx.node_ty(b.node.id));
       }
@@ -2807,7 +2824,7 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
        }
     }
 
-    debug!("type of expr %s is...",
+    debug!("type of expr(%d) %s is...", expr.id,
            syntax::print::pprust::expr_to_str(expr, tcx.sess.intr()));
     debug!("... %s, expected is %s",
            ppaux::ty_to_str(tcx, fcx.expr_ty(expr)),
@@ -2890,12 +2907,7 @@ pub fn check_stmt(fcx: @mut FnCtxt, stmt: @ast::stmt)  {
         // Check with expected type of ()
         check_expr_has_type(fcx, expr, ty::mk_nil(fcx.ccx.tcx));
         let expr_ty = fcx.expr_ty(expr);
-        let expr_ty_is_bot = ty::type_is_bot(expr_ty);
-        // ugly hack
-        if expr_ty_is_bot {
-            fcx.write_bot(expr.id);
-        }
-        saw_bot = saw_bot || expr_ty_is_bot;
+        saw_bot = saw_bot || ty::type_is_bot(expr_ty);
         saw_err = saw_err || ty::type_is_error(expr_ty);
       }
       ast::stmt_semi(expr, id) => {
@@ -2919,7 +2931,8 @@ pub fn check_stmt(fcx: @mut FnCtxt, stmt: @ast::stmt)  {
 }
 
 pub fn check_block_no_value(fcx: @mut FnCtxt, blk: &ast::blk)  {
-    check_block(fcx, blk);
+    // ???
+    check_block_with_expected(fcx, blk, Some(ty::mk_nil(fcx.ccx.tcx)));
     let blkty = fcx.node_ty(blk.node.id);
     if ty::type_is_error(blkty) {
         fcx.write_error(blk.node.id);
@@ -2949,7 +2962,6 @@ pub fn check_block_with_expected(fcx0: @mut FnCtxt,
         let mut last_was_bot = false;
         let mut any_bot = false;
         let mut any_err = false;
-        debug!("check_block_with_expected, node id = %?", blk.node.id);
         for blk.node.stmts.each |s| {
             check_stmt(fcx, *s);
             let s_ty = fcx.node_ty(ast_util::stmt_id(**s));
@@ -2977,7 +2989,7 @@ pub fn check_block_with_expected(fcx0: @mut FnCtxt,
             else if any_bot {
                 fcx.write_bot(blk.node.id);
             }
-            else {
+            else  {
                 fcx.write_nil(blk.node.id);
             },
           Some(e) => {
@@ -2985,18 +2997,22 @@ pub fn check_block_with_expected(fcx0: @mut FnCtxt,
                 fcx.ccx.tcx.sess.span_warn(e.span, ~"unreachable expression");
             }
             check_expr_with_opt_hint(fcx, e, expected);
-            let ety = fcx.expr_ty(e);
-            fcx.write_ty(blk.node.id, ety);
+          //  debug!("Some case! ety = %s e ID = %? block ID = %?",
+          //         ppaux::ty_to_str(fcx.tcx(), fcx.expr_ty(e)),
+          //         e.id, blk.node.id);
+              let ety = fcx.expr_ty(e);
+              debug!("ID = %? block ID = %? ety = %?", e.id, blk.node.id,
+                     ppaux::ty_to_str(fcx.tcx(), ety));
+              fcx.write_ty(blk.node.id, ety);
+              if any_err {
+                  fcx.write_error(blk.node.id);
+              }
+              else if any_bot {
+                  fcx.write_bot(blk.node.id);
+              }
           }
-        }
-        // redundant?
-        if any_err {
-            fcx.write_error(blk.node.id);
-        }
-        else if any_bot {
-            fcx.write_bot(blk.node.id);
-        }
-    };
+        };
+    }
 }
 
 pub fn check_const(ccx: @mut CrateCtxt,

@@ -57,6 +57,7 @@ use core::prelude::*;
 use middle::ty::{arg, field, substs};
 use middle::ty::{ty_param_substs_and_ty};
 use middle::ty;
+use util::ppaux::ty_to_str;
 use middle::typeck::rscope::{in_binding_rscope};
 use middle::typeck::rscope::{region_scope, type_rscope, RegionError};
 use middle::typeck::{CrateCtxt, write_substs_to_tcx, write_ty_to_tcx};
@@ -563,6 +564,10 @@ pub fn ty_of_closure<AC:AstConv,RS:region_scope + Copy + Durable>(
         ast::ty_infer => self.ty_infer(decl.output.span),
         _ => ast_ty_to_ty(self, &rb, decl.output)
     };
+
+    debug!("========== expected_ty = %?, output_ty = %s",
+           expected_tys,
+           ty_to_str(self.tcx(), output_ty));
 
     ty::ClosureTy {
         purity: purity,

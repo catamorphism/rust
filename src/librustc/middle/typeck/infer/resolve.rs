@@ -107,9 +107,9 @@ pub impl ResolveState {
     fn resolve_type_chk(&mut self, typ: ty::t) -> fres<ty::t> {
         self.err = None;
 
-        debug!("Resolving %s (modes=%x)",
+        debug!("Resolving %s (modes=%x) contains_errors=%?",
                ty_to_str(self.infcx.tcx, typ),
-               self.modes);
+               self.modes, ty::type_is_error(typ));
 
         // n.b. This is a hokey mess because the current fold doesn't
         // allow us to pass back errors in any useful way.
@@ -119,9 +119,10 @@ pub impl ResolveState {
         fail_unless!(vec::is_empty(self.v_seen));
         match self.err {
           None => {
-            debug!("Resolved to %s + %s (modes=%x)",
+            debug!("Resolved to %s => %s (modes=%x), [%?][%?]",
+                   ty_to_str(self.infcx.tcx, typ),
                    ty_to_str(self.infcx.tcx, rty),
-                   ty_to_str(self.infcx.tcx, rty),
+                   ty::get(typ).flags, ty::get(rty).flags,
                    self.modes);
             return Ok(rty);
           }
@@ -174,6 +175,9 @@ pub impl ResolveState {
                         |t| self.resolve_type(t),
                         |t| self.resolve_type(t));
                     self.type_depth -= 1;
+                    debug!("~~~resolve_type: result of resolving %s is \
+                           %s", typ.inf_str(self.infcx),
+                           result.inf_str(self.infcx));
                     result
                 }
             }

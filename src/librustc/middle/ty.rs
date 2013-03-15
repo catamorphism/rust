@@ -309,8 +309,8 @@ enum tbox_flag {
     has_self = 2,
     needs_infer = 4,
     has_regions = 8,
-    has_ty_err = 16, // Used internally only
-    has_ty_bot = 32, // Used internally only
+    has_ty_err = 16,
+    has_ty_bot = 32,
 
     // a meta-flag: subst may be required if the type has parameters, a self
     // type, or references bound regions
@@ -889,9 +889,10 @@ fn mk_t_with_id(cx: ctxt, +mut st: sty, o_def_id: Option<ast::def_id>) -> t {
         flags |= rflags(r);
         flags |= get(mt.ty).flags;
       }
-      &ty_nil | &ty_bot | &ty_bool | &ty_int(_) | &ty_float(_) | &ty_uint(_) |
+      &ty_nil | &ty_bool | &ty_int(_) | &ty_float(_) | &ty_uint(_) |
       &ty_estr(_) | &ty_type | &ty_opaque_closure_ptr(_) |
       &ty_opaque_box => (),
+      &ty_bot => flags |= has_ty_bot as uint,
       &ty_err => flags |= has_ty_err as uint,
       &ty_param(_) => flags |= has_params as uint,
       &ty_infer(_) => flags |= needs_infer as uint,
@@ -911,12 +912,16 @@ fn mk_t_with_id(cx: ctxt, +mut st: sty, o_def_id: Option<ast::def_id>) -> t {
       &ty_tup(ref ts) => for ts.each |tt| { flags |= get(*tt).flags; },
       &ty_bare_fn(ref f) => {
         for f.sig.inputs.each |a| { flags |= get(a.ty).flags; }
-        flags |= get(f.sig.output).flags;
+         flags |= get(f.sig.output).flags;
+         // T -> _|_ is *not* _|_ !
+         flags &= !(has_ty_bot as uint);
       }
       &ty_closure(ref f) => {
         flags |= rflags(f.region);
         for f.sig.inputs.each |a| { flags |= get(a.ty).flags; }
         flags |= get(f.sig.output).flags;
+        // T -> _|_ is *not* _|_ !
+        flags &= !(has_ty_bot as uint);
       }
     }
 
@@ -929,6 +934,8 @@ fn mk_t_with_id(cx: ctxt, +mut st: sty, o_def_id: Option<ast::def_id>) -> t {
     if flags & (has_ty_bot as uint) != 0 {
         st = ty_bot;
     }
+    // n.b. type_is_error and type_is_bot still check flags,
+    // since a ty var may be unified with err or bot later on...
 
     let t = @t_box_ {
         sty: st,
@@ -1335,6 +1342,11 @@ pub fn fold_regions_and_ty(
                                        ..copy *f})
       }
       ty_closure(ref f) => {
+          debug!("Folding a closure type! Its region: %?", f.region);
+          debug!("The type itself: %?", tb.sty);
+          debug!("Its sig: %?", f.sig);
+          debug!("The result of doing fold_sig: %s",
+                 ty_to_str(cx, fold_sig(&f.sig, fldfnt).output));
           ty::mk_closure(cx, ClosureTy {region: fldr(f.region),
                                         sig: fold_sig(&f.sig, fldfnt),
                                         ..copy *f})
@@ -1473,9 +1485,16 @@ pub fn subst_substs(cx: ctxt, sup: &substs, sub: &substs) -> substs {
 
 pub fn type_is_nil(ty: t) -> bool { get(ty).sty == ty_nil }
 
-pub fn type_is_bot(ty: t) -> bool { get(ty).sty == ty_bot }
+pub fn type_is_bot(ty: t) -> bool {
+    (get(ty).flags & (has_ty_bot as uint)) != 0
+}
 
-pub fn type_is_error(ty: t) -> bool { get(ty).sty == ty_err }
+pub fn type_is_error(ty: t) -> bool {
+    (get(ty).flags & (has_ty_err as uint)) != 0
+ // ugh, why would this work? subcomponent gets unified
+        // with error... then it doesn't propagate up
+        // (output type, in this case)
+}
 
 pub fn type_is_ty_var(ty: t) -> bool {
     match get(ty).sty {
