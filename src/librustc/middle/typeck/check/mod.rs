@@ -1649,8 +1649,6 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
                     (Some(sig), cenv.purity, cenv.sigil, cenv.onceness)
                 }
                 _ => {
-                    // Error, isn't it?
-                    error_happened = true;
                     (None, ast::impure_fn, ast::BorrowedSigil, ast::Many)
                 }
             }
@@ -1705,6 +1703,13 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
 
         debug!("Hello, check_expr_fn... after check_fn, %s ty= %s",
                fcx.expr_to_str(expr), fcx.infcx().ty_to_str(fty));
+
+        // This is needed in the case where fty resolves to error
+        // I don't like it, but in the case where a fn type ends up
+        // resolving to error, we get weird unbound region errors
+        // otherwise...
+        fcx.write_ty(expr.id,
+                     fcx.infcx().resolve_type_vars_if_possible(fty));
     }
 
 
@@ -1843,7 +1848,10 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
                     expected_field_type);
         }
 
-        fcx.write_error(node_id);
+        if error_happened {
+            fcx.write_error(node_id);
+        }
+
         if check_completeness && !error_happened {
             // Make sure the programmer specified all the fields.
             fail_unless!(fields_found <= field_types.len());
