@@ -2807,6 +2807,7 @@ pub fn check_expr_with_unifier(fcx: @mut FnCtxt,
               fcx.write_ty(id, idx_t);
           }
           else {
+              let (base_t, derefs) = do_autoderef(fcx, expr.span, raw_base_t);
               let base_sty = structure_of(fcx, expr.span, base_t);
               match ty::index_sty(tcx, &base_sty) {
                   Some(mt) => {
