@@ -139,6 +139,73 @@ pub fn uncompress(src: &[u8]) -> Option<~[u8]> {
 For reference, the examples used here are also available as an [library on
 GitHub](https://github.com/thestinger/rust-snappy).
 
+# Destructors
+
+Foreign libraries often hand off ownership of resources to the calling code,
+which should be wrapped in a destructor to provide safety and guarantee their
+release.
+
+A type with the same functionality as owned boxes can be implemented by
+wrapping `malloc` and `free`:
+
+~~~~
+use core::libc::{c_void, size_t, malloc, free};
+use core::unstable::intrinsics;
+use core::util;
+
+// a wrapper around the handle returned by the foreign code
+pub struct Unique<T> {
+    priv ptr: *mut T
+}
+
+pub impl<T: Owned> Unique<T> {
+    fn new(value: T) -> Unique<T> {
+        unsafe {
+            let ptr = malloc(core::sys::size_of::<T>() as size_t) as *mut T;
+            assert!(!ptr::is_null(ptr));
+            // `*ptr` is uninitialized, and `*ptr = value` would attempt to destroy it
+            intrinsics::move_val_init(&mut *ptr, value);
+            Unique{ptr: ptr}
+        }
+    }
+
+    // the 'r lifetime results in the same semantics as `&*x` with ~T
+    fn borrow<'r>(&'r self) -> &'r T {
+        unsafe { cast::copy_lifetime(self, &*self.ptr) }
+    }
+
+    // the 'r lifetime results in the same semantics as `&mut *x` with ~T
+    fn borrow_mut<'r>(&'r mut self) -> &'r mut T {
+        unsafe { cast::copy_mut_lifetime(self, &mut *self.ptr) }
+    }
+}
+
+#[unsafe_destructor]
+impl<T: Owned> Drop for Unique<T> {
+    fn finalize(&self) {
+        unsafe {
+            let mut x = intrinsics::init(); // dummy value to swap in
+            // moving the object out is needed to call the destructor
+            util::replace_ptr(self.ptr, x);
+            free(self.ptr as *c_void)
+        }
+    }
+}
+
+// A comparison between the built-in ~ and this reimplementation
+fn main() {
+    {
+        let mut x = ~5;
+        *x = 10;
+    } // `x` is freed here
+
+    {
+        let mut y = Unique::new(5);
+        *y.borrow_mut() = 10;
+    } // `y` is freed here
+}
+~~~~
+
 # Linking
 
 In addition to the `#[link_args]` attribute for explicitly passing arguments to the linker, an

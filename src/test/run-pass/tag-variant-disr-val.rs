@@ -38,7 +38,7 @@ pub fn main() {
 }
 
 fn test_color(color: color, val: int, name: ~str) {
-    //assert!(unsafe::reinterpret_cast(color) == val);
+    //assert!(unsafe::transmute(color) == val);
     assert!(color as int == val);
     assert!(color as float == val as float);
     assert!(get_color_alt(color) == name);
@@ -69,5 +69,3 @@ fn get_color_if(color: color) -> ~str {
     else if color == orange {~"orange"}
     else {~"unknown"}
 }
-
-

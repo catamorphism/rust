@@ -18,12 +18,6 @@ use ext::build::{mk_base_vec_e, mk_uint, mk_u8, mk_base_str};
 use parse;
 use print::pprust;
 
-use core::io;
-use core::prelude::*;
-use core::result;
-use core::str;
-use core::vec;
-
 // These macros all relate to the file system; they either return
 // the column/row/filename of the expression, or they include
 // a given file into the current one.
@@ -156,13 +150,3 @@ fn res_rel_file(cx: @ext_ctxt, sp: codemap::span, arg: &Path) -> Path {
         copy *arg
     }
 }
-
-//
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
-//

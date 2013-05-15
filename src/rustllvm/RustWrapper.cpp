@@ -15,6 +15,8 @@
 //
 //===----------------------------------------------------------------------===
 
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/Linker.h"
 #include "llvm/PassManager.h"
 #include "llvm/IR/InlineAsm.h"
@@ -118,18 +120,18 @@ void LLVMRustInitializeTargets() {
   LLVMInitializeX86TargetMC();
   LLVMInitializeX86AsmPrinter();
   LLVMInitializeX86AsmParser();
-	
+
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetMC();
   LLVMInitializeARMAsmPrinter();
-  LLVMInitializeARMAsmParser();	
+  LLVMInitializeARMAsmParser();
 
   LLVMInitializeMipsTargetInfo();
   LLVMInitializeMipsTarget();
   LLVMInitializeMipsTargetMC();
   LLVMInitializeMipsAsmPrinter();
-  LLVMInitializeMipsAsmParser();	
+  LLVMInitializeMipsAsmParser();
 }
 
 // Custom memory manager for MCJITting. It needs special features
@@ -152,7 +154,9 @@ public:
                                        unsigned SectionID);
 
   virtual uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment,
-                                       unsigned SectionID);
+                                       unsigned SectionID, bool isReadOnly);
+
+  virtual bool applyPermissions(std::string *Str);
 
   virtual void *getPointerToNamedFunction(const std::string &Name,
                                           bool AbortOnFailure = true);
@@ -218,12 +222,6 @@ public:
   virtual void deallocateExceptionTable(void *ET) {
     llvm_unreachable("Unimplemented call");
   }
-  virtual uint8_t* allocateDataSection(uintptr_t, unsigned int, unsigned int, bool) {
-    llvm_unreachable("Unimplemented call");
-  }
-  virtual bool applyPermissions(std::string*) {
-    llvm_unreachable("Unimplemented call");
-  }
 };
 
 bool RustMCJITMemoryManager::loadCrate(const char* file, std::string* err) {
@@ -240,8 +238,9 @@ bool RustMCJITMemoryManager::loadCrate(const char* file, std::string* err) {
 }
 
 uint8_t *RustMCJITMemoryManager::allocateDataSection(uintptr_t Size,
-                                                    unsigned Alignment,
-                                                    unsigned SectionID) {
+                                                     unsigned Alignment,
+                                                     unsigned SectionID,
+                                                     bool isReadOnly) {
   if (!Alignment)
     Alignment = 16;
   uint8_t *Addr = (uint8_t*)calloc((Size + Alignment - 1)/Alignment, Alignment);
@@ -249,9 +248,14 @@ uint8_t *RustMCJITMemoryManager::allocateDataSection(uintptr_t Size,
   return Addr;
 }
 
+bool RustMCJITMemoryManager::applyPermissions(std::string *Str) {
+    // Empty.
+    return true;
+}
+
 uint8_t *RustMCJITMemoryManager::allocateCodeSection(uintptr_t Size,
-                                                    unsigned Alignment,
-                                                    unsigned SectionID) {
+                                                     unsigned Alignment,
+                                                     unsigned SectionID) {
   if (!Alignment)
     Alignment = 16;
   unsigned NeedAllocate = Alignment * ((Size + Alignment - 1)/Alignment + 1);
@@ -430,10 +434,11 @@ extern "C" bool
 LLVMRustWriteOutputFile(LLVMPassManagerRef PMR,
                         LLVMModuleRef M,
                         const char *triple,
+                        const char *feature,
                         const char *path,
                         TargetMachine::CodeGenFileType FileType,
                         CodeGenOpt::Level OptLevel,
-			bool EnableSegmentedStacks) {
+      bool EnableSegmentedStacks) {
 
   LLVMRustInitializeTargets();
 
@@ -444,25 +449,26 @@ LLVMRustWriteOutputFile(LLVMPassManagerRef PMR,
   if (!EnableARMEHABI) {
     int argc = 3;
     const char* argv[] = {"rustc", "-arm-enable-ehabi",
-			  "-arm-enable-ehabi-descriptors"};
+        "-arm-enable-ehabi-descriptors"};
     cl::ParseCommandLineOptions(argc, argv);
   }
 
   TargetOptions Options;
   Options.NoFramePointerElim = true;
   Options.EnableSegmentedStacks = EnableSegmentedStacks;
+  Options.FixedStackSegmentSize = 2 * 1024 * 1024;  // XXX: This is too big.
 
   PassManager *PM = unwrap<PassManager>(PMR);
 
   std::string Err;
   std::string Trip(Triple::normalize(triple));
-  std::string FeaturesStr;
+  std::string FeaturesStr(feature);
   std::string CPUStr("generic");
   const Target *TheTarget = TargetRegistry::lookupTarget(Trip, Err);
   TargetMachine *Target =
     TheTarget->createTargetMachine(Trip, CPUStr, FeaturesStr,
-				   Options, Reloc::PIC_,
-				   CodeModel::Default, OptLevel);
+           Options, Reloc::PIC_,
+           CodeModel::Default, OptLevel);
   Target->addAnalysisPasses(*PM);
 
   bool NoVerify = false;
@@ -484,13 +490,12 @@ LLVMRustWriteOutputFile(LLVMPassManagerRef PMR,
 }
 
 extern "C" LLVMModuleRef LLVMRustParseAssemblyFile(const char *Filename) {
-
   SMDiagnostic d;
   Module *m = ParseAssemblyFile(Filename, d, getGlobalContext());
   if (m) {
     return wrap(m);
   } else {
-    LLVMRustError = d.getMessage().data();
+    LLVMRustError = d.getMessage().str().c_str();
     return NULL;
   }
 }
@@ -506,10 +511,10 @@ extern "C" LLVMValueRef LLVMRustConstSmallInt(LLVMTypeRef IntTy, unsigned N,
   return LLVMConstInt(IntTy, (unsigned long long)N, SignExtend);
 }
 
-extern "C" LLVMValueRef LLVMRustConstInt(LLVMTypeRef IntTy, 
-					 unsigned N_hi,
-					 unsigned N_lo,
-					 LLVMBool SignExtend) {
+extern "C" LLVMValueRef LLVMRustConstInt(LLVMTypeRef IntTy,
+           unsigned N_hi,
+           unsigned N_lo,
+           LLVMBool SignExtend) {
   unsigned long long N = N_hi;
   N <<= 32;
   N |= N_lo;

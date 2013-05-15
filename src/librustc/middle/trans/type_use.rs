@@ -27,8 +27,6 @@
 // much information, but have the disadvantage of being very
 // invasive.)
 
-use core::prelude::*;
-
 use middle::freevars;
 use middle::trans::common::*;
 use middle::trans::inline;
@@ -47,9 +45,9 @@ use syntax::ast_util;
 use syntax::visit;
 
 pub type type_uses = uint; // Bitmask
-pub static use_repr: uint = 1u;   /* Dependency on size/alignment/mode and
+pub static use_repr: uint = 1;   /* Dependency on size/alignment/mode and
                                      take/drop glue */
-pub static use_tydesc: uint = 2u; /* Takes the tydesc, or compares */
+pub static use_tydesc: uint = 2; /* Takes the tydesc, or compares */
 
 pub struct Context {
     ccx: @CrateContext,
@@ -57,9 +55,9 @@ pub struct Context {
 }
 
 pub fn type_uses_for(ccx: @CrateContext, fn_id: def_id, n_tps: uint)
-    -> ~[type_uses] {
+    -> @~[type_uses] {
     match ccx.type_use_cache.find(&fn_id) {
-      Some(uses) => return /*bad*/ copy *uses,
+      Some(uses) => return *uses,
       None => ()
     }
 
@@ -70,30 +68,26 @@ pub fn type_uses_for(ccx: @CrateContext, fn_id: def_id, n_tps: uint)
     };
 
     // Conservatively assume full use for recursive loops
-    ccx.type_use_cache.insert(fn_id, vec::from_elem(n_tps, 3u));
+    ccx.type_use_cache.insert(fn_id, @vec::from_elem(n_tps, 3u));
 
     let cx = Context {
         ccx: ccx,
-        uses: @mut vec::from_elem(n_tps, 0u)
+        uses: @mut vec::from_elem(n_tps, 0)
     };
     match ty::get(ty::lookup_item_type(cx.ccx.tcx, fn_id).ty).sty {
         ty::ty_bare_fn(ty::BareFnTy {sig: ref sig, _}) |
         ty::ty_closure(ty::ClosureTy {sig: ref sig, _}) => {
-            for vec::each(sig.inputs) |arg| {
-                match ty::resolved_mode(ccx.tcx, arg.mode) {
-                    by_copy => {
-                        type_needs(cx, use_repr, arg.ty);
-                    }
-                    by_ref => {}
-                }
+            for sig.inputs.each |arg| {
+                type_needs(cx, use_repr, arg.ty);
             }
         }
         _ => ()
     }
 
     if fn_id_loc.crate != local_crate {
-        let uses = copy *cx.uses;
-        ccx.type_use_cache.insert(fn_id, copy uses);
+        let Context { uses: @uses, _ } = cx;
+        let uses = @uses; // mutability
+        ccx.type_use_cache.insert(fn_id, uses);
         return uses;
     }
     let map_node = match ccx.tcx.items.find(&fn_id_loc.node) {
@@ -123,9 +117,9 @@ pub fn type_uses_for(ccx: @CrateContext, fn_id: def_id, n_tps: uint)
                                  _) => {
         if abi.is_intrinsic() {
             let flags = match *cx.ccx.sess.str_of(i.ident) {
-                ~"size_of"  | ~"pref_align_of"    | ~"min_align_of" |
-                ~"init"     | ~"reinterpret_cast" |
-                ~"move_val" | ~"move_val_init" => use_repr,
+                ~"size_of"  | ~"pref_align_of" | ~"min_align_of" |
+                ~"uninit"   | ~"init" | ~"transmute" | ~"move_val" |
+                ~"move_val_init" => use_repr,
 
                 ~"get_tydesc" | ~"needs_drop" => use_tydesc,
 
@@ -136,8 +130,8 @@ pub fn type_uses_for(ccx: @CrateContext, fn_id: def_id, n_tps: uint)
                 ~"atomic_xsub_acq" | ~"atomic_xchg_rel" |
                 ~"atomic_xadd_rel" | ~"atomic_xsub_rel" => 0,
 
-                ~"visit_tydesc"  | ~"forget" | ~"addr_of" |
-                ~"frame_address" | ~"morestack_addr" => 0,
+                ~"visit_tydesc"  | ~"forget" | ~"frame_address" |
+                ~"morestack_addr" => 0,
 
                 ~"memmove32" | ~"memmove64" => 0,
 
@@ -163,9 +157,6 @@ pub fn type_uses_for(ccx: @CrateContext, fn_id: def_id, n_tps: uint)
             for uint::range(0u, n_tps) |n| { cx.uses[n] |= flags;}
         }
       }
-      ast_map::node_dtor(_, ref dtor, _, _) => {
-        handle_body(cx, &dtor.node.body);
-      }
       ast_map::node_struct_ctor(*) => {
         // Similarly to node_variant, this monomorphized function just uses
         // the representations of all of its type parameters.
@@ -179,9 +170,9 @@ pub fn type_uses_for(ccx: @CrateContext, fn_id: def_id, n_tps: uint)
                                 ccx.tcx.sess.parse_sess.interner)));
       }
     }
-    // XXX: Bad copies, use @vec instead?
-    let uses = copy *cx.uses;
-    ccx.type_use_cache.insert(fn_id, copy uses);
+    let Context { uses: @uses, _ } = cx;
+    let uses = @uses; // mutability
+    ccx.type_use_cache.insert(fn_id, uses);
     uses
 }
 
@@ -216,13 +207,13 @@ pub fn type_needs_inner(cx: Context,
                 ty::ty_bare_fn(*) |
                 ty::ty_ptr(_) |
                 ty::ty_rptr(_, _) |
-                ty::ty_trait(_, _, _) => false,
+                ty::ty_trait(_, _, _, _) => false,
 
               ty::ty_enum(did, ref substs) => {
                 if list::find(enums_seen, |id| *id == did).is_none() {
                     let seen = @Cons(did, enums_seen);
                     for vec::each(*ty::enum_variants(cx.ccx.tcx, did)) |v| {
-                        for vec::each(v.args) |aty| {
+                        for v.args.each |aty| {
                             let t = ty::subst(cx.ccx.tcx, &(*substs), *aty);
                             type_needs_inner(cx, use_, t, seen);
                         }
@@ -245,18 +236,11 @@ pub fn node_type_needs(cx: Context, use_: uint, id: node_id) {
 }
 
 pub fn mark_for_method_call(cx: Context, e_id: node_id, callee_id: node_id) {
+    let mut opt_static_did = None;
     for cx.ccx.maps.method_map.find(&e_id).each |mth| {
         match mth.origin {
           typeck::method_static(did) => {
-            for cx.ccx.tcx.node_type_substs.find(&callee_id).each |ts| {
-                // FIXME(#5562): removing this copy causes a segfault
-                //               before stage2
-                let ts = /*bad*/ copy **ts;
-                let type_uses = type_uses_for(cx.ccx, did, ts.len());
-                for vec::each2(type_uses, ts) |uses, subst| {
-                    type_needs(cx, *uses, *subst)
-                }
-            }
+              opt_static_did = Some(did);
           }
           typeck::method_param(typeck::method_param {
               param_num: param,
@@ -266,6 +250,19 @@ pub fn mark_for_method_call(cx: Context, e_id: node_id, callee_id: node_id) {
           }
           typeck::method_trait(*) | typeck::method_self(*)
               | typeck::method_super(*) => (),
+        }
+    }
+
+    // Note: we do not execute this code from within the each() call
+    // above because the recursive call to `type_needs` can trigger
+    // inlining and hence can cause `method_map` and
+    // `node_type_substs` to be modified.
+    for opt_static_did.each |&did| {
+        for cx.ccx.tcx.node_type_substs.find_copy(&callee_id).each |ts| {
+            let type_uses = type_uses_for(cx.ccx, did, ts.len());
+            for vec::each2(*type_uses, *ts) |uses, subst| {
+                type_needs(cx, *uses, *subst)
+            }
         }
     }
 }
@@ -297,12 +294,11 @@ pub fn mark_for_expr(cx: Context, e: @expr) {
         }
       }
       expr_path(_) => {
-        for cx.ccx.tcx.node_type_substs.find(&e.id).each |ts| {
-            // FIXME(#5562): removing this copy causes a segfault before stage2
-            let ts = copy **ts;
-            let id = ast_util::def_id_of_def(*cx.ccx.tcx.def_map.get(&e.id));
+        let opt_ts = cx.ccx.tcx.node_type_substs.find_copy(&e.id);
+        for opt_ts.each |ts| {
+            let id = ast_util::def_id_of_def(cx.ccx.tcx.def_map.get_copy(&e.id));
             let uses_for_ts = type_uses_for(cx.ccx, id, ts.len());
-            for vec::each2(uses_for_ts, ts) |uses, subst| {
+            for vec::each2(*uses_for_ts, *ts) |uses, subst| {
                 type_needs(cx, *uses, *subst)
             }
         }
@@ -318,7 +314,7 @@ pub fn mark_for_expr(cx: Context, e: @expr) {
               }
           }
       }
-      expr_assign(val, _) | expr_swap(val, _) | expr_assign_op(_, val, _) |
+      expr_assign(val, _) | expr_assign_op(_, val, _) |
       expr_ret(Some(val)) => {
         node_type_needs(cx, use_repr, val.id);
       }
@@ -333,15 +329,9 @@ pub fn mark_for_expr(cx: Context, e: @expr) {
         node_type_needs(cx, use_tydesc, val.id);
       }
       expr_call(f, _, _) => {
-          for vec::each(
-              ty::ty_fn_args(ty::node_id_to_type(cx.ccx.tcx, f.id))
-          ) |a| {
-              match a.mode {
-                  expl(by_copy) => {
-                      type_needs(cx, use_repr, a.ty);
-                  }
-                  _ => ()
-              }
+          for vec::each(ty::ty_fn_args(ty::node_id_to_type(cx.ccx.tcx,
+                                                           f.id))) |a| {
+              type_needs(cx, use_repr, a.ty);
           }
       }
       expr_method_call(rcvr, _, _, _, _) => {
@@ -350,12 +340,7 @@ pub fn mark_for_expr(cx: Context, e: @expr) {
 
         for ty::ty_fn_args(ty::node_id_to_type(cx.ccx.tcx,
                                                e.callee_id)).each |a| {
-          match a.mode {
-              expl(by_copy) => {
-                  type_needs(cx, use_repr, a.ty);
-              }
-              _ => ()
-          }
+            type_needs(cx, use_repr, a.ty);
         }
         mark_for_method_call(cx, e.id, e.callee_id);
       }
@@ -403,4 +388,3 @@ pub fn handle_body(cx: Context, body: &blk) {
     });
     (v.visit_block)(body, cx, v);
 }
-

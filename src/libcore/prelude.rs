@@ -13,8 +13,8 @@
 /* Reexported core operators */
 
 pub use either::{Either, Left, Right};
-pub use kinds::{Const, Copy, Owned, Durable};
-pub use ops::{Add, Sub, Mul, Div, Modulo, Neg, Not};
+pub use kinds::{Const, Copy, Owned};
+pub use ops::{Add, Sub, Mul, Div, Rem, Neg, Not};
 pub use ops::{BitAnd, BitOr, BitXor};
 pub use ops::{Drop};
 pub use ops::{Shl, Shr, Index};
@@ -28,25 +28,33 @@ pub use io::{print, println};
 /* Reexported types and traits */
 
 pub use clone::Clone;
-pub use cmp::{Eq, Ord, TotalEq, TotalOrd, Ordering, Less, Equal, Greater};
+pub use cmp::{Eq, ApproxEq, Ord, TotalEq, TotalOrd, Ordering, Less, Equal, Greater, Equiv};
 pub use container::{Container, Mutable, Map, Set};
 pub use hash::Hash;
-pub use iter::{BaseIter, ReverseIter, MutableIter, ExtendedIter, EqIter};
-pub use iter::{CopyableIter, CopyableOrderedIter, CopyableNonstrictIter};
+pub use old_iter::{BaseIter, ReverseIter, MutableIter, ExtendedIter, EqIter};
+pub use old_iter::{CopyableIter, CopyableOrderedIter, CopyableNonstrictIter};
+pub use old_iter::{ExtendedMutableIter};
 pub use iter::Times;
 pub use num::{Num, NumCast};
+pub use num::{Orderable, Signed, Unsigned, Round};
+pub use num::{Algebraic, Trigonometric, Exponential, Hyperbolic};
+pub use num::{Integer, Fractional, Real, RealExt};
+pub use num::{Bitwise, BitCount, Bounded};
+pub use num::{Primitive, Int, Float};
 pub use path::GenericPath;
 pub use path::Path;
 pub use path::PosixPath;
 pub use path::WindowsPath;
 pub use ptr::Ptr;
+pub use ascii::{Ascii, AsciiCast, OwnedAsciiCast, AsciiStr};
 pub use str::{StrSlice, OwnedStr};
+pub use from_str::{FromStr};
 pub use to_bytes::IterBytes;
-pub use to_str::ToStr;
+pub use to_str::{ToStr, ToStrConsume};
 pub use tuple::{CopyableTuple, ImmutableTuple, ExtendedTupleOps};
 pub use vec::{CopyableVector, ImmutableVector};
 pub use vec::{ImmutableEqVector, ImmutableCopyableVector};
-pub use vec::{OwnedVector, OwnedCopyableVector};
+pub use vec::{OwnedVector, OwnedCopyableVector, MutableVector};
 pub use io::{Reader, ReaderUtil, Writer, WriterUtil};
 
 /* Reexported runtime types */
@@ -71,7 +79,9 @@ pub use i8;
 pub use int;
 pub use io;
 pub use iter;
+pub use old_iter;
 pub use libc;
+pub use local_data;
 pub use num;
 pub use ops;
 pub use option;

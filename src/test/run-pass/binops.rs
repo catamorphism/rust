@@ -64,9 +64,9 @@ fn test_box() {
 
 fn test_ptr() {
     unsafe {
-        let p1: *u8 = ::core::cast::reinterpret_cast(&0);
-        let p2: *u8 = ::core::cast::reinterpret_cast(&0);
-        let p3: *u8 = ::core::cast::reinterpret_cast(&1);
+        let p1: *u8 = ::core::cast::transmute(0);
+        let p2: *u8 = ::core::cast::transmute(0);
+        let p3: *u8 = ::core::cast::transmute(1);
 
         assert!(p1 == p2);
         assert!(p1 != p3);
@@ -104,11 +104,11 @@ fn p(x: int, y: int) -> p {
 fn test_class() {
   let mut q = p(1, 2);
   let mut r = p(1, 2);
-  
+
   unsafe {
   error!("q = %x, r = %x",
-         (::core::cast::reinterpret_cast::<*p, uint>(&ptr::addr_of(&q))),
-         (::core::cast::reinterpret_cast::<*p, uint>(&ptr::addr_of(&r))));
+         (::core::cast::transmute::<*p, uint>(&q)),
+         (::core::cast::transmute::<*p, uint>(&r)));
   }
   assert!((q == r));
   r.y = 17;

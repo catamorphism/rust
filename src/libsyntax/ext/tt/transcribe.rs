@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use ast;
 use ast::{token_tree, tt_delim, tt_tok, tt_seq, tt_nonterminal,ident};
 use codemap::{span, dummy_sp};
@@ -19,11 +17,7 @@ use parse::token::{EOF, INTERPOLATED, IDENT, Token, nt_ident, ident_interner};
 use parse::lexer::TokenAndSpan;
 
 use core::hashmap::HashMap;
-use core::option;
-use core::vec;
 
-/* FIXME #2811: figure out how to have a uniquely linked stack, and change to
-   `~` */
 ///an unzipping of `token_tree`s
 struct TtFrame {
     forest: @mut ~[ast::token_tree],
@@ -53,7 +47,7 @@ pub struct TtReader {
 pub fn new_tt_reader(sp_diag: @span_handler,
                      itr: @ident_interner,
                      interp: Option<HashMap<ident,@named_match>>,
-                     +src: ~[ast::token_tree])
+                     src: ~[ast::token_tree])
                   -> @mut TtReader {
     let r = @mut TtReader {
         sp_diag: sp_diag,
@@ -109,7 +103,7 @@ pub fn dup_tt_reader(r: @mut TtReader) -> @mut TtReader {
 fn lookup_cur_matched_by_matched(r: &mut TtReader,
                                       start: @named_match)
                                    -> @named_match {
-    fn red(+ad: @named_match, idx: &uint) -> @named_match {
+    fn red(ad: @named_match, idx: &uint) -> @named_match {
         match *ad {
           matched_nonterminal(_) => {
             // end of the line; duplicate henceforth

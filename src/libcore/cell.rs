@@ -12,6 +12,7 @@
 
 use cast::transmute_mut;
 use prelude::*;
+use util::replace;
 
 /*
 A dynamic, mutable location.
@@ -19,8 +20,9 @@ A dynamic, mutable location.
 Similar to a mutable option type, but friendlier.
 */
 
+#[mutable]
 pub struct Cell<T> {
-    value: Option<T>
+    priv value: Option<T>
 }
 
 impl<T:cmp::Eq> cmp::Eq for Cell<T> {
@@ -42,19 +44,17 @@ pub fn empty_cell<T>() -> Cell<T> {
 pub impl<T> Cell<T> {
     /// Yields the value, failing if the cell is empty.
     fn take(&self) -> T {
-        let mut self = unsafe { transmute_mut(self) };
+        let self = unsafe { transmute_mut(self) };
         if self.is_empty() {
             fail!(~"attempt to take an empty cell");
         }
 
-        let mut value = None;
-        value <-> self.value;
-        value.unwrap()
+        replace(&mut self.value, None).unwrap()
     }
 
     /// Returns the value, failing if the cell is full.
     fn put_back(&self, value: T) {
-        let mut self = unsafe { transmute_mut(self) };
+        let self = unsafe { transmute_mut(self) };
         if !self.is_empty() {
             fail!(~"attempt to put a value back into a full cell");
         }
@@ -121,7 +121,7 @@ fn test_with_ref() {
 #[test]
 fn test_with_mut_ref() {
     let good = ~[1, 2, 3];
-    let mut v = ~[1, 2];
+    let v = ~[1, 2];
     let c = Cell(v);
     do c.with_mut_ref() |v| { v.push(3); }
     let v = c.take();

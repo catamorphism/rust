@@ -18,7 +18,6 @@ Do not use ==, !=, <, etc on doubly-linked lists -- it may not terminate.
 
 */
 
-use core::prelude::*;
 use core::managed;
 
 pub type DListLink<T> = Option<@mut DListNode<T>>;
@@ -220,7 +219,7 @@ pub impl<T> DList<T> {
      * node. O(1).
      */
     fn push_head_n(@mut self, data: T) -> @mut DListNode<T> {
-        let mut nobe = DList::new_link(data);
+        let nobe = DList::new_link(data);
         self.add_head(nobe);
         nobe.get()
     }
@@ -233,7 +232,7 @@ pub impl<T> DList<T> {
      * node. O(1).
      */
     fn push_n(@mut self, data: T) -> @mut DListNode<T> {
-        let mut nobe = DList::new_link(data);
+        let nobe = DList::new_link(data);
         self.add_tail(nobe);
         nobe.get()
     }
@@ -263,7 +262,7 @@ pub impl<T> DList<T> {
         data: T,
         neighbour: @mut DListNode<T>
     ) -> @mut DListNode<T> {
-        let mut nobe = DList::new_link(data);
+        let nobe = DList::new_link(data);
         self.insert_left(nobe, neighbour);
         nobe.get()
     }
@@ -293,7 +292,7 @@ pub impl<T> DList<T> {
         data: T,
         neighbour: @mut DListNode<T>
     ) -> @mut DListNode<T> {
-        let mut nobe = DList::new_link(data);
+        let nobe = DList::new_link(data);
         self.insert_right(neighbour, nobe);
         nobe.get()
     }
@@ -394,6 +393,7 @@ pub impl<T> DList<T> {
     }
 
     /// Iterate over nodes.
+    #[cfg(stage0)]
     fn each_node(@mut self, f: &fn(@mut DListNode<T>) -> bool) {
         let mut link = self.peek_n();
         while link.is_some() {
@@ -401,6 +401,17 @@ pub impl<T> DList<T> {
             if !f(nobe) { break; }
             link = nobe.next_link();
         }
+    }
+    /// Iterate over nodes.
+    #[cfg(not(stage0))]
+    fn each_node(@mut self, f: &fn(@mut DListNode<T>) -> bool) -> bool {
+        let mut link = self.peek_n();
+        while link.is_some() {
+            let nobe = link.get();
+            if !f(nobe) { return false; }
+            link = nobe.next_link();
+        }
+        return true;
     }
 
     /// Check data structure integrity. O(n).
@@ -484,7 +495,7 @@ pub impl<T:Copy> DList<T> {
     /// Get the elements of the list as a vector. O(n).
     fn to_vec(@mut self) -> ~[T] {
         let mut v = vec::with_capacity(self.size);
-        for iter::eachi(&self) |index,data| {
+        for old_iter::eachi(&self) |index,data| {
             v[index] = *data;
         }
         v
@@ -493,12 +504,13 @@ pub impl<T:Copy> DList<T> {
 
 impl<T> BaseIter<T> for @mut DList<T> {
     /**
-    * Iterates through the current contents.
-    *
-    * Attempts to access this dlist during iteration are allowed (to
-    * allow for e.g. breadth-first search with in-place enqueues), but
-    * removing the current node is forbidden.
-    */
+     * Iterates through the current contents.
+     *
+     * Attempts to access this dlist during iteration are allowed (to
+     * allow for e.g. breadth-first search with in-place enqueues), but
+     * removing the current node is forbidden.
+     */
+    #[cfg(stage0)]
     fn each(&self, f: &fn(v: &T) -> bool) {
         let mut link = self.peek_n();
         while link.is_some() {
@@ -526,6 +538,42 @@ impl<T> BaseIter<T> for @mut DList<T> {
             link = nobe.next_link();
         }
     }
+    /**
+     * Iterates through the current contents.
+     *
+     * Attempts to access this dlist during iteration are allowed (to
+     * allow for e.g. breadth-first search with in-place enqueues), but
+     * removing the current node is forbidden.
+     */
+    #[cfg(not(stage0))]
+    fn each(&self, f: &fn(v: &T) -> bool) -> bool {
+        let mut link = self.peek_n();
+        while link.is_some() {
+            let nobe = link.get();
+            assert!(nobe.linked);
+
+            {
+                let frozen_nobe = &*nobe;
+                if !f(&frozen_nobe.data) { return false; }
+            }
+
+            // Check (weakly) that the user didn't do a remove.
+            if self.size == 0 {
+                fail!("The dlist became empty during iteration??")
+            }
+            if !nobe.linked ||
+                (!((nobe.prev.is_some()
+                    || managed::mut_ptr_eq(self.hd.expect(~"headless dlist?"),
+                                           nobe))
+                   && (nobe.next.is_some()
+                    || managed::mut_ptr_eq(self.tl.expect(~"tailless dlist?"),
+                                           nobe)))) {
+                fail!("Removing a dlist node during iteration is forbidden!")
+            }
+            link = nobe.next_link();
+        }
+        return true;
+    }
 
     #[inline(always)]
     fn size_hint(&self) -> Option<uint> { Some(self.len()) }
@@ -534,7 +582,6 @@ impl<T> BaseIter<T> for @mut DList<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::prelude::*;
 
     #[test]
     fn test_dlist_concat() {
@@ -752,7 +799,7 @@ mod tests {
     #[test]
     fn test_dlist_foldl() {
         let l = from_vec(vec::from_fn(101, |x|x));
-        assert_eq!(iter::foldl(&l, 0, |accum,elem| *accum+*elem), 5050);
+        assert_eq!(old_iter::foldl(&l, 0, |accum,elem| *accum+*elem), 5050);
     }
     #[test]
     fn test_dlist_break_early() {

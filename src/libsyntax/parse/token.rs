@@ -8,19 +8,15 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use ast;
 use ast_util;
 use parse::token;
-use util::interner::Interner;
+use util::interner::StrInterner;
 use util::interner;
 
-use core::cast;
-use core::char;
+use core::cmp::Equiv;
 use core::hashmap::HashSet;
-use core::str;
-use core::task;
+use core::to_bytes;
 
 #[auto_encode]
 #[auto_decode]
@@ -309,62 +305,107 @@ pub fn is_bar(t: &Token) -> bool {
 pub mod special_idents {
     use ast::ident;
 
-    pub static underscore : ident = ident { repr: 0u };
-    pub static anon : ident = ident { repr: 1u };
-    pub static dtor : ident = ident { repr: 2u }; // 'drop', but that's
-                                                 // reserved
-    pub static invalid : ident = ident { repr: 3u }; // ''
-    pub static unary : ident = ident { repr: 4u };
-    pub static not_fn : ident = ident { repr: 5u };
-    pub static idx_fn : ident = ident { repr: 6u };
-    pub static unary_minus_fn : ident = ident { repr: 7u };
-    pub static clownshoes_extensions : ident = ident { repr: 8u };
+    pub static underscore : ident = ident { repr: 0, ctxt: 0};
+    pub static anon : ident = ident { repr: 1, ctxt: 0};
+    pub static invalid : ident = ident { repr: 2, ctxt: 0}; // ''
+    pub static unary : ident = ident { repr: 3, ctxt: 0};
+    pub static not_fn : ident = ident { repr: 4, ctxt: 0};
+    pub static idx_fn : ident = ident { repr: 5, ctxt: 0};
+    pub static unary_minus_fn : ident = ident { repr: 6, ctxt: 0};
+    pub static clownshoes_extensions : ident = ident { repr: 7, ctxt: 0};
 
-    pub static self_ : ident = ident { repr: 9u }; // 'self'
+    pub static self_ : ident = ident { repr: 8, ctxt: 0}; // 'self'
 
     /* for matcher NTs */
-    pub static item : ident = ident { repr: 10u };
-    pub static block : ident = ident { repr: 11u };
-    pub static stmt : ident = ident { repr: 12u };
-    pub static pat : ident = ident { repr: 13u };
-    pub static expr : ident = ident { repr: 14u };
-    pub static ty : ident = ident { repr: 15u };
-    pub static ident : ident = ident { repr: 16u };
-    pub static path : ident = ident { repr: 17u };
-    pub static tt : ident = ident { repr: 18u };
-    pub static matchers : ident = ident { repr: 19u };
+    pub static item : ident = ident { repr: 9, ctxt: 0};
+    pub static block : ident = ident { repr: 10, ctxt: 0};
+    pub static stmt : ident = ident { repr: 11, ctxt: 0};
+    pub static pat : ident = ident { repr: 12, ctxt: 0};
+    pub static expr : ident = ident { repr: 13, ctxt: 0};
+    pub static ty : ident = ident { repr: 14, ctxt: 0};
+    pub static ident : ident = ident { repr: 15, ctxt: 0};
+    pub static path : ident = ident { repr: 16, ctxt: 0};
+    pub static tt : ident = ident { repr: 17, ctxt: 0};
+    pub static matchers : ident = ident { repr: 18, ctxt: 0};
 
-    pub static str : ident = ident { repr: 20u }; // for the type
+    pub static str : ident = ident { repr: 19, ctxt: 0}; // for the type
 
     /* outside of libsyntax */
-    pub static ty_visitor : ident = ident { repr: 21u };
-    pub static arg : ident = ident { repr: 22u };
-    pub static descrim : ident = ident { repr: 23u };
-    pub static clownshoe_abi : ident = ident { repr: 24u };
-    pub static clownshoe_stack_shim : ident = ident { repr: 25u };
-    pub static tydesc : ident = ident { repr: 26u };
-    pub static literally_dtor : ident = ident { repr: 27u };
-    pub static main : ident = ident { repr: 28u };
-    pub static opaque : ident = ident { repr: 29u };
-    pub static blk : ident = ident { repr: 30u };
-    pub static static : ident = ident { repr: 31u };
-    pub static intrinsic : ident = ident { repr: 32u };
-    pub static clownshoes_foreign_mod: ident = ident { repr: 33 };
-    pub static unnamed_field: ident = ident { repr: 34 };
-    pub static c_abi: ident = ident { repr: 35 };
-    pub static type_self: ident = ident { repr: 36 };    // `Self`
+    pub static ty_visitor : ident = ident { repr: 20, ctxt: 0};
+    pub static arg : ident = ident { repr: 21, ctxt: 0};
+    pub static descrim : ident = ident { repr: 22, ctxt: 0};
+    pub static clownshoe_abi : ident = ident { repr: 23, ctxt: 0};
+    pub static clownshoe_stack_shim : ident = ident { repr: 24, ctxt: 0};
+    pub static tydesc : ident = ident { repr: 25, ctxt: 0};
+    pub static main : ident = ident { repr: 26, ctxt: 0};
+    pub static opaque : ident = ident { repr: 27, ctxt: 0};
+    pub static blk : ident = ident { repr: 28, ctxt: 0};
+    pub static static : ident = ident { repr: 29, ctxt: 0};
+    pub static intrinsic : ident = ident { repr: 30, ctxt: 0};
+    pub static clownshoes_foreign_mod: ident = ident { repr: 31, ctxt: 0};
+    pub static unnamed_field: ident = ident { repr: 32, ctxt: 0};
+    pub static c_abi: ident = ident { repr: 33, ctxt: 0};
+    pub static type_self: ident = ident { repr: 34, ctxt: 0};    // `Self`
+}
+
+pub struct StringRef<'self>(&'self str);
+
+impl<'self> Equiv<@~str> for StringRef<'self> {
+    #[inline(always)]
+    fn equiv(&self, other: &@~str) -> bool { str::eq_slice(**self, **other) }
+}
+
+#[cfg(stage0)]
+impl<'self> to_bytes::IterBytes for StringRef<'self> {
+    fn iter_bytes(&self, lsb0: bool, f: to_bytes::Cb) {
+        (**self).iter_bytes(lsb0, f);
+    }
+}
+#[cfg(not(stage0))]
+impl<'self> to_bytes::IterBytes for StringRef<'self> {
+    fn iter_bytes(&self, lsb0: bool, f: to_bytes::Cb) -> bool {
+        (**self).iter_bytes(lsb0, f)
+    }
+}
+
+/**
+ * Maps a token to a record specifying the corresponding binary
+ * operator
+ */
+pub fn token_to_binop(tok: Token) -> Option<ast::binop> {
+  match tok {
+      BINOP(STAR)    => Some(ast::mul),
+      BINOP(SLASH)   => Some(ast::div),
+      BINOP(PERCENT) => Some(ast::rem),
+      BINOP(PLUS)    => Some(ast::add),
+      BINOP(MINUS)   => Some(ast::subtract),
+      BINOP(SHL)     => Some(ast::shl),
+      BINOP(SHR)     => Some(ast::shr),
+      BINOP(AND)     => Some(ast::bitand),
+      BINOP(CARET)   => Some(ast::bitxor),
+      BINOP(OR)      => Some(ast::bitor),
+      LT             => Some(ast::lt),
+      LE             => Some(ast::le),
+      GE             => Some(ast::ge),
+      GT             => Some(ast::gt),
+      EQEQ           => Some(ast::eq),
+      NE             => Some(ast::ne),
+      ANDAND         => Some(ast::and),
+      OROR           => Some(ast::or),
+      _              => None
+  }
 }
 
 pub struct ident_interner {
-    priv interner: Interner<@~str>,
+    priv interner: StrInterner,
 }
 
 pub impl ident_interner {
-    fn intern(&self, val: @~str) -> ast::ident {
-        ast::ident { repr: self.interner.intern(val) }
+    fn intern(&self, val: &str) -> ast::ident {
+        ast::ident { repr: self.interner.intern(val), ctxt: 0 }
     }
-    fn gensym(&self, val: @~str) -> ast::ident {
-        ast::ident { repr: self.interner.gensym(val) }
+    fn gensym(&self, val: &str) -> ast::ident {
+        ast::ident { repr: self.interner.gensym(val), ctxt: 0 }
     }
     fn get(&self, idx: ast::ident) -> @~str {
         self.interner.get(idx.repr)
@@ -372,72 +413,75 @@ pub impl ident_interner {
     fn len(&self) -> uint {
         self.interner.len()
     }
+    fn find_equiv<Q:Hash + IterBytes + Equiv<@~str>>(&self, val: &Q)
+                                                     -> Option<ast::ident> {
+        match self.interner.find_equiv(val) {
+            Some(v) => Some(ast::ident { repr: v, ctxt: 0 }),
+            None => None,
+        }
+    }
 }
 
-/* Key for thread-local data for sneaking interner information to the
- * encoder/decoder. It sounds like a hack because it is one.
- * Bonus ultra-hack: functions as keys don't work across crates,
- * so we have to use a unique number. See taskgroup_key! in task.rs
- * for another case of this. */
-macro_rules! interner_key (
-    () => (cast::transmute::<(uint, uint), &fn(+v: @@token::ident_interner)>(
-        (-3 as uint, 0u)))
-)
+// return a fresh interner, preloaded with special identifiers.
+// EFFECT: stores this interner in TLS
+pub fn mk_fresh_ident_interner() -> @ident_interner {
+    // the indices here must correspond to the numbers in
+    // special_idents.
+    let init_vec = ~[
+        "_",                  // 0
+        "anon",               // 1
+        "",                   // 2
+        "unary",              // 3
+        "!",                  // 4
+        "[]",                 // 5
+        "unary-",             // 6
+        "__extensions__",     // 7
+        "self",               // 8
+        "item",               // 9
+        "block",              // 10
+        "stmt",               // 11
+        "pat",                // 12
+        "expr",               // 13
+        "ty",                 // 14
+        "ident",              // 15
+        "path",               // 16
+        "tt",                 // 17
+        "matchers",           // 18
+        "str",                // 19
+        "TyVisitor",          // 20
+        "arg",                // 21
+        "descrim",            // 22
+        "__rust_abi",         // 23
+        "__rust_stack_shim",  // 24
+        "TyDesc",             // 25
+        "main",               // 26
+        "<opaque>",           // 27
+        "blk",                // 28
+        "static",             // 29
+        "intrinsic",          // 30
+        "__foreign_mod__",    // 31
+        "__field__",          // 32
+        "C",                  // 33
+        "Self",               // 34
+    ];
 
+    let rv = @ident_interner {
+        interner: interner::StrInterner::prefill(init_vec)
+    };
+    unsafe {
+        local_data::local_data_set(interner_key!(), @rv);
+    }
+    rv
+}
+
+// if an interner exists in TLS, return it. Otherwise, prepare a
+// fresh one.
 pub fn mk_ident_interner() -> @ident_interner {
     unsafe {
-        match task::local_data::local_data_get(interner_key!()) {
+        match local_data::local_data_get(interner_key!()) {
             Some(interner) => *interner,
             None => {
-                // the indices here must correspond to the numbers in
-                // special_idents.
-                let init_vec = ~[
-                    @~"_",                  // 0
-                    @~"anon",               // 1
-                    @~"drop",               // 2
-                    @~"",                   // 3
-                    @~"unary",              // 4
-                    @~"!",                  // 5
-                    @~"[]",                 // 6
-                    @~"unary-",             // 7
-                    @~"__extensions__",     // 8
-                    @~"self",               // 9
-                    @~"item",               // 10
-                    @~"block",              // 11
-                    @~"stmt",               // 12
-                    @~"pat",                // 13
-                    @~"expr",               // 14
-                    @~"ty",                 // 15
-                    @~"ident",              // 16
-                    @~"path",               // 17
-                    @~"tt",                 // 18
-                    @~"matchers",           // 19
-                    @~"str",                // 20
-                    @~"TyVisitor",          // 21
-                    @~"arg",                // 22
-                    @~"descrim",            // 23
-                    @~"__rust_abi",         // 24
-                    @~"__rust_stack_shim",  // 25
-                    @~"TyDesc",             // 26
-                    @~"dtor",               // 27
-                    @~"main",               // 28
-                    @~"<opaque>",           // 29
-                    @~"blk",                // 30
-                    @~"static",             // 31
-                    @~"intrinsic",          // 32
-                    @~"__foreign_mod__",    // 33
-                    @~"__field__",          // 34
-                    @~"C",                  // 35
-                    @~"Self",               // 36
-                ];
-
-                let rv = @ident_interner {
-                    interner: interner::Interner::prefill(init_vec)
-                };
-
-                task::local_data::local_data_set(interner_key!(), @rv);
-
-                rv
+                mk_fresh_ident_interner()
             }
         }
     }
@@ -446,7 +490,7 @@ pub fn mk_ident_interner() -> @ident_interner {
 /* for when we don't care about the contents; doesn't interact with TLD or
    serialization */
 pub fn mk_fake_ident_interner() -> @ident_interner {
-    @ident_interner { interner: interner::Interner::new() }
+    @ident_interner { interner: interner::StrInterner::new() }
 }
 
 /**
@@ -519,11 +563,3 @@ pub fn reserved_keyword_table() -> HashSet<~str> {
     }
     return words;
 }
-
-
-// Local Variables:
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

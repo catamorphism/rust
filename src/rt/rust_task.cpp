@@ -36,12 +36,13 @@ rust_task::rust_task(rust_sched_loop *sched_loop, rust_task_state state,
     kernel(sched_loop->kernel),
     name(name),
     list_index(-1),
-    boxed(sched_loop->kernel->env, &local_region),
+    boxed(&local_region, sched_loop->kernel->env->poison_on_free),
     local_region(&sched_loop->local_region),
     unwinding(false),
     total_stack_sz(0),
     task_local_data(NULL),
     task_local_data_cleanup(NULL),
+    borrow_list(NULL),
     state(state),
     cond(NULL),
     cond_name("none"),
@@ -53,7 +54,8 @@ rust_task::rust_task(rust_sched_loop *sched_loop, rust_task_state state,
     disallow_yield(0),
     c_stack(NULL),
     next_c_sp(0),
-    next_rust_sp(0)
+    next_rust_sp(0),
+    big_stack(NULL)
 {
     LOGPTR(sched_loop, "new task", (uintptr_t)this);
     DLOG(sched_loop, task, "sizeof(task) = %d (0x%x)",
@@ -73,6 +75,9 @@ rust_task::delete_this()
        assertions that hold at task-lifecycle events. */
     assert(ref_count == 0); // ||
     //   (ref_count == 1 && this == sched->root_task));
+
+    // The borrow list should be freed in the task annihilator
+    assert(!borrow_list);
 
     sched_loop->release_task(this);
 }
@@ -457,8 +462,9 @@ rust_task::get_next_stack_size(size_t min, size_t current, size_t requested) {
         "min: %" PRIdPTR " current: %" PRIdPTR " requested: %" PRIdPTR,
         min, current, requested);
 
-    // Allocate at least enough to accomodate the next frame
-    size_t sz = std::max(min, requested);
+    // Allocate at least enough to accomodate the next frame, plus a little
+    // slack to avoid thrashing
+    size_t sz = std::max(min, requested + (requested / 2));
 
     // And double the stack size each allocation
     const size_t max = 1024 * 1024;
@@ -528,11 +534,11 @@ rust_task::new_stack(size_t requested_sz) {
     // arbitrarily selected as 2x the maximum stack size.
     if (!unwinding && used_stack > max_stack) {
         LOG_ERR(this, task, "task %" PRIxPTR " ran out of stack", this);
-        fail();
+        abort();
     } else if (unwinding && used_stack > max_stack * 2) {
         LOG_ERR(this, task,
                 "task %" PRIxPTR " ran out of stack during unwinding", this);
-        fail();
+        abort();
     }
 
     size_t sz = rust_stk_sz + RED_ZONE_SIZE;
@@ -555,11 +561,61 @@ rust_task::cleanup_after_turn() {
     // Delete any spare stack segments that were left
     // behind by calls to prev_stack
     assert(stk);
+
     while (stk->next) {
         stk_seg *new_next = stk->next->next;
-        free_stack(stk->next);
+
+        if (stk->next->is_big) {
+            assert (big_stack == stk->next);
+            sched_loop->return_big_stack(big_stack);
+            big_stack = NULL;
+        } else {
+            free_stack(stk->next);
+        }
+
         stk->next = new_next;
     }
+}
+
+// NB: Runs on the Rust stack. Returns true if we successfully allocated the big
+// stack and false otherwise.
+bool
+rust_task::new_big_stack() {
+    // If we have a cached big stack segment, use it.
+    if (big_stack) {
+        // Check to see if we're already on the big stack.
+        stk_seg *ss = stk;
+        while (ss != NULL) {
+            if (ss == big_stack)
+                return false;
+            ss = ss->prev;
+        }
+
+        // Unlink the big stack.
+        if (big_stack->next)
+            big_stack->next->prev = big_stack->prev;
+        if (big_stack->prev)
+            big_stack->prev->next = big_stack->next;
+    } else {
+        stk_seg *borrowed_big_stack = sched_loop->borrow_big_stack();
+        if (!borrowed_big_stack) {
+            abort();
+        } else {
+            big_stack = borrowed_big_stack;
+        }
+    }
+
+    big_stack->task = this;
+    big_stack->next = stk->next;
+    if (big_stack->next)
+        big_stack->next->prev = big_stack;
+    big_stack->prev = stk;
+    if (stk)
+        stk->next = big_stack;
+
+    stk = big_stack;
+
+    return true;
 }
 
 static bool
@@ -601,9 +657,16 @@ rust_task::delete_all_stacks() {
     assert(stk->next == NULL);
     while (stk != NULL) {
         stk_seg *prev = stk->prev;
-        free_stack(stk);
+
+        if (stk->is_big)
+            sched_loop->return_big_stack(stk);
+        else
+            free_stack(stk);
+
         stk = prev;
     }
+
+    big_stack = NULL;
 }
 
 /*

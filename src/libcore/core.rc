@@ -60,10 +60,7 @@ they contained the following prologue:
 // Don't link to core. We are core.
 #[no_core];
 
-#[warn(vecs_implicitly_copyable)];
 #[deny(non_camel_case_types)];
-#[allow(deprecated_mutable_fields)];
-#[allow(deprecated_drop)];
 
 // Make core testable by not duplicating lang items. See #2912
 #[cfg(test)] extern mod realcore(name = "core", vers = "0.7-pre");
@@ -73,9 +70,9 @@ they contained the following prologue:
 
 /* Reexported core operators */
 
-pub use kinds::{Const, Copy, Owned, Durable};
+pub use kinds::{Const, Copy, Owned};
 pub use ops::{Drop};
-pub use ops::{Add, Sub, Mul, Div, Modulo, Neg, Not};
+pub use ops::{Add, Sub, Mul, Div, Rem, Neg, Not};
 pub use ops::{BitAnd, BitOr, BitXor};
 pub use ops::{Shl, Shr, Index};
 
@@ -95,12 +92,21 @@ pub use str::{StrSlice};
 pub use container::{Container, Mutable};
 pub use vec::{CopyableVector, ImmutableVector};
 pub use vec::{ImmutableEqVector, ImmutableCopyableVector};
-pub use vec::{OwnedVector, OwnedCopyableVector};
-pub use iter::{BaseIter, ExtendedIter, EqIter, CopyableIter};
-pub use iter::{CopyableOrderedIter, CopyableNonstrictIter, Times};
+pub use vec::{OwnedVector, OwnedCopyableVector, MutableVector};
+pub use old_iter::{BaseIter, ExtendedIter, EqIter, CopyableIter};
+pub use old_iter::{CopyableOrderedIter, CopyableNonstrictIter};
+pub use old_iter::{ExtendedMutableIter};
+pub use iter::Times;
 
 pub use num::{Num, NumCast};
+pub use num::{Orderable, Signed, Unsigned, Round};
+pub use num::{Algebraic, Trigonometric, Exponential, Hyperbolic};
+pub use num::{Integer, Fractional, Real, RealExt};
+pub use num::{Bitwise, BitCount, Bounded};
+pub use num::{Primitive, Int, Float};
+
 pub use ptr::Ptr;
+pub use from_str::FromStr;
 pub use to_str::ToStr;
 pub use clone::Clone;
 
@@ -113,6 +119,9 @@ pub mod linkhack {
     extern {
     }
 }
+
+// Internal macros
+mod macros;
 
 /* The Prelude. */
 
@@ -158,6 +167,9 @@ pub mod vec;
 pub mod at_vec;
 pub mod str;
 
+#[path = "str/ascii.rs"]
+pub mod ascii;
+
 pub mod ptr;
 pub mod owned;
 pub mod managed;
@@ -165,9 +177,9 @@ pub mod managed;
 
 /* Core language traits */
 
-#[cfg(notest)] pub mod kinds;
-#[cfg(notest)] pub mod ops;
-#[cfg(notest)] pub mod cmp;
+#[cfg(not(test))] pub mod kinds;
+#[cfg(not(test))] pub mod ops;
+#[cfg(not(test))] pub mod cmp;
 
 
 /* Common traits */
@@ -176,6 +188,7 @@ pub mod from_str;
 #[path = "num/num.rs"]
 pub mod num;
 pub mod iter;
+pub mod old_iter;
 pub mod iterator;
 pub mod to_str;
 pub mod to_bytes;
@@ -201,6 +214,7 @@ pub mod trie;
 pub mod task;
 pub mod comm;
 pub mod pipes;
+pub mod local_data;
 
 
 /* Runtime and platform support */
@@ -213,7 +227,6 @@ pub mod rand;
 pub mod run;
 pub mod sys;
 pub mod cast;
-pub mod flate;
 pub mod repr;
 pub mod cleanup;
 pub mod reflect;
@@ -229,12 +242,12 @@ pub mod unstable;
 
 /* For internal use, not exported */
 
-pub mod unicode;
+mod unicode;
 #[path = "num/cmath.rs"]
-pub mod cmath;
-pub mod stackwalk;
+mod cmath;
+mod stackwalk;
 #[path = "rt/mod.rs"]
-pub mod rt;
+mod rt;
 
 // A curious inner-module that's not exported that contains the binding
 // 'core' so that macro-expanded references to core::error and such
@@ -249,12 +262,3 @@ mod core {
     pub use sys;
     pub use pipes;
 }
-
-
-// Local Variables:
-// mode: rust;
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

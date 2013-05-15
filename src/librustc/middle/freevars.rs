@@ -8,11 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-
 // A pass that annotates for each loops and functions with the free
 // variables that they contain.
-
-use core::prelude::*;
 
 use middle::resolve;
 use middle::ty;
@@ -42,9 +39,9 @@ fn collect_freevars(def_map: resolve::DefMap, blk: &ast::blk)
     let seen = @mut HashMap::new();
     let refs = @mut ~[];
 
-    fn ignore_item(_i: @ast::item, &&_depth: int, _v: visit::vt<int>) { }
+    fn ignore_item(_i: @ast::item, _depth: int, _v: visit::vt<int>) { }
 
-    let walk_expr: @fn(expr: @ast::expr, &&depth: int, v: visit::vt<int>) =
+    let walk_expr: @fn(expr: @ast::expr, depth: int, v: visit::vt<int>) =
         |expr, depth, v| {
             match expr.node {
               ast::expr_fn_block(*) => visit::visit_expr(expr, depth + 1, v),
@@ -107,7 +104,7 @@ pub fn annotate_freevars(def_map: resolve::DefMap, crate: @ast::crate) ->
         visit::mk_simple_visitor(@visit::SimpleVisitor {
             visit_fn: walk_fn,
             .. *visit::default_simple_visitor()});
-    visit::visit_crate(*crate, (), visitor);
+    visit::visit_crate(crate, (), visitor);
 
     return freevars;
 }
@@ -122,11 +119,3 @@ pub fn get_freevars(tcx: ty::ctxt, fid: ast::node_id) -> freevar_info {
 pub fn has_freevars(tcx: ty::ctxt, fid: ast::node_id) -> bool {
     return vec::len(*get_freevars(tcx, fid)) != 0u;
 }
-
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

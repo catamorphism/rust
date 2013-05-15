@@ -11,7 +11,20 @@
 // Useful conditions
 
 pub use core::path::Path;
+pub use util::PkgId;
 
 condition! {
     bad_path: (super::Path, ~str) -> super::Path;
+}
+
+condition! {
+    nonexistent_package: (super::PkgId, ~str) -> ();
+}
+
+condition! {
+    copy_failed: (super::Path, super::Path) -> ();
+}
+
+condition! {
+    missing_pkg_files: (super::PkgId) -> ();
 }

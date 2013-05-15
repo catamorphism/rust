@@ -52,8 +52,6 @@
  * an rptr (`&r.T`) use the region `r` that appears in the rptr.
  */
 
-use core::prelude::*;
-
 use middle::const_eval;
 use middle::ty::{arg, substs};
 use middle::ty::{ty_param_substs_and_ty};
@@ -62,8 +60,6 @@ use middle::typeck::rscope::in_binding_rscope;
 use middle::typeck::rscope::{region_scope, RegionError};
 use middle::typeck::rscope::RegionParamNames;
 
-use core::result;
-use core::vec;
 use syntax::abi::AbiSet;
 use syntax::{ast, ast_util};
 use syntax::codemap::span;
@@ -105,7 +101,7 @@ pub fn get_region_reporting_err(
     }
 }
 
-pub fn ast_region_to_region<AC:AstConv,RS:region_scope + Copy + Durable>(
+pub fn ast_region_to_region<AC:AstConv,RS:region_scope + Copy + 'static>(
     self: &AC,
     rscope: &RS,
     default_span: span,
@@ -130,7 +126,7 @@ pub fn ast_region_to_region<AC:AstConv,RS:region_scope + Copy + Durable>(
     get_region_reporting_err(self.tcx(), span, opt_lifetime, res)
 }
 
-fn ast_path_substs<AC:AstConv,RS:region_scope + Copy + Durable>(
+fn ast_path_substs<AC:AstConv,RS:region_scope + Copy + 'static>(
     self: &AC,
     rscope: &RS,
     def_id: ast::def_id,
@@ -184,7 +180,7 @@ fn ast_path_substs<AC:AstConv,RS:region_scope + Copy + Durable>(
     substs {self_r:self_r, self_ty:self_ty, tps:tps}
 }
 
-pub fn ast_path_to_substs_and_ty<AC:AstConv,RS:region_scope + Copy + Durable>(
+pub fn ast_path_to_substs_and_ty<AC:AstConv,RS:region_scope + Copy + 'static>(
     self: &AC,
     rscope: &RS,
     did: ast::def_id,
@@ -201,7 +197,7 @@ pub fn ast_path_to_substs_and_ty<AC:AstConv,RS:region_scope + Copy + Durable>(
     ty_param_substs_and_ty { substs: substs, ty: ty }
 }
 
-pub fn ast_path_to_trait_ref<AC:AstConv,RS:region_scope + Copy + Durable>(
+pub fn ast_path_to_trait_ref<AC:AstConv,RS:region_scope + Copy + 'static>(
     self: &AC,
     rscope: &RS,
     trait_def_id: ast::def_id,
@@ -225,7 +221,7 @@ pub fn ast_path_to_trait_ref<AC:AstConv,RS:region_scope + Copy + Durable>(
 }
 
 
-pub fn ast_path_to_ty<AC:AstConv,RS:region_scope + Copy + Durable>(
+pub fn ast_path_to_ty<AC:AstConv,RS:region_scope + Copy + 'static>(
         self: &AC,
         rscope: &RS,
         did: ast::def_id,
@@ -247,10 +243,10 @@ pub static NO_TPS: uint = 2;
 // Parses the programmer's textual representation of a type into our
 // internal notion of a type. `getter` is a function that returns the type
 // corresponding to a definition ID:
-pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
-    self: &AC, rscope: &RS, &&ast_ty: @ast::Ty) -> ty::t {
+pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + 'static>(
+    self: &AC, rscope: &RS, ast_ty: @ast::Ty) -> ty::t {
 
-    fn ast_mt_to_mt<AC:AstConv, RS:region_scope + Copy + Durable>(
+    fn ast_mt_to_mt<AC:AstConv, RS:region_scope + Copy + 'static>(
         self: &AC, rscope: &RS, mt: &ast::mt) -> ty::mt {
 
         ty::mt {ty: ast_ty_to_ty(self, rscope, mt.ty), mutbl: mt.mutbl}
@@ -259,7 +255,7 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
     // Handle @, ~, and & being able to mean estrs and evecs.
     // If a_seq_ty is a str or a vec, make it an estr/evec.
     // Also handle first-class trait types.
-    fn mk_pointer<AC:AstConv,RS:region_scope + Copy + Durable>(
+    fn mk_pointer<AC:AstConv,RS:region_scope + Copy + 'static>(
         self: &AC,
         rscope: &RS,
         a_seq_ty: &ast::mt,
@@ -277,9 +273,9 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
                 }
                 return ty::mk_evec(tcx, mt, vst);
             }
-            ast::ty_path(path, id) if a_seq_ty.mutbl == ast::m_imm => {
+            ast::ty_path(path, id) => {
                 match tcx.def_map.find(&id) {
-                    Some(&ast::def_prim_ty(ast::ty_str)) => {
+                    Some(&ast::def_prim_ty(ast::ty_str)) if a_seq_ty.mutbl == ast::m_imm => {
                         check_path_args(tcx, path, NO_TPS | NO_REGIONS);
                         return ty::mk_estr(tcx, vst);
                     }
@@ -295,17 +291,16 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
                             ty::vstore_fixed(*) => {
                                 tcx.sess.span_err(
                                     path.span,
-                                    ~"@trait, ~trait or &trait \
-                                      are the only supported \
-                                      forms of casting-to-\
-                                      trait");
+                                    "@trait, ~trait or &trait are the only supported \
+                                     forms of casting-to-trait");
                                 ty::BoxTraitStore
                             }
                         };
                         return ty::mk_trait(tcx,
                                             result.def_id,
                                             copy result.substs,
-                                            trait_store);
+                                            trait_store,
+                                            a_seq_ty.mutbl);
                     }
                     _ => {}
                 }
@@ -324,7 +319,7 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
             if path.types.len() > 0u {
                 tcx.sess.span_err(
                     path.span,
-                    ~"type parameters are not allowed on this type");
+                    "type parameters are not allowed on this type");
             }
         }
 
@@ -332,7 +327,7 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
             if path.rp.is_some() {
                 tcx.sess.span_err(
                     path.span,
-                    ~"region parameters are not allowed on this type");
+                    "region parameters are not allowed on this type");
             }
         }
     }
@@ -342,17 +337,16 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
     match tcx.ast_ty_to_ty_cache.find(&ast_ty.id) {
       Some(&ty::atttce_resolved(ty)) => return ty,
       Some(&ty::atttce_unresolved) => {
-        tcx.sess.span_fatal(ast_ty.span, ~"illegal recursive type; \
-                                          insert an enum in the cycle, \
-                                          if this is desired");
+        tcx.sess.span_fatal(ast_ty.span, "illegal recursive type; \
+                                          insert an enum in the cycle, if this is desired");
       }
       None => { /* go on */ }
     }
 
     tcx.ast_ty_to_ty_cache.insert(ast_ty.id, ty::atttce_unresolved);
     let typ = match ast_ty.node {
-      ast::ty_nil => ty::mk_nil(tcx),
-      ast::ty_bot => ty::mk_bot(tcx),
+      ast::ty_nil => ty::mk_nil(),
+      ast::ty_bot => ty::mk_bot(),
       ast::ty_box(ref mt) => {
         mk_pointer(self, rscope, mt, ty::vstore_box,
                    |tmt| ty::mk_box(tcx, tmt))
@@ -362,11 +356,9 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
                    |tmt| ty::mk_uniq(tcx, tmt))
       }
       ast::ty_vec(ref mt) => {
-        tcx.sess.span_err(ast_ty.span,
-                          ~"bare `[]` is not a type");
+        tcx.sess.span_err(ast_ty.span, "bare `[]` is not a type");
         // return /something/ so they can at least get more errors
-        ty::mk_evec(tcx, ast_mt_to_mt(self, rscope, mt),
-                    ty::vstore_uniq)
+        ty::mk_evec(tcx, ast_mt_to_mt(self, rscope, mt), ty::vstore_uniq)
       }
       ast::ty_ptr(ref mt) => {
         ty::mk_ptr(tcx, ast_mt_to_mt(self, rscope, mt))
@@ -412,7 +404,7 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
                   fmt!("reference to trait `%s` where a type is expected; \
                         try `@%s`, `~%s`, or `&%s`",
                        path_str, path_str, path_str, path_str));
-              ty::mk_err(tcx)
+              ty::mk_err()
           }
           ast::def_ty(did) | ast::def_struct(did) => {
             ast_path_to_ty(self, rscope, did, path).ty
@@ -421,23 +413,23 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
             match nty {
               ast::ty_bool => {
                 check_path_args(tcx, path, NO_TPS | NO_REGIONS);
-                ty::mk_bool(tcx)
+                ty::mk_bool()
               }
               ast::ty_int(it) => {
                 check_path_args(tcx, path, NO_TPS | NO_REGIONS);
-                ty::mk_mach_int(tcx, it)
+                ty::mk_mach_int(it)
               }
               ast::ty_uint(uit) => {
                 check_path_args(tcx, path, NO_TPS | NO_REGIONS);
-                ty::mk_mach_uint(tcx, uit)
+                ty::mk_mach_uint(uit)
               }
               ast::ty_float(ft) => {
                 check_path_args(tcx, path, NO_TPS | NO_REGIONS);
-                ty::mk_mach_float(tcx, ft)
+                ty::mk_mach_float(ft)
               }
               ast::ty_str => {
                 tcx.sess.span_err(ast_ty.span,
-                                  ~"bare `str` is not a type");
+                                  "bare `str` is not a type");
                 // return /something/ so they can at least get more errors
                 ty::mk_estr(tcx, ty::vstore_uniq)
               }
@@ -457,7 +449,7 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
           }
           _ => {
             tcx.sess.span_fatal(ast_ty.span,
-                                ~"found type name used as a variable");
+                                "found type name used as a variable");
           }
         }
       }
@@ -473,7 +465,7 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
                             ty::vstore_fixed(i as uint)),
               _ => {
                 tcx.sess.span_fatal(
-                    ast_ty.span, ~"expected constant expr for vector length");
+                    ast_ty.span, "expected constant expr for vector length");
               }
             }
           }
@@ -492,11 +484,11 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
         // routine.
         self.tcx().sess.span_bug(
             ast_ty.span,
-            ~"found `ty_infer` in unexpected place");
+            "found `ty_infer` in unexpected place");
       }
       ast::ty_mac(_) => {
         tcx.sess.span_bug(ast_ty.span,
-                          ~"found `ty_mac` in unexpected place");
+                          "found `ty_mac` in unexpected place");
       }
     };
 
@@ -504,52 +496,22 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:region_scope + Copy + Durable>(
     return typ;
 }
 
-pub fn ty_of_arg<AC:AstConv,RS:region_scope + Copy + Durable>(
-        self: &AC,
-        rscope: &RS,
-        a: ast::arg,
-        expected_ty: Option<ty::arg>)
-     -> ty::arg {
+pub fn ty_of_arg<AC:AstConv,
+                 RS:region_scope + Copy + 'static>(
+                 self: &AC,
+                 rscope: &RS,
+                 a: ast::arg,
+                 expected_ty: Option<ty::arg>)
+                 -> ty::arg {
     let ty = match a.ty.node {
-      ast::ty_infer if expected_ty.is_some() => expected_ty.get().ty,
-      ast::ty_infer => self.ty_infer(a.ty.span),
-      _ => ast_ty_to_ty(self, rscope, a.ty)
+        ast::ty_infer if expected_ty.is_some() => expected_ty.get().ty,
+        ast::ty_infer => self.ty_infer(a.ty.span),
+        _ => ast_ty_to_ty(self, rscope, a.ty),
     };
 
-    let mode = {
-        match a.mode {
-          ast::infer(_) if expected_ty.is_some() => {
-            result::get(&ty::unify_mode(
-                self.tcx(),
-                ty::expected_found {expected: expected_ty.get().mode,
-                                    found: a.mode}))
-          }
-          ast::infer(_) => {
-            match ty::get(ty).sty {
-              // If the type is not specified, then this must be a fn expr.
-              // Leave the mode as infer(_), it will get inferred based
-              // on constraints elsewhere.
-              ty::ty_infer(_) => a.mode,
-
-              // If the type is known, then use the default for that type.
-              // Here we unify m and the default.  This should update the
-              // tables in tcx but should never fail, because nothing else
-              // will have been unified with m yet:
-              _ => {
-                let m1 = ast::expl(ty::default_arg_mode_for_ty(self.tcx(),
-                                                               ty));
-                result::get(&ty::unify_mode(
-                    self.tcx(),
-                    ty::expected_found {expected: m1,
-                                        found: a.mode}))
-              }
-            }
-          }
-          ast::expl(_) => a.mode
-        }
-    };
-
-    arg {mode: mode, ty: ty}
+    arg {
+        ty: ty
+    }
 }
 
 pub fn bound_lifetimes<AC:AstConv>(
@@ -587,7 +549,7 @@ struct SelfInfo {
     self_transform: ast::self_ty
 }
 
-pub fn ty_of_method<AC:AstConv,RS:region_scope + Copy + Durable>(
+pub fn ty_of_method<AC:AstConv,RS:region_scope + Copy + 'static>(
     self: &AC,
     rscope: &RS,
     purity: ast::purity,
@@ -605,7 +567,7 @@ pub fn ty_of_method<AC:AstConv,RS:region_scope + Copy + Durable>(
     (a.get(), b)
 }
 
-pub fn ty_of_bare_fn<AC:AstConv,RS:region_scope + Copy + Durable>(
+pub fn ty_of_bare_fn<AC:AstConv,RS:region_scope + Copy + 'static>(
     self: &AC,
     rscope: &RS,
     purity: ast::purity,
@@ -618,7 +580,7 @@ pub fn ty_of_bare_fn<AC:AstConv,RS:region_scope + Copy + Durable>(
     b
 }
 
-fn ty_of_method_or_bare_fn<AC:AstConv,RS:region_scope + Copy + Durable>(
+fn ty_of_method_or_bare_fn<AC:AstConv,RS:region_scope + Copy + 'static>(
     self: &AC,
     rscope: &RS,
     purity: ast::purity,
@@ -654,7 +616,7 @@ fn ty_of_method_or_bare_fn<AC:AstConv,RS:region_scope + Copy + Durable>(
                                 output: output_ty}
             });
 
-    fn transform_self_ty<AC:AstConv,RS:region_scope + Copy + Durable>(
+    fn transform_self_ty<AC:AstConv,RS:region_scope + Copy + 'static>(
         self: &AC,
         rscope: &RS,
         self_info: &SelfInfo) -> Option<ty::t>
@@ -687,7 +649,7 @@ fn ty_of_method_or_bare_fn<AC:AstConv,RS:region_scope + Copy + Durable>(
     }
 }
 
-pub fn ty_of_closure<AC:AstConv,RS:region_scope + Copy + Durable>(
+pub fn ty_of_closure<AC:AstConv,RS:region_scope + Copy + 'static>(
         self: &AC,
         rscope: &RS,
         sigil: ast::Sigil,

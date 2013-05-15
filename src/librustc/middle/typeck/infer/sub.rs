@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use middle::ty;
 use middle::ty::TyVar;
 use middle::typeck::check::regionmanip::replace_bound_regions_in_fn_sig;
@@ -28,7 +26,6 @@ use syntax::abi::AbiSet;
 use syntax::ast;
 use syntax::ast::{Onceness, m_const, purity};
 use syntax::codemap::span;
-
 
 pub struct Sub(CombineFields);  // "subtype", "subregion" etc
 
@@ -244,12 +241,8 @@ impl Combine for Sub {
                     vk: ty::terr_vstore_kind,
                     a: ty::TraitStore,
                     b: ty::TraitStore)
-                 -> cres<ty::TraitStore> {
+                    -> cres<ty::TraitStore> {
         super_trait_stores(self, vk, a, b)
-    }
-
-    fn modes(&self, a: ast::mode, b: ast::mode) -> cres<ast::mode> {
-        super_modes(self, a, b)
     }
 
     fn args(&self, a: ty::arg, b: ty::arg) -> cres<ty::arg> {
@@ -276,4 +269,3 @@ impl Combine for Sub {
         super_trait_refs(self, a, b)
     }
 }
-

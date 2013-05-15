@@ -10,8 +10,6 @@
 
 //! Generate markdown from a document tree
 
-use core::prelude::*;
-
 use astsrv;
 use doc::ItemUtils;
 use doc;
@@ -23,8 +21,6 @@ use pass::Pass;
 use sort_pass;
 
 use core::cell::Cell;
-use core::str;
-use core::vec;
 use syntax;
 
 pub fn mk_pass(writer_factory: WriterFactory) -> Pass {
@@ -280,7 +276,7 @@ fn write_desc(
 }
 
 fn write_sections(ctxt: &Ctxt, sections: &[doc::Section]) {
-    for vec::each(sections) |section| {
+    for sections.each |section| {
         write_section(ctxt, copy *section);
     }
 }
@@ -443,7 +439,7 @@ fn write_variants(
 
     write_header_(ctxt, H4, ~"Variants");
 
-    for vec::each(docs) |variant| {
+    for docs.each |variant| {
         write_variant(ctxt, copy *variant);
     }
 
@@ -469,7 +465,7 @@ fn write_trait(ctxt: &Ctxt, doc: doc::TraitDoc) {
 }
 
 fn write_methods(ctxt: &Ctxt, docs: &[doc::MethodDoc]) {
-    for vec::each(docs) |doc| {
+    for docs.each |doc| {
         write_method(ctxt, copy *doc);
     }
 }
@@ -522,7 +518,6 @@ mod test {
     use trim_pass;
     use tystr_pass;
     use unindent_pass;
-    use core::prelude::*;
 
     fn render(source: ~str) -> ~str {
         let (srv, doc) = create_doc_srv(source);
@@ -634,7 +629,7 @@ mod test {
         let doc = (page_pass::mk_pass(config::DocPerMod).f)(srv, doc);
         write_markdown(doc, writer_factory);
         // We expect two pages to have been written
-        for iter::repeat(2) {
+        for old_iter::repeat(2) {
             po.recv();
         }
     }
@@ -646,7 +641,7 @@ mod test {
             ~"#[link(name = \"core\")]; mod a { }");
         let doc = (page_pass::mk_pass(config::DocPerMod).f)(srv, doc);
         write_markdown(doc, writer_factory);
-        for iter::repeat(2) {
+        for old_iter::repeat(2) {
             let (page, markdown) = po.recv();
             match page {
                 doc::CratePage(_) => {

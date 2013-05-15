@@ -18,7 +18,7 @@ extern mod std;
 use std::timer::sleep;
 use std::uv;
 
-use core::pipes;
+use core::cell::Cell;
 use core::pipes::{try_recv, recv};
 
 proto! oneshot (
@@ -29,13 +29,15 @@ proto! oneshot (
 
 pub fn main() {
     let iotask = &uv::global_loop::get();
-    
-    pipes::spawn_service(oneshot::init, |p| { 
-        match try_recv(p) {
+
+    let (chan, port) = oneshot::init();
+    let port = Cell(port);
+    do spawn {
+        match try_recv(port.take()) {
           Some(*) => { fail!() }
           None => { }
         }
-    });
+    }
 
     sleep(iotask, 100);
 
@@ -46,7 +48,7 @@ pub fn main() {
 fn failtest() {
     let (c, p) = oneshot::init();
 
-    do task::spawn_with(c) |_c| { 
+    do task::spawn_with(c) |_c| {
         fail!();
     }
 

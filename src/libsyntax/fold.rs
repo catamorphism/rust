@@ -8,14 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use ast::*;
 use ast;
 use codemap::{span, spanned};
 use opt_vec::OptVec;
-
-use core::vec;
 
 pub trait ast_fold {
     fn fold_crate(@self, &crate) -> crate;
@@ -109,7 +105,6 @@ fn fold_attribute_(at: attribute, fld: @ast_fold) -> attribute {
 //used in noop_fold_foreign_item and noop_fold_fn_decl
 fn fold_arg_(a: arg, fld: @ast_fold) -> arg {
     ast::arg {
-        mode: a.mode,
         is_mutbl: a.is_mutbl,
         ty: fld.fold_ty(a.ty),
         pat: fld.fold_pat(a.pat),
@@ -227,9 +222,12 @@ pub fn noop_fold_item(i: @item, fld: @ast_fold) -> Option<@item> {
 
 fn noop_fold_struct_field(sf: @struct_field, fld: @ast_fold)
                        -> @struct_field {
+    let fold_attribute = |x| fold_attribute_(x, fld);
+
     @spanned { node: ast::struct_field_ { kind: copy sf.node.kind,
                                           id: sf.node.id,
-                                          ty: fld.fold_ty(sf.node.ty) },
+                                          ty: fld.fold_ty(sf.node.ty),
+                                          attrs: sf.node.attrs.map(|e| fold_attribute(*e)) },
                span: sf.span }
 }
 
@@ -295,21 +293,8 @@ pub fn noop_fold_item_underscore(i: &item_, fld: @ast_fold) -> item_ {
 
 fn fold_struct_def(struct_def: @ast::struct_def, fld: @ast_fold)
                 -> @ast::struct_def {
-    let dtor = do struct_def.dtor.map |dtor| {
-        let dtor_body = fld.fold_block(&dtor.node.body);
-        let dtor_id   = fld.new_id(dtor.node.id);
-        spanned {
-            node: ast::struct_dtor_ {
-                body: dtor_body,
-                id: dtor_id,
-                .. copy dtor.node
-            },
-            span: copy dtor.span
-        }
-    };
     @ast::struct_def {
         fields: struct_def.fields.map(|f| fold_struct_field(*f, fld)),
-        dtor: dtor,
         ctor_id: struct_def.ctor_id.map(|cid| fld.new_id(*cid)),
     }
 }
@@ -327,6 +312,7 @@ fn fold_struct_field(f: @struct_field, fld: @ast_fold) -> @struct_field {
             kind: copy f.node.kind,
             id: fld.new_id(f.node.id),
             ty: fld.fold_ty(f.node.ty),
+            attrs: /* FIXME (#2543) */ copy f.node.attrs,
         },
         span: fld.new_span(f.span),
     }
@@ -525,9 +511,6 @@ pub fn noop_fold_expr(e: &expr_, fld: @ast_fold) -> expr_ {
         expr_assign(el, er) => {
             expr_assign(fld.fold_expr(el), fld.fold_expr(er))
         }
-        expr_swap(el, er) => {
-            expr_swap(fld.fold_expr(el), fld.fold_expr(er))
-        }
         expr_assign_op(op, el, er) => {
             expr_assign_op(op, fld.fold_expr(el), fld.fold_expr(er))
         }
@@ -660,22 +643,9 @@ fn noop_fold_variant(v: &variant_, fld: @ast_fold) -> variant_ {
             })
         }
         struct_variant_kind(struct_def) => {
-            let dtor = do struct_def.dtor.map |dtor| {
-                let dtor_body = fld.fold_block(&dtor.node.body);
-                let dtor_id   = fld.new_id(dtor.node.id);
-                spanned {
-                    node: ast::struct_dtor_ {
-                        body: dtor_body,
-                        id: dtor_id,
-                        .. copy dtor.node
-                    },
-                    .. copy *dtor
-                }
-            };
             kind = struct_variant_kind(@ast::struct_def {
                 fields: vec::map(struct_def.fields,
                                  |f| fld.fold_struct_field(*f)),
-                dtor: dtor,
                 ctor_id: struct_def.ctor_id.map(|c| fld.new_id(*c))
             })
         }
@@ -788,6 +758,7 @@ impl ast_fold for AstFoldFns {
                 kind: copy sf.node.kind,
                 id: sf.node.id,
                 ty: (self as @ast_fold).fold_ty(sf.node.ty),
+                attrs: copy sf.node.attrs,
             },
             span: (self.new_span)(sf.span),
         }
@@ -872,7 +843,11 @@ impl ast_fold for AstFoldFns {
     }
 }
 
-pub impl @ast_fold {
+pub trait AstFoldExtensions {
+    fn fold_attributes(&self, attrs: ~[attribute]) -> ~[attribute];
+}
+
+impl AstFoldExtensions for @ast_fold {
     fn fold_attributes(&self, attrs: ~[attribute]) -> ~[attribute] {
         attrs.map(|x| fold_attribute_(*x, *self))
     }
@@ -882,12 +857,3 @@ pub fn make_fold(afp: ast_fold_fns) -> @ast_fold {
     afp as @ast_fold
 }
 
-//
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
-//

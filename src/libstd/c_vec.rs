@@ -36,10 +36,6 @@
  * still held if needed.
  */
 
-use core::option;
-use core::prelude::*;
-use core::ptr;
-
 /**
  * The type representing a foreign chunk of memory
  *
@@ -82,7 +78,7 @@ fn DtorRes(dtor: Option<@fn()>) -> DtorRes {
  * * base - A foreign pointer to a buffer
  * * len - The number of elements in the buffer
  */
-pub fn CVec<T>(base: *mut T, len: uint) -> CVec<T> {
+pub unsafe fn CVec<T>(base: *mut T, len: uint) -> CVec<T> {
     return CVec{
         base: base,
         len: len,
@@ -101,7 +97,7 @@ pub fn CVec<T>(base: *mut T, len: uint) -> CVec<T> {
  * * dtor - A function to run when the value is destructed, useful
  *          for freeing the buffer, etc.
  */
-pub fn c_vec_with_dtor<T>(base: *mut T, len: uint, dtor: @fn())
+pub unsafe fn c_vec_with_dtor<T>(base: *mut T, len: uint, dtor: @fn())
   -> CVec<T> {
     return CVec{
         base: base,
@@ -142,11 +138,10 @@ pub fn set<T:Copy>(t: CVec<T>, ofs: uint, v: T) {
 pub fn len<T>(t: CVec<T>) -> uint { t.len }
 
 /// Returns a pointer to the first element of the vector
-pub fn ptr<T>(t: CVec<T>) -> *mut T { t.base }
+pub unsafe fn ptr<T>(t: CVec<T>) -> *mut T { t.base }
 
 #[cfg(test)]
 mod tests {
-    use core::prelude::*;
 
     use c_vec::*;
 
@@ -159,8 +154,8 @@ mod tests {
 
             assert!(mem as int != 0);
 
-            return unsafe { c_vec_with_dtor(mem as *mut u8, n as uint,
-                                         || unsafe { free(mem) }) };
+            return c_vec_with_dtor(mem as *mut u8, n as uint,
+                                   || unsafe { free(mem) });
         }
     }
 

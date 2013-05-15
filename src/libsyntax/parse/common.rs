@@ -8,15 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use ast;
 use codemap::{BytePos, spanned};
 use parse::lexer::reader;
 use parse::parser::Parser;
 use parse::token;
-
-use core::option::{None, Option, Some};
 
 use opt_vec;
 use opt_vec::OptVec;
@@ -28,13 +24,13 @@ pub struct SeqSep {
     trailing_sep_allowed: bool
 }
 
-pub fn seq_sep_trailing_disallowed(+t: token::Token) -> SeqSep {
+pub fn seq_sep_trailing_disallowed(t: token::Token) -> SeqSep {
     SeqSep {
         sep: Some(t),
         trailing_sep_allowed: false,
     }
 }
-pub fn seq_sep_trailing_allowed(+t: token::Token) -> SeqSep {
+pub fn seq_sep_trailing_allowed(t: token::Token) -> SeqSep {
     SeqSep {
         sep: Some(t),
         trailing_sep_allowed: true,
@@ -47,17 +43,29 @@ pub fn seq_sep_none() -> SeqSep {
     }
 }
 
+// maps any token back to a string. not necessary if you know it's
+// an identifier....
 pub fn token_to_str(reader: @reader, token: &token::Token) -> ~str {
     token::to_str(reader.interner(), token)
 }
 
 pub impl Parser {
+    // convert a token to a string using self's reader
+    fn token_to_str(&self, token: &token::Token) -> ~str {
+        token::to_str(self.reader.interner(), token)
+    }
+
+    // convert the current token to a string using self's reader
+    fn this_token_to_str(&self) -> ~str {
+        self.token_to_str(self.token)
+    }
+
     fn unexpected_last(&self, t: &token::Token) -> ! {
         self.span_fatal(
             *self.last_span,
             fmt!(
                 "unexpected token: `%s`",
-                token_to_str(self.reader, t)
+                self.token_to_str(t)
             )
         );
     }
@@ -66,7 +74,7 @@ pub impl Parser {
         self.fatal(
             fmt!(
                 "unexpected token: `%s`",
-                token_to_str(self.reader, &copy *self.token)
+                self.this_token_to_str()
             )
         );
     }
@@ -80,8 +88,8 @@ pub impl Parser {
             self.fatal(
                 fmt!(
                     "expected `%s` but found `%s`",
-                    token_to_str(self.reader, t),
-                    token_to_str(self.reader, &copy *self.token)
+                    self.token_to_str(t),
+                    self.this_token_to_str()
                 )
             )
         }
@@ -104,7 +112,7 @@ pub impl Parser {
                 self.fatal(
                     fmt!(
                         "expected ident, found `%s`",
-                        token_to_str(self.reader, &copy *self.token)
+                        self.this_token_to_str()
                     )
                 );
             }
@@ -114,7 +122,7 @@ pub impl Parser {
     fn parse_path_list_ident(&self) -> ast::path_list_ident {
         let lo = self.span.lo;
         let ident = self.parse_ident();
-        let hi = self.span.hi;
+        let hi = self.last_span.hi;
         spanned(lo, hi, ast::path_list_ident_ { name: ident,
                                                 id: self.get_id() })
     }
@@ -128,12 +136,15 @@ pub impl Parser {
     // Storing keywords as interned idents instead of strings would be nifty.
 
     // A sanity check that the word we are asking for is a known keyword
+    // NOTE: this could be done statically....
     fn require_keyword(&self, word: &~str) {
         if !self.keywords.contains(word) {
             self.bug(fmt!("unknown keyword: %s", *word));
         }
     }
 
+    // return true when this token represents the given string, and is not
+    // followed immediately by :: .
     fn token_is_word(&self, word: &~str, tok: &token::Token) -> bool {
         match *tok {
             token::IDENT(sid, false) => { *self.id_to_str(sid) == *word }
@@ -148,6 +159,10 @@ pub impl Parser {
 
     fn is_keyword(&self, word: &~str) -> bool {
         self.token_is_keyword(word, &copy *self.token)
+    }
+
+    fn id_is_any_keyword(&self, id: ast::ident) -> bool {
+        self.keywords.contains(self.id_to_str(id))
     }
 
     fn is_any_keyword(&self, tok: &token::Token) -> bool {
@@ -182,7 +197,7 @@ pub impl Parser {
                 fmt!(
                     "expected `%s`, found `%s`",
                     *word,
-                    token_to_str(self.reader, &copy *self.token)
+                    self.this_token_to_str()
                 )
             );
         }
@@ -248,9 +263,9 @@ pub impl Parser {
             );
         } else {
             let mut s: ~str = ~"expected `";
-            s += token_to_str(self.reader, &token::GT);
+            s += self.token_to_str(&token::GT);
             s += ~"`, found `";
-            s += token_to_str(self.reader, &copy *self.token);
+            s += self.this_token_to_str();
             s += ~"`";
             self.fatal(s);
         }

@@ -17,16 +17,14 @@ Obsolete syntax that becomes too hard to parse can be
 removed.
 */
 
-use core::prelude::*;
 
-use ast::{expr, expr_lit, lit_nil};
+use ast::{expr, expr_lit, lit_nil, attribute};
 use ast;
 use codemap::{span, respan};
 use parse::parser::Parser;
 use parse::token::Token;
 use parse::token;
 
-use core::str;
 use core::to_bytes;
 
 /// The specific types of unsupported syntax
@@ -42,6 +40,7 @@ pub enum ObsoleteSyntax {
     ObsoleteModeInFnType,
     ObsoleteMoveInit,
     ObsoleteBinaryMove,
+    ObsoleteSwap,
     ObsoleteUnsafeBlock,
     ObsoleteUnenforcedBound,
     ObsoleteImplSyntax,
@@ -64,10 +63,18 @@ pub enum ObsoleteSyntax {
     ObsoleteFixedLengthVectorType,
 }
 
+#[cfg(stage0)]
 impl to_bytes::IterBytes for ObsoleteSyntax {
     #[inline(always)]
-    fn iter_bytes(&self, +lsb0: bool, f: to_bytes::Cb) {
+    fn iter_bytes(&self, lsb0: bool, f: to_bytes::Cb) {
         (*self as uint).iter_bytes(lsb0, f);
+    }
+}
+#[cfg(not(stage0))]
+impl to_bytes::IterBytes for ObsoleteSyntax {
+    #[inline(always)]
+    fn iter_bytes(&self, lsb0: bool, f: to_bytes::Cb) -> bool {
+        (*self as uint).iter_bytes(lsb0, f)
     }
 }
 
@@ -122,6 +129,10 @@ pub impl Parser {
             ObsoleteBinaryMove => (
                 "binary move",
                 "Write `foo = move bar` instead"
+            ),
+            ObsoleteSwap => (
+                "swap",
+                "Use core::util::{swap, replace} instead"
             ),
             ObsoleteUnsafeBlock => (
                 "non-standalone unsafe block",
@@ -261,7 +272,7 @@ pub impl Parser {
     fn try_parse_obsolete_struct_ctor(&self) -> bool {
         if self.eat_obsolete_ident("new") {
             self.obsolete(*self.last_span, ObsoleteStructCtor);
-            self.parse_fn_decl(|p| p.parse_arg());
+            self.parse_fn_decl();
             self.parse_block();
             true
         } else {
@@ -284,13 +295,13 @@ pub impl Parser {
         }
     }
 
-    fn try_parse_obsolete_priv_section(&self) -> bool {
+    fn try_parse_obsolete_priv_section(&self, attrs: ~[attribute]) -> bool {
         if self.is_keyword(&~"priv") && self.look_ahead(1) == token::LBRACE {
             self.obsolete(copy *self.span, ObsoletePrivSection);
             self.eat_keyword(&~"priv");
             self.bump();
             while *self.token != token::RBRACE {
-                self.parse_single_class_item(ast::private);
+                self.parse_single_struct_field(ast::private, attrs);
             }
             self.bump();
             true
@@ -300,4 +311,3 @@ pub impl Parser {
     }
 
 }
-

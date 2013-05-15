@@ -17,14 +17,12 @@ use super::{Loop, Watcher, Request, UvError, Buf, Callback, NativeHandle, NullCa
             loop_from_watcher, status_to_maybe_uv_error,
             install_watcher_data, get_watcher_data, drop_watcher_data,
             vec_to_uv_buf, vec_from_uv_buf};
-use super::super::rtio::{IpAddr, Ipv4, Ipv6};
+use super::super::io::net::ip::{IpAddr, Ipv4, Ipv6};
 
-#[cfg(test)]
-use unstable::run_in_bare_thread;
-#[cfg(test)]
-use super::super::thread::Thread;
-#[cfg(test)]
-use cell::Cell;
+#[cfg(test)] use cell::Cell;
+#[cfg(test)] use unstable::run_in_bare_thread;
+#[cfg(test)] use super::super::thread::Thread;
+#[cfg(test)] use super::super::test::*;
 
 fn ip4_as_uv_ip4(addr: IpAddr, f: &fn(*sockaddr_in)) {
     match addr {
@@ -109,21 +107,25 @@ pub impl StreamWatcher {
 
         let req = WriteRequest::new();
         let buf = vec_to_uv_buf(msg);
-        // XXX: Allocation
-        let bufs = ~[buf];
+        assert!(data.buf.is_none());
+        data.buf = Some(buf);
+        let bufs = [buf];
         unsafe {
             assert!(0 == uvll::write(req.native_handle(),
                                           self.native_handle(),
-                                          &bufs, write_cb));
+                                          bufs, write_cb));
         }
-        // XXX: Freeing immediately after write. Is this ok?
-        let _v = vec_from_uv_buf(buf);
 
         extern fn write_cb(req: *uvll::uv_write_t, status: c_int) {
             let write_request: WriteRequest = NativeHandle::from_native_handle(req);
             let mut stream_watcher = write_request.stream();
             write_request.delete();
-            let cb = get_watcher_data(&mut stream_watcher).write_cb.swap_unwrap();
+            let cb = {
+                let data = get_watcher_data(&mut stream_watcher);
+                let _vec = vec_from_uv_buf(data.buf.swap_unwrap());
+                let cb = data.write_cb.swap_unwrap();
+                cb
+            };
             let status = status_to_maybe_uv_error(stream_watcher.native_handle(), status);
             cb(stream_watcher, status);
         }
@@ -150,8 +152,7 @@ pub impl StreamWatcher {
         extern fn close_cb(handle: *uvll::uv_stream_t) {
             let mut stream_watcher: StreamWatcher = NativeHandle::from_native_handle(handle);
             {
-                let mut data = get_watcher_data(&mut stream_watcher);
-                data.close_cb.swap_unwrap()();
+                get_watcher_data(&mut stream_watcher).close_cb.swap_unwrap()();
             }
             drop_watcher_data(&mut stream_watcher);
             unsafe { free_handle(handle as *c_void) }
@@ -212,8 +213,7 @@ pub impl TcpWatcher {
             assert!(get_watcher_data(self).connect_cb.is_none());
             get_watcher_data(self).connect_cb = Some(cb);
 
-            let mut connect_watcher = ConnectRequest::new();
-            let connect_handle = connect_watcher.native_handle();
+            let connect_handle = ConnectRequest::new().native_handle();
             match address {
                 Ipv4(*) => {
                     do ip4_as_uv_ip4(address) |addr| {
@@ -356,13 +356,12 @@ impl NativeHandle<*uvll::uv_write_t> for WriteRequest {
 
 
 #[test]
-#[ignore(reason = "ffi struct issues")]
 fn connect_close() {
     do run_in_bare_thread() {
         let mut loop_ = Loop::new();
         let mut tcp_watcher = { TcpWatcher::new(&mut loop_) };
         // Connect to a port where nobody is listening
-        let addr = Ipv4(127, 0, 0, 1, 2923);
+        let addr = next_test_ip4();
         do tcp_watcher.connect(addr) |stream_watcher, status| {
             rtdebug!("tcp_watcher.connect!");
             assert!(status.is_some());
@@ -375,47 +374,12 @@ fn connect_close() {
 }
 
 #[test]
-#[ignore(reason = "need a server to connect to")]
-fn connect_read() {
-    do run_in_bare_thread() {
-        let mut loop_ = Loop::new();
-        let mut tcp_watcher = { TcpWatcher::new(&mut loop_) };
-        let addr = Ipv4(127, 0, 0, 1, 2924);
-        do tcp_watcher.connect(addr) |stream_watcher, status| {
-            let mut stream_watcher = stream_watcher;
-            rtdebug!("tcp_watcher.connect!");
-            assert!(status.is_none());
-            let alloc: AllocCallback = |size| {
-                vec_to_uv_buf(vec::from_elem(size, 0))
-            };
-            do stream_watcher.read_start(alloc)
-                |stream_watcher, nread, buf, status| {
-
-                let buf = vec_from_uv_buf(buf);
-                rtdebug!("read cb!");
-                if status.is_none() {
-                    let bytes = buf.unwrap();
-                    rtdebug!("%s", bytes.slice(0, nread as uint).to_str());
-                } else {
-                    rtdebug!("status after read: %s", status.get().to_str());
-                    rtdebug!("closing");
-                    stream_watcher.close(||());
-                }
-            }
-        }
-        loop_.run();
-        loop_.close();
-    }
-}
-
-#[test]
-#[ignore(reason = "ffi struct issues")]
 fn listen() {
     do run_in_bare_thread() {
         static MAX: int = 10;
         let mut loop_ = Loop::new();
         let mut server_tcp_watcher = { TcpWatcher::new(&mut loop_) };
-        let addr = Ipv4(127, 0, 0, 1, 2925);
+        let addr = next_test_ip4();
         server_tcp_watcher.bind(addr);
         let loop_ = loop_;
         rtdebug!("listening");

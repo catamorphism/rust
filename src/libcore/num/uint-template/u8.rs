@@ -10,16 +10,34 @@
 
 //! Operations and constants for `u8`
 
-pub use self::inst::is_ascii;
-
 mod inst {
+    use num::{Primitive, BitCount};
+    use unstable::intrinsics;
+
     pub type T = u8;
     #[allow(non_camel_case_types)]
     pub type T_SIGNED = i8;
     pub static bits: uint = 8;
 
-    // Type-specific functions here. These must be reexported by the
-    // parent module so that they appear in core::u8 and not core::u8::u8;
+    impl Primitive for u8 {
+        #[inline(always)]
+        fn bits() -> uint { 8 }
 
-    pub fn is_ascii(x: T) -> bool { return 0 as T == x & 128 as T; }
+        #[inline(always)]
+        fn bytes() -> uint { Primitive::bits::<u8>() / 8 }
+    }
+
+    impl BitCount for u8 {
+        /// Counts the number of bits set. Wraps LLVM's `ctpop` intrinsic.
+        #[inline(always)]
+        fn population_count(&self) -> u8 { unsafe { intrinsics::ctpop8(*self as i8) as u8 } }
+
+        /// Counts the number of leading zeros. Wraps LLVM's `ctlz` intrinsic.
+        #[inline(always)]
+        fn leading_zeros(&self) -> u8 { unsafe { intrinsics::ctlz8(*self as i8) as u8 } }
+
+        /// Counts the number of trailing zeros. Wraps LLVM's `cttz` intrinsic.
+        #[inline(always)]
+        fn trailing_zeros(&self) -> u8 { unsafe { intrinsics::cttz8(*self as i8) as u8 } }
+    }
 }

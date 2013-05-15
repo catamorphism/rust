@@ -19,6 +19,12 @@ use libc;
 use option::{None, Option, Some};
 use str;
 use to_str::ToStr;
+use ascii::{AsciiCast, AsciiStr};
+
+#[cfg(windows)]
+pub use Path = self::WindowsPath;
+#[cfg(unix)]
+pub use Path = self::PosixPath;
 
 #[deriving(Clone, Eq)]
 pub struct WindowsPath {
@@ -43,46 +49,72 @@ pub fn PosixPath(s: &str) -> PosixPath {
 }
 
 pub trait GenericPath {
+    /// Converts a string to a Path
     fn from_str(&str) -> Self;
 
+    /// Returns the directory component of `self`, as a string
     fn dirname(&self) -> ~str;
+    /// Returns the file component of `self`, as a string option.
+    /// Returns None if `self` names a directory.
     fn filename(&self) -> Option<~str>;
+    /// Returns the stem of the file component of `self`, as a string option.
+    /// The stem is the slice of a filename starting at 0 and ending just before
+    /// the last '.' in the name.
+    /// Returns None if `self` names a directory.
     fn filestem(&self) -> Option<~str>;
+    /// Returns the type of the file component of `self`, as a string option.
+    /// The file type is the slice of a filename starting just after the last
+    /// '.' in the name and ending at the last index in the filename.
+    /// Returns None if `self` names a directory.
     fn filetype(&self) -> Option<~str>;
 
+    /// Returns a new path consisting of `self` with the parent directory component replaced
+    /// with the given string.
     fn with_dirname(&self, (&str)) -> Self;
+    /// Returns a new path consisting of `self` with the file component replaced
+    /// with the given string.
     fn with_filename(&self, (&str)) -> Self;
+    /// Returns a new path consisting of `self` with the file stem replaced
+    /// with the given string.
     fn with_filestem(&self, (&str)) -> Self;
+    /// Returns a new path consisting of `self` with the file type replaced
+    /// with the given string.
     fn with_filetype(&self, (&str)) -> Self;
 
+    /// Returns the directory component of `self`, as a new path.
+    /// If `self` has no parent, returns `self`.
     fn dir_path(&self) -> Self;
+    /// Returns the file component of `self`, as a new path.
+    /// If `self` names a directory, returns the empty path.
     fn file_path(&self) -> Self;
 
+    /// Returns a new Path whose parent directory is `self` and whose
+    /// file component is the given string.
     fn push(&self, (&str)) -> Self;
+    /// Returns a new Path consisting of the given path, made relative to `self`.
     fn push_rel(&self, (&Self)) -> Self;
+    /// Returns a new Path consisting of the path given by the given vector
+    /// of strings, relative to `self`.
     fn push_many(&self, (&[~str])) -> Self;
+    /// Identical to `dir_path` except in the case where `self` has only one
+    /// component. In this case, `pop` returns the empty path.
     fn pop(&self) -> Self;
 
+    /// The same as `push_rel`, except that the directory argument must not
+    /// contain directory separators in any of its components.
     fn unsafe_join(&self, (&Self)) -> Self;
+    /// On Unix, always returns false. On Windows, returns true iff `self`'s
+    /// file stem is one of: `con` `aux` `com1` `com2` `com3` `com4`
+    /// `lpt1` `lpt2` `lpt3` `prn` `nul`
     fn is_restricted(&self) -> bool;
 
+    /// Returns a new path that names the same file as `self`, without containing
+    /// any '.', '..', or empty components. On Windows, uppercases the drive letter
+    /// as well.
     fn normalize(&self) -> Self;
-}
 
-#[cfg(windows)]
-pub type Path = WindowsPath;
-
-#[cfg(windows)]
-pub fn Path(s: &str) -> Path {
-    WindowsPath(s)
-}
-
-#[cfg(unix)]
-pub type Path = PosixPath;
-
-#[cfg(unix)]
-pub fn Path(s: &str) -> Path {
-    PosixPath(s)
+    /// Returns `true` if `self` is an absolute path.
+    fn is_absolute(&self) -> bool;
 }
 
 #[cfg(target_os = "linux")]
@@ -90,7 +122,6 @@ pub fn Path(s: &str) -> Path {
 mod stat {
     #[cfg(target_arch = "x86")]
     #[cfg(target_arch = "arm")]
-    #[cfg(target_arch = "mips")]
     pub mod arch {
         use libc;
 
@@ -116,6 +147,36 @@ mod stat {
                 st_ctime_nsec: 0,
                 __unused4: 0,
                 __unused5: 0,
+            }
+        }
+    }
+
+    #[cfg(target_arch = "mips")]
+    pub mod arch {
+        use libc;
+
+        pub fn default_stat() -> libc::stat {
+            libc::stat {
+                st_dev: 0,
+                st_pad1: [0, ..3],
+                st_ino: 0,
+                st_mode: 0,
+                st_nlink: 0,
+                st_uid: 0,
+                st_gid: 0,
+                st_rdev: 0,
+                st_pad2: [0, ..2],
+                st_size: 0,
+                st_pad3: 0,
+                st_atime: 0,
+                st_atime_nsec: 0,
+                st_mtime: 0,
+                st_mtime_nsec: 0,
+                st_ctime: 0,
+                st_ctime_nsec: 0,
+                st_blksize: 0,
+                st_blocks: 0,
+                st_pad5: [0, ..14],
             }
         }
     }
@@ -379,10 +440,11 @@ impl ToStr for PosixPath {
 // FIXME (#3227): when default methods in traits are working, de-duplicate
 // PosixPath and WindowsPath, most of their methods are common.
 impl GenericPath for PosixPath {
-
     fn from_str(s: &str) -> PosixPath {
         let mut components = ~[];
-        for str::each_split_nonempty(s, |c| c == '/') |s| { components.push(s.to_owned()) }
+        for str::each_split_nonempty(s, |c| c == '/') |s| {
+            components.push(s.to_owned())
+        }
         let is_absolute = (s.len() != 0 && s[0] == '/' as u8);
         return PosixPath { is_absolute: is_absolute,
                            components: components }
@@ -540,6 +602,10 @@ impl GenericPath for PosixPath {
           //  ..self
         }
     }
+
+    fn is_absolute(&self) -> bool {
+        self.is_absolute
+    }
 }
 
 
@@ -563,7 +629,6 @@ impl ToStr for WindowsPath {
 
 
 impl GenericPath for WindowsPath {
-
     fn from_str(s: &str) -> WindowsPath {
         let host;
         let device;
@@ -747,7 +812,9 @@ impl GenericPath for WindowsPath {
     fn is_restricted(&self) -> bool {
         match self.filestem() {
             Some(stem) => {
-                match stem.to_lower() {
+                // FIXME: #4318 Instead of to_ascii and to_str_ascii, could use
+                // to_ascii_consume and to_str_consume to not do a unnecessary copy.
+                match stem.to_ascii().to_lower().to_str_ascii() {
                     ~"con" | ~"aux" | ~"com1" | ~"com2" | ~"com3" | ~"com4" |
                     ~"lpt1" | ~"lpt2" | ~"lpt3" | ~"prn" | ~"nul" => true,
                     _ => false
@@ -803,11 +870,18 @@ impl GenericPath for WindowsPath {
             host: copy self.host,
             device: match self.device {
                 None => None,
-                Some(ref device) => Some(device.to_upper())
+
+                // FIXME: #4318 Instead of to_ascii and to_str_ascii, could use
+                // to_ascii_consume and to_str_consume to not do a unnecessary copy.
+                Some(ref device) => Some(device.to_ascii().to_upper().to_str_ascii())
             },
             is_absolute: self.is_absolute,
             components: normalize(self.components)
         }
+    }
+
+    fn is_absolute(&self) -> bool {
+        self.is_absolute
     }
 }
 
@@ -844,7 +918,7 @@ pub mod windows {
             while i < s.len() {
                 if is_sep(s[i]) {
                     let pre = s.slice(2, i).to_owned();
-                    let mut rest = s.slice(i, s.len()).to_owned();
+                    let rest = s.slice(i, s.len()).to_owned();
                     return Some((pre, rest));
                 }
                 i += 1;

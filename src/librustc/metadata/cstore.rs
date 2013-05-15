@@ -12,13 +12,10 @@
 // The crate store - a central repo for information collected about external
 // crates and libraries
 
-use core::prelude::*;
-
 use metadata::cstore;
 use metadata::decoder;
 
 use core::hashmap::HashMap;
-use core::vec;
 use std;
 use syntax::ast;
 use syntax::parse::token::ident_interner;
@@ -164,11 +161,3 @@ pub fn get_dep_hashes(cstore: &CStore) -> ~[~str] {
 
     sorted.map(|ch| /*bad*/copy *ch.hash)
 }
-
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

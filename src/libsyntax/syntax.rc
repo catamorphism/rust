@@ -8,27 +8,30 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+/*! This module contains the Rust parser. It maps source text
+ *  to token trees and to ASTs. It contains code for expanding
+ *  macros.
+ */
+
 #[link(name = "syntax",
        vers = "0.7-pre",
        uuid = "9311401b-d6ea-4cd9-a1d9-61f89499c645")];
 
-
-
 #[license = "MIT/ASL2"];
 #[crate_type = "lib"];
 
-#[legacy_modes];
-
 #[allow(vecs_implicitly_copyable)];
 #[allow(non_camel_case_types)];
-#[allow(deprecated_mode)];
+#[deny(deprecated_pattern)];
 
-#[no_core];
-
-extern mod core(vers = "0.7-pre");
 extern mod std(vers = "0.7-pre");
 
-use core::*;
+// allow the interner_key macro
+// to escape this module:
+#[macro_escape]
+pub mod util {
+    pub mod interner;
+}
 
 pub mod syntax {
     pub use ext;
@@ -45,9 +48,6 @@ pub mod ast_util;
 pub mod ast_map;
 pub mod visit;
 pub mod fold;
-pub mod util {
-    pub mod interner;
-}
 
 
 #[path = "parse/mod.rs"]
@@ -89,4 +89,3 @@ pub mod ext {
 
     pub mod trace_macros;
 }
-

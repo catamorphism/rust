@@ -34,22 +34,25 @@ pub extern "rust-intrinsic" {
 
     pub fn size_of<T>() -> uint;
 
-    pub fn move_val<T>(dst: &mut T, +src: T);
-    pub fn move_val_init<T>(dst: &mut T, +src: T);
+    pub fn move_val<T>(dst: &mut T, src: T);
+    pub fn move_val_init<T>(dst: &mut T, src: T);
 
     pub fn min_align_of<T>() -> uint;
     pub fn pref_align_of<T>() -> uint;
 
     pub fn get_tydesc<T>() -> *();
 
-    pub fn init<T>() -> T;
+    /// init is unsafe because it returns a zeroed-out datum,
+    /// which is unsafe unless T is POD. We don't have a POD
+    /// kind yet. (See #4074)
+    pub unsafe fn init<T>() -> T;
 
-    pub fn forget<T>(_: T) -> ();
+    #[cfg(not(stage0))]
+    pub unsafe fn uninit<T>() -> T;
 
-    // XXX: intrinsic uses legacy modes
-    fn reinterpret_cast<T,U>(&&src: T) -> U;
-    // XXX: intrinsic uses legacy modes
-    fn addr_of<T>(&&scr: T) -> *T;
+    /// forget is unsafe because the caller is responsible for
+    /// ensuring the argument is deallocated already
+    pub unsafe fn forget<T>(_: T) -> ();
 
     pub fn needs_drop<T>() -> bool;
 
@@ -70,16 +73,28 @@ pub extern "rust-intrinsic" {
     pub fn powif32(a: f32, x: i32) -> f32;
     pub fn powif64(a: f64, x: i32) -> f64;
 
+    // the following kill the stack canary without
+    // `fixed_stack_segment`. This possibly only affects the f64
+    // variants, but it's hard to be sure since it seems to only
+    // occur with fairly specific arguments.
+    #[fixed_stack_segment]
     pub fn sinf32(x: f32) -> f32;
+    #[fixed_stack_segment]
     pub fn sinf64(x: f64) -> f64;
 
+    #[fixed_stack_segment]
     pub fn cosf32(x: f32) -> f32;
+    #[fixed_stack_segment]
     pub fn cosf64(x: f64) -> f64;
 
+    #[fixed_stack_segment]
     pub fn powf32(a: f32, x: f32) -> f32;
+    #[fixed_stack_segment]
     pub fn powf64(a: f64, x: f64) -> f64;
 
+    #[fixed_stack_segment]
     pub fn expf32(x: f32) -> f32;
+    #[fixed_stack_segment]
     pub fn expf64(x: f64) -> f64;
 
     pub fn exp2f32(x: f32) -> f32;
@@ -128,4 +143,3 @@ pub extern "rust-intrinsic" {
     pub fn bswap32(x: i32) -> i32;
     pub fn bswap64(x: i64) -> i64;
 }
-

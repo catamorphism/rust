@@ -33,12 +33,6 @@
  * * access to a character by index is logarithmic (linear in strings);
  */
 
-use core::option;
-use core::prelude::*;
-use core::str;
-use core::uint;
-use core::vec;
-
 /// The type of ropes.
 pub type Rope = node::Root;
 
@@ -215,8 +209,8 @@ pub fn bal(rope:Rope) -> Rope {
     match (rope) {
       node::Empty => return rope,
       node::Content(x) => match (node::bal(x)) {
-        option::None    => rope,
-        option::Some(y) => node::Content(y)
+        None    => rope,
+        Some(y) => node::Content(y)
       }
     }
 }
@@ -447,7 +441,6 @@ pub mod iterator {
     pub mod leaf {
         use rope::{Rope, node};
 
-        use core::prelude::*;
 
         pub fn start(rope: Rope) -> node::leaf_iterator::T {
             match (rope) {
@@ -462,7 +455,6 @@ pub mod iterator {
     pub mod char {
         use rope::{Rope, node};
 
-        use core::prelude::*;
 
         pub fn start(rope: Rope) -> node::char_iterator::T {
             match (rope) {
@@ -558,14 +550,6 @@ pub fn char_at(rope: Rope, pos: uint) -> char {
 pub mod node {
     use rope::node;
 
-    use core::cast;
-    use core::char;
-    use core::option;
-    use core::prelude::*;
-    use core::str;
-    use core::uint;
-    use core::vec;
-
     /// Implementation of type `rope`
     pub enum Root {
         /// An empty rope
@@ -581,7 +565,7 @@ pub mod node {
      *
      * # Fields
      *
-     * * byte_offset = The number of bytes skippen in `content`
+     * * byte_offset = The number of bytes skipped in `content`
      * * byte_len - The number of bytes of `content` to use
      * * char_len - The number of chars in the leaf.
      * * content - Contents of the leaf.
@@ -835,11 +819,10 @@ pub mod node {
             let mut it = leaf_iterator::start(node);
             loop {
                 match leaf_iterator::next(&mut it) {
-                  option::None => break,
-                  option::Some(x) => {
+                  None => break,
+                  Some(x) => {
                     //FIXME (#2744): Replace with memcpy or something similar
-                    let mut local_buf: ~[u8] =
-                        cast::reinterpret_cast(&*x.content);
+                    let local_buf: ~[u8] = cast::transmute(copy *x.content);
                     let mut i = x.byte_offset;
                     while i < x.byte_len {
                         buf[offset] = local_buf[i];
@@ -886,24 +869,24 @@ pub mod node {
      *
      * # Return value
      *
-     * * `option::None` if no transformation happened
-     * * `option::Some(x)` otherwise, in which case `x` has the same contents
+     * * `None` if no transformation happened
+     * * `Some(x)` otherwise, in which case `x` has the same contents
      *    as `node` bot lower height and/or fragmentation.
      */
     pub fn bal(node: @Node) -> Option<@Node> {
-        if height(node) < hint_max_node_height { return option::None; }
+        if height(node) < hint_max_node_height { return None; }
         //1. Gather all leaves as a forest
         let mut forest = ~[];
         let mut it = leaf_iterator::start(node);
         loop {
             match leaf_iterator::next(&mut it) {
-              option::None    => break,
-              option::Some(x) => forest.push(@Leaf(x))
+              None    => break,
+              Some(x) => forest.push(@Leaf(x))
             }
         }
         //2. Rebuild tree from forest
         let root = @*tree_from_forest_destructive(forest);
-        return option::Some(root);
+        return Some(root);
 
     }
 
@@ -1062,14 +1045,14 @@ pub mod node {
         while result == 0 {
             match (char_iterator::next(&mut ita), char_iterator::next(&mut itb))
             {
-              (option::None, option::None) => break,
-              (option::Some(chara), option::Some(charb)) => {
-                result = char::cmp(chara, charb);
+              (None, None) => break,
+              (Some(chara), Some(charb)) => {
+                result = chara.cmp(&charb) as int;
               }
-              (option::Some(_), _) => {
+              (Some(_), _) => {
                 result = 1;
               }
-              (_, option::Some(_)) => {
+              (_, Some(_)) => {
                 result = -1;
               }
             }
@@ -1146,17 +1129,13 @@ pub mod node {
     pub mod leaf_iterator {
         use rope::node::{Concat, Leaf, Node, height};
 
-        use core::option;
-        use core::prelude::*;
-        use core::vec;
-
         pub struct T {
             stack: ~[@Node],
             stackpos: int,
         }
 
         pub fn empty() -> T {
-            let mut stack : ~[@Node] = ~[];
+            let stack : ~[@Node] = ~[];
             T { stack: stack, stackpos: -1 }
         }
 
@@ -1169,7 +1148,7 @@ pub mod node {
         }
 
         pub fn next(it: &mut T) -> Option<Leaf> {
-            if it.stackpos < 0 { return option::None; }
+            if it.stackpos < 0 { return None; }
             loop {
                 let current = it.stack[it.stackpos];
                 it.stackpos -= 1;
@@ -1180,7 +1159,7 @@ pub mod node {
                     it.stackpos += 1;
                     it.stack[it.stackpos] = x.left;
                   }
-                  Leaf(x) => return option::Some(x)
+                  Leaf(x) => return Some(x)
                 }
             };
         }
@@ -1189,10 +1168,6 @@ pub mod node {
     pub mod char_iterator {
         use rope::node::{Leaf, Node};
         use rope::node::leaf_iterator;
-
-        use core::option;
-        use core::prelude::*;
-        use core::str;
 
         pub struct T {
             leaf_iterator: leaf_iterator::T,
@@ -1203,7 +1178,7 @@ pub mod node {
         pub fn start(node: @Node) -> T {
             T {
                 leaf_iterator: leaf_iterator::start(node),
-                leaf: option::None,
+                leaf: None,
                 leaf_byte_pos: 0u,
             }
         }
@@ -1211,7 +1186,7 @@ pub mod node {
         pub fn empty() -> T {
             T {
                 leaf_iterator: leaf_iterator::empty(),
-                leaf:  option::None,
+                leaf: None,
                 leaf_byte_pos: 0u,
             }
         }
@@ -1219,12 +1194,12 @@ pub mod node {
         pub fn next(it: &mut T) -> Option<char> {
             loop {
                 match get_current_or_next_leaf(it) {
-                  option::None => return option::None,
-                  option::Some(_) => {
+                  None => return None,
+                  Some(_) => {
                     let next_char = get_next_char_in_leaf(it);
                     match next_char {
-                      option::None => loop,
-                      option::Some(_) => return next_char
+                      None => loop,
+                      Some(_) => return next_char
                     }
                   }
                 }
@@ -1233,12 +1208,12 @@ pub mod node {
 
         pub fn get_current_or_next_leaf(it: &mut T) -> Option<Leaf> {
             match it.leaf {
-              option::Some(_) => return it.leaf,
-              option::None => {
+              Some(_) => return it.leaf,
+              None => {
                 let next = leaf_iterator::next(&mut it.leaf_iterator);
                 match next {
-                  option::None => return option::None,
-                  option::Some(_) => {
+                  None => return None,
+                  Some(_) => {
                     it.leaf          = next;
                     it.leaf_byte_pos = 0u;
                     return next;
@@ -1250,12 +1225,12 @@ pub mod node {
 
         pub fn get_next_char_in_leaf(it: &mut T) -> Option<char> {
             match copy it.leaf {
-              option::None => return option::None,
-              option::Some(aleaf) => {
+              None => return None,
+              Some(aleaf) => {
                 if it.leaf_byte_pos >= aleaf.byte_len {
                     //We are actually past the end of the leaf
-                    it.leaf = option::None;
-                    return option::None
+                    it.leaf = None;
+                    return None
                 } else {
                     let range =
                         str::char_range_at(*aleaf.content,
@@ -1263,7 +1238,7 @@ pub mod node {
                     let ch = range.ch;
                     let next = range.next;
                     (*it).leaf_byte_pos = next - aleaf.byte_offset;
-                    return option::Some(ch)
+                    return Some(ch)
                 }
               }
             }
@@ -1274,35 +1249,31 @@ pub mod node {
 #[cfg(test)]
 mod tests {
     use rope::*;
-
-    use core::option;
-    use core::str;
-    use core::uint;
-    use core::vec;
+    use core::prelude::*;
 
     //Utility function, used for sanity check
     fn rope_to_string(r: Rope) -> ~str {
         match (r) {
           node::Empty => return ~"",
           node::Content(x) => {
-            let str = @mut ~"";
-            fn aux(str: @mut ~str, node: @node::Node) {
-                unsafe {
-                    match (*node) {
-                      node::Leaf(x) => {
-                        *str += str::slice(
-                            *x.content, x.byte_offset,
-                            x.byte_offset + x.byte_len).to_owned();
-                      }
-                      node::Concat(ref x) => {
+            let mut str = ~"";
+            fn aux(str: &mut ~str, node: @node::Node) {
+                match (*node) {
+                    node::Leaf(x) => {
+                        str::push_str(
+                            str,
+                            str::slice(
+                                *x.content, x.byte_offset,
+                                x.byte_offset + x.byte_len));
+                    }
+                    node::Concat(ref x) => {
                         aux(str, x.left);
                         aux(str, x.right);
-                      }
                     }
                 }
             }
-            aux(str, x);
-            return *str
+            aux(&mut str, x);
+            return str
           }
         }
     }
@@ -1328,12 +1299,12 @@ mod tests {
         let buf = @ mut ~"1234567890";
         let mut i = 0;
         while i < 10 {
-            let a = *buf;
-            let b = *buf;
+            let a = copy *buf;
+            let b = copy *buf;
             *buf = a + b;
             i+=1;
         }
-        let sample = @*buf;
+        let sample = @copy *buf;
         let r      = of_str(sample);
         assert!(char_len(r) == str::char_len(*sample));
         assert!(rope_to_string(r) == *sample);
@@ -1344,11 +1315,11 @@ mod tests {
         let mut equal = true;
         while equal {
             match (node::char_iterator::next(&mut rope_iter)) {
-              option::None => {
+              None => {
                 if string_iter < string_len {
                     equal = false;
                 } break; }
-              option::Some(c) => {
+              Some(c) => {
                 let range = str::char_range_at(*sample, string_iter);
                 string_iter = range.next;
                 if range.ch != c { equal = false; break; }
@@ -1364,20 +1335,20 @@ mod tests {
         let buf = @ mut ~"1234567890";
         let mut i = 0;
         while i < 10 {
-            let a = *buf;
-            let b = *buf;
+            let a = copy *buf;
+            let b = copy *buf;
             *buf = a + b;
             i+=1;
         }
-        let sample = @*buf;
+        let sample = @copy *buf;
         let r      = of_str(sample);
 
         let mut len = 0u;
         let mut it  = iterator::char::start(r);
         loop {
             match (node::char_iterator::next(&mut it)) {
-              option::None => break,
-              option::Some(_) => len += 1u
+              None => break,
+              Some(_) => len += 1u
             }
         }
 
@@ -1387,15 +1358,15 @@ mod tests {
     #[test]
     fn bal1() {
         let init = @~"1234567890";
-        let buf  = @mut * init;
+        let buf  = @mut copy *init;
         let mut i = 0;
         while i < 8 {
-            let a = *buf;
-            let b = *buf;
+            let a = copy *buf;
+            let b = copy *buf;
             *buf = a + b;
             i+=1;
         }
-        let sample = @*buf;
+        let sample = @copy *buf;
         let r1     = of_str(sample);
         let mut r2 = of_str(init);
         i = 0;

@@ -16,8 +16,8 @@ mod rustrt {
 
     #[nolink]
     pub extern {
-        pub fn debug_abi_1(++q: Quad) -> Quad;
-        pub fn debug_abi_2(++f: Floats) -> Floats;
+        pub fn debug_abi_1(q: Quad) -> Quad;
+        pub fn debug_abi_2(f: Floats) -> Floats;
     }
 }
 
@@ -56,6 +56,7 @@ fn test2() {
 }
 
 #[cfg(target_arch = "x86")]
+#[cfg(target_arch = "arm")]
 fn test2() {
 }
 

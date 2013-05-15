@@ -12,8 +12,6 @@
 //
 // Code relating to taking, dropping, etc as well as type descriptors.
 
-use core::prelude::*;
-
 use back::abi;
 use back::link::*;
 use driver::session;
@@ -35,9 +33,7 @@ use middle::ty;
 use util::ppaux;
 use util::ppaux::ty_to_short_str;
 
-use core::io;
 use core::libc::c_uint;
-use core::str;
 use std::time;
 use syntax::ast;
 
@@ -168,19 +164,19 @@ pub fn simplified_glue_type(tcx: ty::ctxt, field: uint, t: ty::t) -> ty::t {
         field == abi::tydesc_field_drop_glue ||
         field == abi::tydesc_field_free_glue) &&
         ! ty::type_needs_drop(tcx, t) {
-          return ty::mk_u32(tcx);
+          return ty::mk_u32();
     }
 
     if field == abi::tydesc_field_take_glue {
         match ty::get(t).sty {
-          ty::ty_unboxed_vec(*) => { return ty::mk_u32(tcx); }
+          ty::ty_unboxed_vec(*) => { return ty::mk_u32(); }
           _ => ()
         }
     }
 
     if field == abi::tydesc_field_take_glue &&
         ty::type_is_boxed(t) {
-          return ty::mk_imm_box(tcx, ty::mk_u32(tcx));
+          return ty::mk_imm_box(tcx, ty::mk_u32());
     }
 
     if field == abi::tydesc_field_free_glue {
@@ -193,7 +189,7 @@ pub fn simplified_glue_type(tcx: ty::ctxt, field: uint, t: ty::t) -> ty::t {
           ty::ty_evec(_, ty::vstore_uniq) | ty::ty_estr(ty::vstore_uniq) |
           ty::ty_evec(_, ty::vstore_box) | ty::ty_estr(ty::vstore_box) |
           ty::ty_opaque_closure_ptr(*) => (),
-          _ => { return ty::mk_u32(tcx); }
+          _ => { return ty::mk_u32(); }
         }
     }
 
@@ -203,12 +199,12 @@ pub fn simplified_glue_type(tcx: ty::ctxt, field: uint, t: ty::t) -> ty::t {
           ty::ty_box(mt) |
           ty::ty_evec(mt, ty::vstore_box)
           if ! ty::type_needs_drop(tcx, mt.ty) =>
-          return ty::mk_imm_box(tcx, ty::mk_u32(tcx)),
+          return ty::mk_imm_box(tcx, ty::mk_u32()),
 
           ty::ty_uniq(mt) |
           ty::ty_evec(mt, ty::vstore_uniq)
           if ! ty::type_needs_drop(tcx, mt.ty) =>
-          return ty::mk_imm_uniq(tcx, ty::mk_u32(tcx)),
+          return ty::mk_imm_uniq(tcx, ty::mk_u32()),
 
           _ => ()
         }
@@ -321,7 +317,7 @@ pub fn lazily_emit_tydesc_glue(ccx: @CrateContext,
 }
 
 // See [Note-arg-mode]
-pub fn call_tydesc_glue_full(++bcx: block,
+pub fn call_tydesc_glue_full(bcx: block,
                              v: ValueRef,
                              tydesc: ValueRef,
                              field: uint,
@@ -388,7 +384,7 @@ pub fn call_tydesc_glue_full(++bcx: block,
 }
 
 // See [Note-arg-mode]
-pub fn call_tydesc_glue(++cx: block, v: ValueRef, t: ty::t, field: uint)
+pub fn call_tydesc_glue(cx: block, v: ValueRef, t: ty::t, field: uint)
     -> block {
     let _icx = cx.insn_ctxt("call_tydesc_glue");
     let ti = get_tydesc(cx.ccx(), t);
@@ -398,10 +394,15 @@ pub fn call_tydesc_glue(++cx: block, v: ValueRef, t: ty::t, field: uint)
 
 pub fn make_visit_glue(bcx: block, v: ValueRef, t: ty::t) {
     let _icx = bcx.insn_ctxt("make_visit_glue");
-    let mut bcx = bcx;
-    let (visitor_trait, object_ty) = ty::visitor_object_ty(bcx.tcx());
-    let v = PointerCast(bcx, v, T_ptr(type_of::type_of(bcx.ccx(), object_ty)));
-    bcx = reflect::emit_calls_to_trait_visit_ty(bcx, t, v, visitor_trait.def_id);
+    let bcx = do with_scope(bcx, None, ~"visitor cleanup") |bcx| {
+        let mut bcx = bcx;
+        let (visitor_trait, object_ty) = ty::visitor_object_ty(bcx.tcx());
+        let v = PointerCast(bcx, v, T_ptr(type_of::type_of(bcx.ccx(), object_ty)));
+        bcx = reflect::emit_calls_to_trait_visit_ty(bcx, t, v, visitor_trait.def_id);
+        // The visitor is a boxed object and needs to be dropped
+        add_clean(bcx, v, object_ty);
+        bcx
+    };
     build_return(bcx);
 }
 
@@ -447,11 +448,8 @@ pub fn make_free_glue(bcx: block, v: ValueRef, t: ty::t) {
         // Call the dtor if there is one
         match ty::ty_dtor(bcx.tcx(), did) {
             ty::NoDtor => bcx,
-            ty::LegacyDtor(ref dt_id) => {
-                trans_struct_drop(bcx, t, v, *dt_id, did, substs, false)
-            }
             ty::TraitDtor(ref dt_id) => {
-                trans_struct_drop(bcx, t, v, *dt_id, did, substs, true)
+                trans_struct_drop(bcx, t, v, *dt_id, did, substs)
             }
         }
       }
@@ -465,8 +463,7 @@ pub fn trans_struct_drop(bcx: block,
                          v0: ValueRef,
                          dtor_did: ast::def_id,
                          class_did: ast::def_id,
-                         substs: &ty::substs,
-                         take_ref: bool)
+                         substs: &ty::substs)
                       -> block {
     let repr = adt::represent_type(bcx.ccx(), t);
     let drop_flag = adt::trans_drop_flag_ptr(bcx, repr, v0);
@@ -488,24 +485,18 @@ pub fn trans_struct_drop(bcx: block,
         // (self)
         assert!((params.len() == 2));
 
-        // If we need to take a reference to the class (because it's using
-        // the Drop trait), do so now.
-        let llval;
-        if take_ref {
-            llval = alloca(bcx, val_ty(v0));
-            Store(bcx, v0, llval);
-        } else {
-            llval = v0;
-        }
+        // Take a reference to the class (because it's using the Drop trait),
+        // do so now.
+        let llval = alloca(bcx, val_ty(v0));
+        Store(bcx, v0, llval);
 
         let self_arg = PointerCast(bcx, llval, params[1]);
-        let args = ~[bcx.fcx.llretptr, self_arg];
+        let args = ~[C_null(T_ptr(T_i8())), self_arg];
+
         Call(bcx, dtor_addr, args);
 
         // Drop the fields
-        let field_tys =
-            ty::struct_mutable_fields(bcx.tcx(), class_did,
-                                              substs);
+        let field_tys = ty::struct_fields(bcx.tcx(), class_did, substs);
         for vec::eachi(field_tys) |i, fld| {
             let llfld_a = adt::trans_field_ptr(bcx, repr, v0, 0, i);
             bcx = drop_ty(bcx, llfld_a, fld.mt.ty);
@@ -537,10 +528,7 @@ pub fn make_drop_glue(bcx: block, v0: ValueRef, t: ty::t) {
         let tcx = bcx.tcx();
         match ty::ty_dtor(tcx, did) {
           ty::TraitDtor(dtor) => {
-            trans_struct_drop(bcx, t, v0, dtor, did, substs, true)
-          }
-          ty::LegacyDtor(dtor) => {
-            trans_struct_drop(bcx, t, v0, dtor, did, substs, false)
+            trans_struct_drop(bcx, t, v0, dtor, did, substs)
           }
           ty::NoDtor => {
             // No dtor? Just the default case
@@ -551,13 +539,13 @@ pub fn make_drop_glue(bcx: block, v0: ValueRef, t: ty::t) {
       ty::ty_closure(_) => {
         closure::make_closure_glue(bcx, v0, t, drop_ty)
       }
-      ty::ty_trait(_, _, ty::BoxTraitStore) => {
-        let llbox = Load(bcx, GEPi(bcx, v0, [0u, 1u]));
+      ty::ty_trait(_, _, ty::BoxTraitStore, _) => {
+        let llbox = Load(bcx, GEPi(bcx, v0, [0u, abi::trt_field_box]));
         decr_refcnt_maybe_free(bcx, llbox, ty::mk_opaque_box(ccx.tcx))
       }
-      ty::ty_trait(_, _, ty::UniqTraitStore) => {
-        let lluniquevalue = GEPi(bcx, v0, [0, 1]);
-        let lltydesc = Load(bcx, GEPi(bcx, v0, [0, 2]));
+      ty::ty_trait(_, _, ty::UniqTraitStore, _) => {
+        let lluniquevalue = GEPi(bcx, v0, [0, abi::trt_field_box]);
+        let lltydesc = Load(bcx, GEPi(bcx, v0, [0, abi::trt_field_tydesc]));
         call_tydesc_glue_full(bcx, lluniquevalue, lltydesc,
                               abi::tydesc_field_free_glue, None);
         bcx
@@ -575,9 +563,7 @@ pub fn make_drop_glue(bcx: block, v0: ValueRef, t: ty::t) {
     build_return(bcx);
 }
 
-pub fn decr_refcnt_maybe_free(bcx: block,
-                              box_ptr: ValueRef,
-                              t: ty::t)
+pub fn decr_refcnt_maybe_free(bcx: block, box_ptr: ValueRef, t: ty::t)
                            -> block {
     let _icx = bcx.insn_ctxt("decr_refcnt_maybe_free");
     let ccx = bcx.ccx();
@@ -617,14 +603,14 @@ pub fn make_take_glue(bcx: block, v: ValueRef, t: ty::t) {
       ty::ty_closure(_) => {
         closure::make_closure_glue(bcx, v, t, take_ty)
       }
-      ty::ty_trait(_, _, ty::BoxTraitStore) => {
-        let llbox = Load(bcx, GEPi(bcx, v, [0u, 1u]));
+      ty::ty_trait(_, _, ty::BoxTraitStore, _) => {
+        let llbox = Load(bcx, GEPi(bcx, v, [0u, abi::trt_field_box]));
         incr_refcnt_of_boxed(bcx, llbox);
         bcx
       }
-      ty::ty_trait(_, _, ty::UniqTraitStore) => {
-        let llval = GEPi(bcx, v, [0, 1]);
-        let lltydesc = Load(bcx, GEPi(bcx, v, [0, 2]));
+      ty::ty_trait(_, _, ty::UniqTraitStore, _) => {
+        let llval = GEPi(bcx, v, [0, abi::trt_field_box]);
+        let lltydesc = Load(bcx, GEPi(bcx, v, [0, abi::trt_field_tydesc]));
         call_tydesc_glue_full(bcx, llval, lltydesc,
                               abi::tydesc_field_take_glue, None);
         bcx
@@ -685,9 +671,9 @@ pub fn declare_tydesc(ccx: @CrateContext, t: ty::t) -> @mut tydesc_info {
     let addrspace = declare_tydesc_addrspace(ccx, t);
     //XXX this triggers duplicate LLVM symbols
     let name = @(if false /*ccx.sess.opts.debuginfo*/ {
-        mangle_internal_name_by_type_only(ccx, t, ~"tydesc")
+        mangle_internal_name_by_type_only(ccx, t, "tydesc")
     } else {
-        mangle_internal_name_by_seq(ccx, ~"tydesc")
+        mangle_internal_name_by_seq(ccx, "tydesc")
     });
     note_unique_llvm_symbol(ccx, name);
     debug!("+++ declare_tydesc %s %s", ppaux::ty_to_str(ccx.tcx, t), *name);
@@ -714,7 +700,7 @@ pub fn declare_tydesc(ccx: @CrateContext, t: ty::t) -> @mut tydesc_info {
 pub type glue_helper = @fn(block, ValueRef, ty::t);
 
 pub fn declare_generic_glue(ccx: @CrateContext, t: ty::t, llfnty: TypeRef,
-                            +name: ~str) -> ValueRef {
+                            name: ~str) -> ValueRef {
     let _icx = ccx.insn_ctxt("declare_generic_glue");
     let name = name;
     //XXX this triggers duplicate LLVM symbols
@@ -737,7 +723,7 @@ pub fn make_generic_glue_inner(ccx: @CrateContext,
                                helper: glue_helper)
                             -> ValueRef {
     let _icx = ccx.insn_ctxt("make_generic_glue_inner");
-    let fcx = new_fn_ctxt(ccx, ~[], llfn, None);
+    let fcx = new_fn_ctxt(ccx, ~[], llfn, ty::mk_nil(), None);
     lib::llvm::SetLinkage(llfn, lib::llvm::InternalLinkage);
     ccx.stats.n_glues_created += 1u;
     // All glue functions take values passed *by alias*; this is a
@@ -756,8 +742,11 @@ pub fn make_generic_glue_inner(ccx: @CrateContext,
     return llfn;
 }
 
-pub fn make_generic_glue(ccx: @CrateContext, t: ty::t, llfn: ValueRef,
-                         helper: glue_helper, name: &str)
+pub fn make_generic_glue(ccx: @CrateContext,
+                         t: ty::t,
+                         llfn: ValueRef,
+                         helper: glue_helper,
+                         name: &str)
                       -> ValueRef {
     let _icx = ccx.insn_ctxt("make_generic_glue");
     if !ccx.sess.trans_stats() {
@@ -767,8 +756,10 @@ pub fn make_generic_glue(ccx: @CrateContext, t: ty::t, llfn: ValueRef,
     let start = time::get_time();
     let llval = make_generic_glue_inner(ccx, t, llfn, helper);
     let end = time::get_time();
-    log_fn_time(ccx, fmt!("glue %s %s", name, ty_to_short_str(ccx.tcx, t)),
-                start, end);
+    log_fn_time(ccx,
+                fmt!("glue %s %s", name, ty_to_short_str(ccx.tcx, t)),
+                start,
+                end);
     return llval;
 }
 

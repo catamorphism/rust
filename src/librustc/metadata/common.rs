@@ -100,7 +100,6 @@ pub static tag_mod_impl_trait: uint = 0x47u;
   different tags.
  */
 pub static tag_item_impl_method: uint = 0x48u;
-pub static tag_item_dtor: uint = 0x49u;
 pub static tag_item_trait_method_self_ty: uint = 0x4b;
 pub static tag_item_trait_method_self_ty_region: uint = 0x4c;
 
@@ -128,7 +127,6 @@ pub enum astencode_tag { // Reserves 0x50 -- 0x6f
     tag_table_freevars = 0x59,
     tag_table_tcache = 0x5a,
     tag_table_param_defs = 0x5b,
-    tag_table_inferred_modes = 0x5c,
     tag_table_mutbl = 0x5d,
     tag_table_last_use = 0x5e,
     tag_table_spill = 0x5f,
@@ -171,4 +169,3 @@ pub struct LinkMeta {
     vers: @str,
     extras_hash: @str
 }
-

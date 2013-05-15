@@ -10,15 +10,16 @@
 
 //! A standard linked list
 
-use core::cmp::Eq;
-use core::option::*;
-use core::prelude::*;
-use core::vec;
-
 #[deriving(Eq)]
 pub enum List<T> {
     Cons(T, @List<T>),
     Nil,
+}
+
+#[deriving(Eq)]
+pub enum MutList<T> {
+    MutCons(T, @mut MutList<T>),
+    MutNil,
 }
 
 /// Create a list from a vector
@@ -139,6 +140,7 @@ pub fn iter<T>(l: @List<T>, f: &fn(&T)) {
 }
 
 /// Iterate over a list
+#[cfg(stage0)]
 pub fn each<T>(l: @List<T>, f: &fn(&T) -> bool) {
     let mut cur = l;
     loop {
@@ -149,6 +151,58 @@ pub fn each<T>(l: @List<T>, f: &fn(&T) -> bool) {
           }
           Nil => break
         }
+    }
+}
+/// Iterate over a list
+#[cfg(not(stage0))]
+pub fn each<T>(l: @List<T>, f: &fn(&T) -> bool) -> bool {
+    let mut cur = l;
+    loop {
+        cur = match *cur {
+          Cons(ref hd, tl) => {
+            if !f(hd) { return false; }
+            tl
+          }
+          Nil => { return true; }
+        }
+    }
+}
+
+impl<T> MutList<T> {
+    /// Iterate over a mutable list
+    #[cfg(stage0)]
+    pub fn each(@mut self, f: &fn(&mut T) -> bool) {
+        let mut cur = self;
+        loop {
+            let borrowed = &mut *cur;
+            cur = match *borrowed {
+                MutCons(ref mut hd, tl) => {
+                    if !f(hd) {
+                        return;
+                    }
+                    tl
+                }
+                MutNil => break
+            }
+        }
+    }
+    /// Iterate over a mutable list
+    #[cfg(not(stage0))]
+    pub fn each(@mut self, f: &fn(&mut T) -> bool) -> bool {
+        let mut cur = self;
+        loop {
+            let borrowed = &mut *cur;
+            cur = match *borrowed {
+                MutCons(ref mut hd, tl) => {
+                    if !f(hd) {
+                        return false;
+                    }
+                    tl
+                }
+                MutNil => break
+            }
+        }
+        return true;
     }
 }
 
@@ -247,11 +301,3 @@ mod tests {
             == list::append(list::from_vec(~[1,2]), list::from_vec(~[3,4])));
     }
 }
-
-// Local Variables:
-// mode: rust;
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

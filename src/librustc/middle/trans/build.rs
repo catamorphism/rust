@@ -16,15 +16,8 @@ use lib;
 use middle::trans::common::*;
 use syntax::codemap::span;
 
-use core::prelude::*;
-use core::cast;
 use core::hashmap::HashMap;
 use core::libc::{c_uint, c_ulonglong, c_char};
-use core::libc;
-use core::option::Some;
-use core::ptr;
-use core::str;
-use core::vec;
 
 pub fn terminate(cx: block, _: &str) {
     cx.terminated = true;
@@ -174,16 +167,22 @@ pub fn IndirectBr(cx: block, Addr: ValueRef, NumDests: uint) {
 
 // This is a really awful way to get a zero-length c-string, but better (and a
 // lot more efficient) than doing str::as_c_str("", ...) every time.
-pub fn noname() -> *libc::c_char {
+pub fn noname() -> *c_char {
     unsafe {
         static cnull: uint = 0u;
-        return cast::reinterpret_cast(&ptr::addr_of(&cnull));
+        return cast::transmute(&cnull);
     }
 }
 
-pub fn Invoke(cx: block, Fn: ValueRef, Args: &[ValueRef],
-              Then: BasicBlockRef, Catch: BasicBlockRef) {
-    if cx.unreachable { return; }
+pub fn Invoke(cx: block,
+              Fn: ValueRef,
+              Args: &[ValueRef],
+              Then: BasicBlockRef,
+              Catch: BasicBlockRef)
+           -> ValueRef {
+    if cx.unreachable {
+        return C_null(T_i8());
+    }
     check_not_terminated(cx);
     terminate(cx, "Invoke");
     debug!("Invoke(%s with arguments (%s))",
@@ -193,9 +192,13 @@ pub fn Invoke(cx: block, Fn: ValueRef, Args: &[ValueRef],
                         ~", "));
     unsafe {
         count_insn(cx, "invoke");
-        llvm::LLVMBuildInvoke(B(cx), Fn, vec::raw::to_ptr(Args),
-                              Args.len() as c_uint, Then, Catch,
-                              noname());
+        llvm::LLVMBuildInvoke(B(cx),
+                              Fn,
+                              vec::raw::to_ptr(Args),
+                              Args.len() as c_uint,
+                              Then,
+                              Catch,
+                              noname())
     }
 }
 
@@ -608,7 +611,7 @@ pub fn StructGEP(cx: block, Pointer: ValueRef, Idx: uint) -> ValueRef {
     }
 }
 
-pub fn GlobalString(cx: block, _Str: *libc::c_char) -> ValueRef {
+pub fn GlobalString(cx: block, _Str: *c_char) -> ValueRef {
     unsafe {
         if cx.unreachable { return llvm::LLVMGetUndef(T_ptr(T_i8())); }
         count_insn(cx, "globalstring");
@@ -616,7 +619,7 @@ pub fn GlobalString(cx: block, _Str: *libc::c_char) -> ValueRef {
     }
 }
 
-pub fn GlobalStringPtr(cx: block, _Str: *libc::c_char) -> ValueRef {
+pub fn GlobalStringPtr(cx: block, _Str: *c_char) -> ValueRef {
     unsafe {
         if cx.unreachable { return llvm::LLVMGetUndef(T_ptr(T_i8())); }
         count_insn(cx, "globalstringptr");
@@ -824,8 +827,8 @@ pub fn Phi(cx: block, Ty: TypeRef, vals: &[ValueRef], bbs: &[BasicBlockRef])
 pub fn AddIncomingToPhi(phi: ValueRef, val: ValueRef, bb: BasicBlockRef) {
     unsafe {
         if llvm::LLVMIsUndef(phi) == lib::llvm::True { return; }
-        let valptr = cast::reinterpret_cast(&ptr::addr_of(&val));
-        let bbptr = cast::reinterpret_cast(&ptr::addr_of(&bb));
+        let valptr = cast::transmute(&val);
+        let bbptr = cast::transmute(&bb);
         llvm::LLVMAddIncoming(phi, valptr, bbptr, 1 as c_uint);
     }
 }
@@ -843,7 +846,7 @@ pub fn _UndefReturn(cx: block, Fn: ValueRef) -> ValueRef {
 
 pub fn add_span_comment(bcx: block, sp: span, text: &str) {
     let ccx = bcx.ccx();
-    if !ccx.sess.no_asm_comments() {
+    if ccx.sess.asm_comments() {
         let s = fmt!("%s (%s)", text, ccx.sess.codemap.span_to_str(sp));
         debug!("%s", copy s);
         add_comment(bcx, s);
@@ -853,7 +856,7 @@ pub fn add_span_comment(bcx: block, sp: span, text: &str) {
 pub fn add_comment(bcx: block, text: &str) {
     unsafe {
         let ccx = bcx.ccx();
-        if !ccx.sess.no_asm_comments() {
+        if ccx.sess.asm_comments() {
             let sanitized = str::replace(text, ~"$", ~"");
             let comment_text = ~"# " +
                 str::replace(sanitized, ~"\n", ~"\n\t# ");
@@ -960,20 +963,28 @@ pub fn ExtractElement(cx: block, VecVal: ValueRef, Index: ValueRef) ->
 }
 
 pub fn InsertElement(cx: block, VecVal: ValueRef, EltVal: ValueRef,
-                 Index: ValueRef) {
+                     Index: ValueRef) -> ValueRef {
     unsafe {
-        if cx.unreachable { return; }
+        if cx.unreachable { return llvm::LLVMGetUndef(T_nil()); }
         count_insn(cx, "insertelement");
-        llvm::LLVMBuildInsertElement(B(cx), VecVal, EltVal, Index, noname());
+        llvm::LLVMBuildInsertElement(B(cx), VecVal, EltVal, Index, noname())
     }
 }
 
 pub fn ShuffleVector(cx: block, V1: ValueRef, V2: ValueRef,
-                     Mask: ValueRef) {
+                     Mask: ValueRef) -> ValueRef {
     unsafe {
-        if cx.unreachable { return; }
+        if cx.unreachable { return llvm::LLVMGetUndef(T_nil()); }
         count_insn(cx, "shufflevector");
-        llvm::LLVMBuildShuffleVector(B(cx), V1, V2, Mask, noname());
+        llvm::LLVMBuildShuffleVector(B(cx), V1, V2, Mask, noname())
+    }
+}
+
+pub fn VectorSplat(cx: block, NumElts: uint, EltVal: ValueRef) -> ValueRef {
+    unsafe {
+        let Undef = llvm::LLVMGetUndef(T_vector(val_ty(EltVal), NumElts));
+        let VecVal = InsertElement(cx, Undef, EltVal, C_i32(0));
+        ShuffleVector(cx, VecVal, Undef, C_null(T_vector(T_i32(), NumElts)))
     }
 }
 
@@ -1083,13 +1094,3 @@ pub fn AtomicRMW(cx: block, op: AtomicBinOp,
         llvm::LLVMBuildAtomicRMW(B(cx), op, dst, src, order)
     }
 }
-
-//
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
-//

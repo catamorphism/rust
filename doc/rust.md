@@ -802,7 +802,7 @@ An example of `use` declarations:
 
 ~~~~
 use core::float::sin;
-use core::str::{slice, to_upper};
+use core::str::{slice, contains};
 use core::option::Some;
 
 fn main() {
@@ -813,8 +813,8 @@ fn main() {
     info!(Some(1.0));
 
     // Equivalent to
-    // 'info!(core::str::to_upper(core::str::slice("foo", 0, 1)));'
-    info!(to_upper(slice("foo", 0, 1)));
+    // 'info!(core::str::contains(core::str::slice("foo", 0, 1), "oo"));'
+    info!(contains(slice("foo", 0, 1), "oo"));
 }
 ~~~~
 
@@ -1468,9 +1468,9 @@ A complete list of the built-in language items follows:
 `mul`
   : Elements can be multiplied.
 `div`
-  : Elements can be divided.
-`mod`
-  : Elements have a modulo operation.
+  : Elements have a division operation.
+`rem`
+  : Elements have a remainder operation.
 `neg`
   : Elements can be negated arithmetically.
 `not`
@@ -1856,11 +1856,11 @@ The default meaning of the operators on standard types is given here.
   : Multiplication.
     Calls the `mul` method on the `core::ops::Mul` trait.
 `/`
-  : Division.
+  : Quotient.
     Calls the `div` method on the `core::ops::Div` trait.
 `%`
-  : Modulo (a.k.a. "remainder").
-    Calls the `modulo` method on the `core::ops::Modulo` trait.
+  : Remainder.
+    Calls the `rem` method on the `core::ops::Rem` trait.
 
 #### Bitwise operators
 
@@ -1946,35 +1946,6 @@ fn avg(v: &[float]) -> float {
 }
 ~~~~
 
-#### Swap expressions
-
-A _swap expression_ consists of an [lvalue](#lvalues-rvalues-and-temporaries) followed by a bi-directional arrow (`<->`) and another [lvalue](#lvalues-rvalues-and-temporaries).
-
-Evaluating a swap expression causes, as a side effect, the values held in the left-hand-side and right-hand-side [lvalues](#lvalues-rvalues-and-temporaries) to be exchanged indivisibly.
-
-Evaluating a swap expression neither changes reference counts,
-nor deeply copies any owned structure pointed to by the moved [rvalue](#lvalues-rvalues-and-temporaries).
-Instead, the swap expression represents an indivisible *exchange of ownership*,
-between the right-hand-side and the left-hand-side of the expression.
-No allocation or destruction is entailed.
-
-An example of three different swap expressions:
-
-~~~~~~~~
-# let mut x = &mut [0];
-# let mut a = &mut [0];
-# let i = 0;
-# struct S1 { z: int };
-# struct S2 { c: int };
-# let mut y = S1{z: 0};
-# let mut b = S2{c: 0};
-
-x <-> a;
-x[i] <-> a[i];
-y.z <-> b.c;
-~~~~~~~~
-
-
 #### Assignment expressions
 
 An _assignment expression_ consists of an [lvalue](#lvalues-rvalues-and-temporaries) expression followed by an
@@ -2015,7 +1986,7 @@ as
 == !=
 &&
 ||
-= <->
+=
 ~~~~
 
 Operators at the same precedence level are evaluated left-to-right.
@@ -2187,7 +2158,7 @@ A loop expression denotes an infinite loop;
 see [Continue expressions](#continue-expressions) for continue expressions.
 
 ~~~~~~~~{.ebnf .gram}
-loop_expr : "loop" [ ident ':' ] '{' block '}';
+loop_expr : [ lifetime ':' ] "loop" '{' block '}';
 ~~~~~~~~
 
 A `loop` expression may optionally have a _label_.
@@ -2198,7 +2169,7 @@ See [Break expressions](#break-expressions).
 ### Break expressions
 
 ~~~~~~~~{.ebnf .gram}
-break_expr : "break" [ ident ];
+break_expr : "break" [ lifetime ];
 ~~~~~~~~
 
 A `break` expression has an optional `label`.
@@ -2211,7 +2182,7 @@ but must enclose it.
 ### Continue expressions
 
 ~~~~~~~~{.ebnf .gram}
-continue_expr : "loop" [ ident ];
+continue_expr : "loop" [ lifetime ];
 ~~~~~~~~
 
 A continue expression, written `loop`, also has an optional `label`.
@@ -3351,4 +3322,3 @@ Additional specific influences can be seen from the following languages:
 * The typeclass system of Haskell.
 * The lexical identifier rule of Python.
 * The block syntax of Ruby.
-

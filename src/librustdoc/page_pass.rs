@@ -15,8 +15,6 @@ Each page corresponds is a logical section. There may be pages for
 individual modules, pages for the crate, indexes, etc.
 */
 
-use core::prelude::*;
-
 use astsrv;
 use config;
 use doc::ItemUtils;
@@ -50,7 +48,7 @@ pub fn run(
 
     let (result_port, result_chan) = stream();
     let (page_port, page_chan) = stream();
-    let page_chan = SharedChan(page_chan);
+    let page_chan = SharedChan::new(page_chan);
     do task::spawn {
         result_chan.send(make_doc_from_pages(&page_port));
     };

@@ -14,13 +14,8 @@
 // tjc note: Would be great to have a `match check` macro equivalent
 // for some of these
 
-use core::prelude::*;
-
 use middle::ty;
 
-use core::str;
-use core::uint;
-use core::vec;
 use syntax::abi::AbiSet;
 use syntax::abi;
 use syntax::ast;
@@ -250,6 +245,9 @@ fn parse_region(st: @mut PState) -> ty::Region {
       't' => {
         ty::re_static
       }
+      'e' => {
+        ty::re_static
+      }
       _ => fail!(~"parse_region: bad input")
     }
 }
@@ -279,28 +277,28 @@ fn parse_trait_ref(st: @mut PState, conv: conv_did) -> ty::TraitRef {
 
 fn parse_ty(st: @mut PState, conv: conv_did) -> ty::t {
     match next(st) {
-      'n' => return ty::mk_nil(st.tcx),
-      'z' => return ty::mk_bot(st.tcx),
-      'b' => return ty::mk_bool(st.tcx),
-      'i' => return ty::mk_int(st.tcx),
-      'u' => return ty::mk_uint(st.tcx),
-      'l' => return ty::mk_float(st.tcx),
+      'n' => return ty::mk_nil(),
+      'z' => return ty::mk_bot(),
+      'b' => return ty::mk_bool(),
+      'i' => return ty::mk_int(),
+      'u' => return ty::mk_uint(),
+      'l' => return ty::mk_float(),
       'M' => {
         match next(st) {
-          'b' => return ty::mk_mach_uint(st.tcx, ast::ty_u8),
-          'w' => return ty::mk_mach_uint(st.tcx, ast::ty_u16),
-          'l' => return ty::mk_mach_uint(st.tcx, ast::ty_u32),
-          'd' => return ty::mk_mach_uint(st.tcx, ast::ty_u64),
-          'B' => return ty::mk_mach_int(st.tcx, ast::ty_i8),
-          'W' => return ty::mk_mach_int(st.tcx, ast::ty_i16),
-          'L' => return ty::mk_mach_int(st.tcx, ast::ty_i32),
-          'D' => return ty::mk_mach_int(st.tcx, ast::ty_i64),
-          'f' => return ty::mk_mach_float(st.tcx, ast::ty_f32),
-          'F' => return ty::mk_mach_float(st.tcx, ast::ty_f64),
+          'b' => return ty::mk_mach_uint(ast::ty_u8),
+          'w' => return ty::mk_mach_uint(ast::ty_u16),
+          'l' => return ty::mk_mach_uint(ast::ty_u32),
+          'd' => return ty::mk_mach_uint(ast::ty_u64),
+          'B' => return ty::mk_mach_int(ast::ty_i8),
+          'W' => return ty::mk_mach_int(ast::ty_i16),
+          'L' => return ty::mk_mach_int(ast::ty_i32),
+          'D' => return ty::mk_mach_int(ast::ty_i64),
+          'f' => return ty::mk_mach_float(ast::ty_f32),
+          'F' => return ty::mk_mach_float(ast::ty_f64),
           _ => fail!(~"parse_ty: bad numeric type")
         }
       }
-      'c' => return ty::mk_char(st.tcx),
+      'c' => return ty::mk_char(),
       't' => {
         assert!((next(st) == '['));
         let def = parse_def(st, NominalType, conv);
@@ -313,8 +311,9 @@ fn parse_ty(st: @mut PState, conv: conv_did) -> ty::t {
         let def = parse_def(st, NominalType, conv);
         let substs = parse_substs(st, conv);
         let store = parse_trait_store(st);
+        let mt = parse_mutability(st);
         assert!(next(st) == ']');
-        return ty::mk_trait(st.tcx, def, substs, store);
+        return ty::mk_trait(st.tcx, def, substs, store, mt);
       }
       'p' => {
         let did = parse_def(st, TypeParameter, conv);
@@ -380,9 +379,9 @@ fn parse_ty(st: @mut PState, conv: conv_did) -> ty::t {
         }
       }
       '"' => {
-        let def = parse_def(st, TypeWithId, conv);
+        let _ = parse_def(st, TypeWithId, conv);
         let inner = parse_ty(st, conv);
-        ty::mk_with_id(st.tcx, inner, def)
+        inner
       }
       'B' => ty::mk_opaque_box(st.tcx),
       'a' => {
@@ -396,13 +395,16 @@ fn parse_ty(st: @mut PState, conv: conv_did) -> ty::t {
     }
 }
 
-fn parse_mt(st: @mut PState, conv: conv_did) -> ty::mt {
-    let mut m;
+fn parse_mutability(st: @mut PState) -> ast::mutability {
     match peek(st) {
-      'm' => { next(st); m = ast::m_mutbl; }
-      '?' => { next(st); m = ast::m_const; }
-      _ => { m = ast::m_imm; }
+      'm' => { next(st); ast::m_mutbl }
+      '?' => { next(st); ast::m_const }
+      _ => { ast::m_imm }
     }
+}
+
+fn parse_mt(st: @mut PState, conv: conv_did) -> ty::mt {
+    let m = parse_mutability(st);
     ty::mt { ty: parse_ty(st, conv), mutbl: m }
 }
 
@@ -470,16 +472,9 @@ fn parse_onceness(c: char) -> ast::Onceness {
 }
 
 fn parse_arg(st: @mut PState, conv: conv_did) -> ty::arg {
-    ty::arg { mode: parse_mode(st), ty: parse_ty(st, conv) }
-}
-
-fn parse_mode(st: @mut PState) -> ast::mode {
-    let m = ast::expl(match next(st) {
-        '+' => ast::by_copy,
-        '=' => ast::by_ref,
-        _ => fail!(~"bad mode")
-    });
-    return m;
+    ty::arg {
+        ty: parse_ty(st, conv)
+    }
 }
 
 fn parse_closure_ty(st: @mut PState, conv: conv_did) -> ty::ClosureTy {
@@ -512,8 +507,7 @@ fn parse_sig(st: @mut PState, conv: conv_did) -> ty::FnSig {
     assert!((next(st) == '['));
     let mut inputs: ~[ty::arg] = ~[];
     while peek(st) != ']' {
-        let mode = parse_mode(st);
-        inputs.push(ty::arg { mode: mode, ty: parse_ty(st, conv) });
+        inputs.push(ty::arg { ty: parse_ty(st, conv) });
     }
     st.pos += 1u; // eat the ']'
     let ret_ty = parse_ty(st, conv);
@@ -561,28 +555,34 @@ fn parse_type_param_def(st: @mut PState, conv: conv_did) -> ty::TypeParameterDef
                           bounds: parse_bounds(st, conv)}
 }
 
-fn parse_bounds(st: @mut PState, conv: conv_did) -> @~[ty::param_bound] {
-    let mut bounds = ~[];
+fn parse_bounds(st: @mut PState, conv: conv_did) -> @ty::ParamBounds {
+    let mut param_bounds = ty::ParamBounds {
+        builtin_bounds: ty::EmptyBuiltinBounds(),
+        trait_bounds: ~[]
+    };
     loop {
-        bounds.push(match next(st) {
-          'S' => ty::bound_owned,
-          'C' => ty::bound_copy,
-          'K' => ty::bound_const,
-          'O' => ty::bound_durable,
-          'I' => ty::bound_trait(@parse_trait_ref(st, conv)),
-          '.' => break,
-          _ => fail!(~"parse_bounds: bad bounds")
-        });
+        match next(st) {
+            'S' => {
+                param_bounds.builtin_bounds.add(ty::BoundOwned);
+            }
+            'C' => {
+                param_bounds.builtin_bounds.add(ty::BoundCopy);
+            }
+            'K' => {
+                param_bounds.builtin_bounds.add(ty::BoundConst);
+            }
+            'O' => {
+                param_bounds.builtin_bounds.add(ty::BoundStatic);
+            }
+            'I' => {
+                param_bounds.trait_bounds.push(@parse_trait_ref(st, conv));
+            }
+            '.' => {
+                return @param_bounds;
+            }
+            _ => {
+                fail!(~"parse_bounds: bad bounds")
+            }
+        }
     }
-    @bounds
 }
-
-//
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
-//

@@ -98,7 +98,7 @@ pub impl Reflector {
         for args.eachi |i, a| {
             debug!("arg %u: %s", i, val_str(bcx.ccx().tn, *a));
         }
-        let bool_ty = ty::mk_bool(tcx);
+        let bool_ty = ty::mk_bool();
         let scratch = scratch_datum(bcx, bool_ty, false);
         // XXX: Should not be BoxTraitStore!
         let bcx = callee::trans_call_inner(
@@ -114,14 +114,14 @@ pub impl Reflector {
             ArgVals(args), SaveIn(scratch.val), DontAutorefArg);
         let result = scratch.to_value_llval(bcx);
         let result = bool_to_i1(bcx, result);
-        let next_bcx = sub_block(bcx, ~"next");
+        let next_bcx = sub_block(bcx, "next");
         CondBr(bcx, result, next_bcx.llbb, self.final_bcx.llbb);
         self.bcx = next_bcx
     }
 
     fn bracketed(&mut self,
                  bracket_name: ~str,
-                 +extra: ~[ValueRef],
+                 extra: ~[ValueRef],
                  inner: &fn(&mut Reflector)) {
         // XXX: Bad copy.
         self.visit(~"enter_" + bracket_name, copy extra);
@@ -145,7 +145,7 @@ pub impl Reflector {
         }
     }
 
-    fn leaf(&mut self, +name: ~str) {
+    fn leaf(&mut self, name: ~str) {
         self.visit(name, ~[]);
     }
 
@@ -274,25 +274,36 @@ pub impl Reflector {
             let repr = adt::represent_type(bcx.ccx(), t);
             let variants = ty::substd_enum_variants(ccx.tcx, did, substs);
             let llptrty = T_ptr(type_of(ccx, t));
-            let (_, opaquety) = *(ccx.tcx.intrinsic_defs.find(&ccx.sess.ident_of(~"Opaque"))
-                                      .expect("Failed to resolve intrinsic::Opaque"));
+            let (_, opaquety) =
+                ccx.tcx.intrinsic_defs.find_copy(&ccx.sess.ident_of("Opaque"))
+                .expect("Failed to resolve intrinsic::Opaque");
             let opaqueptrty = ty::mk_ptr(ccx.tcx, ty::mt { ty: opaquety, mutbl: ast::m_imm });
 
             let make_get_disr = || {
                 let sub_path = bcx.fcx.path + ~[path_name(special_idents::anon)];
-                let sym = mangle_internal_name_by_path_and_seq(ccx, sub_path, ~"get_disr");
-                let args = [ty::arg { mode: ast::expl(ast::by_copy),
-                                      ty: opaqueptrty }];
-                let llfty = type_of_fn(ccx, args, ty::mk_int(ccx.tcx));
+                let sym = mangle_internal_name_by_path_and_seq(ccx,
+                                                               sub_path,
+                                                               "get_disr");
+                let args = [
+                    ty::arg {
+                        ty: opaqueptrty
+                    }
+                ];
+
+                let llfty = type_of_fn(ccx, args, ty::mk_int());
                 let llfdecl = decl_internal_cdecl_fn(ccx.llmod, sym, llfty);
                 let arg = unsafe {
                     llvm::LLVMGetParam(llfdecl, first_real_arg as c_uint)
                 };
-                let fcx = new_fn_ctxt(ccx, ~[], llfdecl, None);
+                let fcx = new_fn_ctxt(ccx,
+                                      ~[],
+                                      llfdecl,
+                                      ty::mk_uint(),
+                                      None);
                 let bcx = top_scope_block(fcx, None);
                 let arg = BitCast(bcx, arg, llptrty);
                 let ret = adt::trans_get_discr(bcx, repr, arg);
-                Store(bcx, ret, fcx.llretptr);
+                Store(bcx, ret, fcx.llretptr.get());
                 cleanup_and_Br(bcx, bcx, fcx.llreturn);
                 finish_fn(fcx, bcx.llbb);
                 llfdecl
@@ -323,7 +334,7 @@ pub impl Reflector {
           }
 
           // Miscallaneous extra types
-          ty::ty_trait(_, _, _) => self.leaf(~"trait"),
+          ty::ty_trait(_, _, _, _) => self.leaf(~"trait"),
           ty::ty_infer(_) => self.leaf(~"infer"),
           ty::ty_err => self.leaf(~"err"),
           ty::ty_param(ref p) => {
@@ -343,13 +354,7 @@ pub impl Reflector {
 
     fn visit_sig(&mut self, retval: uint, sig: &ty::FnSig) {
         for sig.inputs.eachi |i, arg| {
-            let modeval = match arg.mode {
-                ast::infer(_) => 0u,
-                ast::expl(e) => match e {
-                    ast::by_ref => 1u,
-                    ast::by_copy => 5u
-                }
-            };
+            let modeval = 5u;   // "by copy"
             let extra = ~[self.c_uint(i),
                          self.c_uint(modeval),
                          self.c_tydesc(arg.ty)];
@@ -368,9 +373,9 @@ pub fn emit_calls_to_trait_visit_ty(bcx: block,
                                     visitor_trait_id: def_id)
                                  -> block {
     use syntax::parse::token::special_idents::tydesc;
-    let final = sub_block(bcx, ~"final");
+    let final = sub_block(bcx, "final");
     assert!(bcx.ccx().tcx.intrinsic_defs.contains_key(&tydesc));
-    let (_, tydesc_ty) = *bcx.ccx().tcx.intrinsic_defs.get(&tydesc);
+    let (_, tydesc_ty) = bcx.ccx().tcx.intrinsic_defs.get_copy(&tydesc);
     let tydesc_ty = type_of(bcx.ccx(), tydesc_ty);
     let mut r = Reflector {
         visitor_val: visitor_val,
@@ -400,4 +405,3 @@ pub fn ast_purity_constant(purity: ast::purity) -> uint {
         ast::extern_fn => 3u
     }
 }
-

@@ -9,85 +9,302 @@
 // except according to those terms.
 
 //! An interface for numeric types
-use cmp::{Eq, Ord};
-use ops::{Neg, Add, Sub, Mul, Div, Modulo};
+use cmp::{Eq, ApproxEq, Ord};
+use ops::{Add, Sub, Mul, Div, Rem, Neg};
+use ops::{Not, BitAnd, BitOr, BitXor, Shl, Shr};
 use option::Option;
 use kinds::Copy;
 
 pub mod strconv;
 
+///
+/// The base trait for numeric types
+///
 pub trait Num: Eq + Zero + One
              + Neg<Self>
              + Add<Self,Self>
              + Sub<Self,Self>
              + Mul<Self,Self>
              + Div<Self,Self>
-             + Modulo<Self,Self> {}
-
-impl Num for u8 {}
-impl Num for u16 {}
-impl Num for u32 {}
-impl Num for u64 {}
-impl Num for uint {}
-impl Num for i8 {}
-impl Num for i16 {}
-impl Num for i32 {}
-impl Num for i64 {}
-impl Num for int {}
-impl Num for f32 {}
-impl Num for f64 {}
-impl Num for float {}
+             + Rem<Self,Self> {}
 
 pub trait IntConvertible {
     fn to_int(&self) -> int;
     fn from_int(n: int) -> Self;
 }
 
+pub trait Orderable: Ord {
+    // These should be methods on `Ord`, with overridable default implementations. We don't want
+    // to encumber all implementors of Ord by requiring them to implement these functions, but at
+    // the same time we want to be able to take advantage of the speed of the specific numeric
+    // functions (like the `fmin` and `fmax` intrinsics).
+    fn min(&self, other: &Self) -> Self;
+    fn max(&self, other: &Self) -> Self;
+    fn clamp(&self, mn: &Self, mx: &Self) -> Self;
+}
+
 pub trait Zero {
-    fn zero() -> Self;
+    fn zero() -> Self;      // FIXME (#5527): This should be an associated constant
+    fn is_zero(&self) -> bool;
 }
 
 pub trait One {
-    fn one() -> Self;
+    fn one() -> Self;       // FIXME (#5527): This should be an associated constant
 }
 
+pub trait Signed: Num
+                + Neg<Self> {
+    fn abs(&self) -> Self;
+    fn abs_sub(&self, other: &Self) -> Self;
+    fn signum(&self) -> Self;
+
+    fn is_positive(&self) -> bool;
+    fn is_negative(&self) -> bool;
+}
+
+pub trait Unsigned: Num {}
+
+// This should be moved into the default implementation for Signed::abs
 pub fn abs<T:Ord + Zero + Neg<T>>(v: T) -> T {
     if v < Zero::zero() { v.neg() } else { v }
 }
 
-pub trait Round {
-    fn round(&self, mode: RoundMode) -> Self;
+pub trait Integer: Num
+                 + Orderable
+                 + Div<Self,Self>
+                 + Rem<Self,Self> {
+    fn div_rem(&self, other: &Self) -> (Self,Self);
 
+    fn div_floor(&self, other: &Self) -> Self;
+    fn mod_floor(&self, other: &Self) -> Self;
+    fn div_mod_floor(&self, other: &Self) -> (Self,Self);
+
+    fn gcd(&self, other: &Self) -> Self;
+    fn lcm(&self, other: &Self) -> Self;
+
+    fn is_multiple_of(&self, other: &Self) -> bool;
+    fn is_even(&self) -> bool;
+    fn is_odd(&self) -> bool;
+}
+
+pub trait Round {
     fn floor(&self) -> Self;
-    fn ceil(&self)  -> Self;
+    fn ceil(&self) -> Self;
+    fn round(&self) -> Self;
+    fn trunc(&self) -> Self;
     fn fract(&self) -> Self;
 }
 
-pub enum RoundMode {
-    RoundDown,
-    RoundUp,
-    RoundToZero,
-    RoundFromZero
+pub trait Fractional: Num
+                    + Orderable
+                    + Round
+                    + Div<Self,Self> {
+    fn recip(&self) -> Self;
 }
 
-/**
- * Cast from one machine scalar to another
- *
- * # Example
- *
- * ~~~
- * let twenty: f32 = num::cast(0x14);
- * assert!(twenty == 20f32);
- * ~~~
- */
+pub trait Algebraic {
+    fn pow(&self, n: Self) -> Self;
+    fn sqrt(&self) -> Self;
+    fn rsqrt(&self) -> Self;
+    fn cbrt(&self) -> Self;
+    fn hypot(&self, other: Self) -> Self;
+}
+
+pub trait Trigonometric {
+    fn sin(&self) -> Self;
+    fn cos(&self) -> Self;
+    fn tan(&self) -> Self;
+    fn asin(&self) -> Self;
+    fn acos(&self) -> Self;
+    fn atan(&self) -> Self;
+    fn atan2(&self, other: Self) -> Self;
+}
+
+pub trait Exponential {
+    fn exp(&self) -> Self;
+    fn exp2(&self) -> Self;
+    fn ln(&self) -> Self;
+    fn log(&self, base: Self) -> Self;
+    fn log2(&self) -> Self;
+    fn log10(&self) -> Self;
+}
+
+pub trait Hyperbolic: Exponential {
+    fn sinh(&self) -> Self;
+    fn cosh(&self) -> Self;
+    fn tanh(&self) -> Self;
+}
+
+///
+/// Defines constants and methods common to real numbers
+///
+pub trait Real: Signed
+              + Fractional
+              + Algebraic
+              + Trigonometric
+              + Hyperbolic {
+    // Common Constants
+    // FIXME (#5527): These should be associated constants
+    fn pi() -> Self;
+    fn two_pi() -> Self;
+    fn frac_pi_2() -> Self;
+    fn frac_pi_3() -> Self;
+    fn frac_pi_4() -> Self;
+    fn frac_pi_6() -> Self;
+    fn frac_pi_8() -> Self;
+    fn frac_1_pi() -> Self;
+    fn frac_2_pi() -> Self;
+    fn frac_2_sqrtpi() -> Self;
+    fn sqrt2() -> Self;
+    fn frac_1_sqrt2() -> Self;
+    fn e() -> Self;
+    fn log2_e() -> Self;
+    fn log10_e() -> Self;
+    fn ln_2() -> Self;
+    fn ln_10() -> Self;
+
+    // Angular conversions
+    fn to_degrees(&self) -> Self;
+    fn to_radians(&self) -> Self;
+}
+
+///
+/// Methods that are harder to implement and not commonly used.
+///
+pub trait RealExt: Real {
+    // FIXME (#5527): usages of `int` should be replaced with an associated
+    // integer type once these are implemented
+
+    // Gamma functions
+    fn lgamma(&self) -> (int, Self);
+    fn tgamma(&self) -> Self;
+
+    // Bessel functions
+    fn j0(&self) -> Self;
+    fn j1(&self) -> Self;
+    fn jn(&self, n: int) -> Self;
+    fn y0(&self) -> Self;
+    fn y1(&self) -> Self;
+    fn yn(&self, n: int) -> Self;
+}
+
+///
+/// Collects the bitwise operators under one trait.
+///
+pub trait Bitwise: Not<Self>
+                 + BitAnd<Self,Self>
+                 + BitOr<Self,Self>
+                 + BitXor<Self,Self>
+                 + Shl<Self,Self>
+                 + Shr<Self,Self> {}
+
+pub trait BitCount {
+    fn population_count(&self) -> Self;
+    fn leading_zeros(&self) -> Self;
+    fn trailing_zeros(&self) -> Self;
+}
+
+pub trait Bounded {
+    // FIXME (#5527): These should be associated constants
+    fn min_value() -> Self;
+    fn max_value() -> Self;
+}
+
+///
+/// Specifies the available operations common to all of Rust's core numeric primitives.
+/// These may not always make sense from a purely mathematical point of view, but
+/// may be useful for systems programming.
+///
+pub trait Primitive: Num
+                   + NumCast
+                   + Bounded
+                   + Neg<Self>
+                   + Add<Self,Self>
+                   + Sub<Self,Self>
+                   + Mul<Self,Self>
+                   + Div<Self,Self>
+                   + Rem<Self,Self> {
+    // FIXME (#5527): These should be associated constants
+    fn bits() -> uint;
+    fn bytes() -> uint;
+}
+
+///
+/// A collection of traits relevant to primitive signed and unsigned integers
+///
+pub trait Int: Integer
+             + Primitive
+             + Bitwise
+             + BitCount {}
+
+///
+/// Used for representing the classification of floating point numbers
+///
+#[deriving(Eq)]
+pub enum FPCategory {
+    /// "Not a Number", often obtained by dividing by zero
+    FPNaN,
+    /// Positive or negative infinity
+    FPInfinite ,
+    /// Positive or negative zero
+    FPZero,
+    /// De-normalized floating point representation (less precise than `FPNormal`)
+    FPSubnormal,
+    /// A regular floating point number
+    FPNormal,
+}
+
+///
+/// Primitive floating point numbers
+///
+pub trait Float: Real
+               + Signed
+               + Primitive
+               + ApproxEq<Self> {
+    // FIXME (#5527): These should be associated constants
+    fn NaN() -> Self;
+    fn infinity() -> Self;
+    fn neg_infinity() -> Self;
+    fn neg_zero() -> Self;
+
+    fn is_NaN(&self) -> bool;
+    fn is_infinite(&self) -> bool;
+    fn is_finite(&self) -> bool;
+    fn is_normal(&self) -> bool;
+    fn classify(&self) -> FPCategory;
+
+    fn mantissa_digits() -> uint;
+    fn digits() -> uint;
+    fn epsilon() -> Self;
+    fn min_exp() -> int;
+    fn max_exp() -> int;
+    fn min_10_exp() -> int;
+    fn max_10_exp() -> int;
+
+    fn exp_m1(&self) -> Self;
+    fn ln_1p(&self) -> Self;
+    fn mul_add(&self, a: Self, b: Self) -> Self;
+    fn next_after(&self, other: Self) -> Self;
+}
+
+///
+/// Cast from one machine scalar to another
+///
+/// # Example
+///
+/// ~~~
+/// let twenty: f32 = num::cast(0x14);
+/// assert_eq!(twenty, 20f32);
+/// ~~~
+///
 #[inline(always)]
 pub fn cast<T:NumCast,U:NumCast>(n: T) -> U {
     NumCast::from(n)
 }
 
-/**
- * An interface for casting between machine scalars
- */
+///
+/// An interface for casting between machine scalars
+///
 pub trait NumCast {
     fn from<T:NumCast>(n: T) -> Self;
 
@@ -159,21 +376,19 @@ pub trait FromStrRadix {
     pub fn from_str_radix(str: &str, radix: uint) -> Option<Self>;
 }
 
-// Generic math functions:
-
-/**
- * Calculates a power to a given radix, optimized for uint `pow` and `radix`.
- *
- * Returns `radix^pow` as `T`.
- *
- * Note:
- * Also returns `1` for `0^0`, despite that technically being an
- * undefined number. The reason for this is twofold:
- * - If code written to use this function cares about that special case, it's
- *   probably going to catch it before making the call.
- * - If code written to use this function doesn't care about it, it's
- *   probably assuming that `x^0` always equals `1`.
- */
+///
+/// Calculates a power to a given radix, optimized for uint `pow` and `radix`.
+///
+/// Returns `radix^pow` as `T`.
+///
+/// Note:
+/// Also returns `1` for `0^0`, despite that technically being an
+/// undefined number. The reason for this is twofold:
+/// - If code written to use this function cares about that special case, it's
+///   probably going to catch it before making the call.
+/// - If code written to use this function doesn't care about it, it's
+///   probably assuming that `x^0` always equals `1`.
+///
 pub fn pow_with_uint<T:NumCast+One+Zero+Copy+Div<T,T>+Mul<T,T>>(
     radix: uint, pow: uint) -> T {
     let _0: T = Zero::zero();
@@ -194,80 +409,67 @@ pub fn pow_with_uint<T:NumCast+One+Zero+Copy+Div<T,T>+Mul<T,T>>(
     total
 }
 
+/// Helper function for testing numeric operations
 #[cfg(test)]
-fn test_num<T:Num + NumCast>(ten: T, two: T) {
-    assert!(ten.add(&two)    == cast(12));
-    assert!(ten.sub(&two)    == cast(8));
-    assert!(ten.mul(&two)    == cast(20));
-    assert!(ten.div(&two)    == cast(5));
-    assert!(ten.modulo(&two) == cast(0));
+pub fn test_num<T:Num + NumCast>(ten: T, two: T) {
+    assert_eq!(ten.add(&two),  cast(12));
+    assert_eq!(ten.sub(&two),  cast(8));
+    assert_eq!(ten.mul(&two),  cast(20));
+    assert_eq!(ten.div(&two), cast(5));
+    assert_eq!(ten.rem(&two),  cast(0));
 
-    assert!(ten.add(&two)    == ten + two);
-    assert!(ten.sub(&two)    == ten - two);
-    assert!(ten.mul(&two)    == ten * two);
-    assert!(ten.div(&two)    == ten / two);
-    assert!(ten.modulo(&two) == ten % two);
+    assert_eq!(ten.add(&two),  ten + two);
+    assert_eq!(ten.sub(&two),  ten - two);
+    assert_eq!(ten.mul(&two),  ten * two);
+    assert_eq!(ten.div(&two), ten / two);
+    assert_eq!(ten.rem(&two),  ten % two);
 }
-
-#[test] fn test_u8_num()    { test_num(10u8,  2u8)  }
-#[test] fn test_u16_num()   { test_num(10u16, 2u16) }
-#[test] fn test_u32_num()   { test_num(10u32, 2u32) }
-#[test] fn test_u64_num()   { test_num(10u64, 2u64) }
-#[test] fn test_uint_num()  { test_num(10u,   2u)   }
-#[test] fn test_i8_num()    { test_num(10i8,  2i8)  }
-#[test] fn test_i16_num()   { test_num(10i16, 2i16) }
-#[test] fn test_i32_num()   { test_num(10i32, 2i32) }
-#[test] fn test_i64_num()   { test_num(10i64, 2i64) }
-#[test] fn test_int_num()   { test_num(10i,   2i)   }
-#[test] fn test_f32_num()   { test_num(10f32, 2f32) }
-#[test] fn test_f64_num()   { test_num(10f64, 2f64) }
-#[test] fn test_float_num() { test_num(10f,   2f)   }
 
 macro_rules! test_cast_20(
     ($_20:expr) => ({
         let _20 = $_20;
 
-        assert!(20u   == _20.to_uint());
-        assert!(20u8  == _20.to_u8());
-        assert!(20u16 == _20.to_u16());
-        assert!(20u32 == _20.to_u32());
-        assert!(20u64 == _20.to_u64());
-        assert!(20i   == _20.to_int());
-        assert!(20i8  == _20.to_i8());
-        assert!(20i16 == _20.to_i16());
-        assert!(20i32 == _20.to_i32());
-        assert!(20i64 == _20.to_i64());
-        assert!(20f   == _20.to_float());
-        assert!(20f32 == _20.to_f32());
-        assert!(20f64 == _20.to_f64());
+        assert_eq!(20u,   _20.to_uint());
+        assert_eq!(20u8,  _20.to_u8());
+        assert_eq!(20u16, _20.to_u16());
+        assert_eq!(20u32, _20.to_u32());
+        assert_eq!(20u64, _20.to_u64());
+        assert_eq!(20i,   _20.to_int());
+        assert_eq!(20i8,  _20.to_i8());
+        assert_eq!(20i16, _20.to_i16());
+        assert_eq!(20i32, _20.to_i32());
+        assert_eq!(20i64, _20.to_i64());
+        assert_eq!(20f,   _20.to_float());
+        assert_eq!(20f32, _20.to_f32());
+        assert_eq!(20f64, _20.to_f64());
 
-        assert!(_20 == NumCast::from(20u));
-        assert!(_20 == NumCast::from(20u8));
-        assert!(_20 == NumCast::from(20u16));
-        assert!(_20 == NumCast::from(20u32));
-        assert!(_20 == NumCast::from(20u64));
-        assert!(_20 == NumCast::from(20i));
-        assert!(_20 == NumCast::from(20i8));
-        assert!(_20 == NumCast::from(20i16));
-        assert!(_20 == NumCast::from(20i32));
-        assert!(_20 == NumCast::from(20i64));
-        assert!(_20 == NumCast::from(20f));
-        assert!(_20 == NumCast::from(20f32));
-        assert!(_20 == NumCast::from(20f64));
+        assert_eq!(_20, NumCast::from(20u));
+        assert_eq!(_20, NumCast::from(20u8));
+        assert_eq!(_20, NumCast::from(20u16));
+        assert_eq!(_20, NumCast::from(20u32));
+        assert_eq!(_20, NumCast::from(20u64));
+        assert_eq!(_20, NumCast::from(20i));
+        assert_eq!(_20, NumCast::from(20i8));
+        assert_eq!(_20, NumCast::from(20i16));
+        assert_eq!(_20, NumCast::from(20i32));
+        assert_eq!(_20, NumCast::from(20i64));
+        assert_eq!(_20, NumCast::from(20f));
+        assert_eq!(_20, NumCast::from(20f32));
+        assert_eq!(_20, NumCast::from(20f64));
 
-        assert!(_20 == cast(20u));
-        assert!(_20 == cast(20u8));
-        assert!(_20 == cast(20u16));
-        assert!(_20 == cast(20u32));
-        assert!(_20 == cast(20u64));
-        assert!(_20 == cast(20i));
-        assert!(_20 == cast(20i8));
-        assert!(_20 == cast(20i16));
-        assert!(_20 == cast(20i32));
-        assert!(_20 == cast(20i64));
-        assert!(_20 == cast(20f));
-        assert!(_20 == cast(20f32));
-        assert!(_20 == cast(20f64));
+        assert_eq!(_20, cast(20u));
+        assert_eq!(_20, cast(20u8));
+        assert_eq!(_20, cast(20u16));
+        assert_eq!(_20, cast(20u32));
+        assert_eq!(_20, cast(20u64));
+        assert_eq!(_20, cast(20i));
+        assert_eq!(_20, cast(20i8));
+        assert_eq!(_20, cast(20i16));
+        assert_eq!(_20, cast(20i32));
+        assert_eq!(_20, cast(20i64));
+        assert_eq!(_20, cast(20f));
+        assert_eq!(_20, cast(20f32));
+        assert_eq!(_20, cast(20f64));
     })
 )
 

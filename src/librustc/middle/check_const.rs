@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use driver::session::Session;
 use middle::resolve;
 use middle::ty;
@@ -26,7 +24,7 @@ pub fn check_crate(sess: Session,
                    def_map: resolve::DefMap,
                    method_map: typeck::method_map,
                    tcx: ty::ctxt) {
-    visit::visit_crate(*crate, false, visit::mk_vt(@visit::Visitor {
+    visit::visit_crate(crate, false, visit::mk_vt(@visit::Visitor {
         visit_item: |a,b,c| check_item(sess, ast_map, def_map, a, b, c),
         visit_pat: check_pat,
         visit_expr: |a,b,c|
@@ -40,7 +38,7 @@ pub fn check_item(sess: Session,
                   ast_map: ast_map::map,
                   def_map: resolve::DefMap,
                   it: @item,
-                  &&_is_const: bool,
+                  _is_const: bool,
                   v: visit::vt<bool>) {
     match it.node {
       item_const(_, ex) => {
@@ -58,7 +56,7 @@ pub fn check_item(sess: Session,
     }
 }
 
-pub fn check_pat(p: @pat, &&_is_const: bool, v: visit::vt<bool>) {
+pub fn check_pat(p: @pat, _is_const: bool, v: visit::vt<bool>) {
     fn is_str(e: @expr) -> bool {
         match e.node {
             expr_vstore(
@@ -87,20 +85,20 @@ pub fn check_expr(sess: Session,
                   method_map: typeck::method_map,
                   tcx: ty::ctxt,
                   e: @expr,
-                  &&is_const: bool,
+                  is_const: bool,
                   v: visit::vt<bool>) {
     if is_const {
         match e.node {
           expr_unary(deref, _) => { }
           expr_unary(box(_), _) | expr_unary(uniq(_), _) => {
             sess.span_err(e.span,
-                          ~"disallowed operator in constant expression");
+                          "disallowed operator in constant expression");
             return;
           }
           expr_lit(@codemap::spanned {node: lit_str(_), _}) => { }
           expr_binary(_, _, _) | expr_unary(_, _) => {
             if method_map.contains_key(&e.id) {
-                sess.span_err(e.span, ~"user-defined operators are not \
+                sess.span_err(e.span, "user-defined operators are not \
                                        allowed in constant expressions");
             }
           }
@@ -120,8 +118,8 @@ pub fn check_expr(sess: Session,
             // a path in trans::callee that only works in block contexts.
             if pth.types.len() != 0 {
                 sess.span_err(
-                    e.span, ~"paths in constants may only refer to \
-                              items without type parameters");
+                    e.span, "paths in constants may only refer to \
+                             items without type parameters");
             }
             match def_map.find(&e.id) {
               Some(&def_const(_)) |
@@ -133,11 +131,11 @@ pub fn check_expr(sess: Session,
                 debug!("(checking const) found bad def: %?", def);
                 sess.span_err(
                     e.span,
-                    fmt!("paths in constants may only refer to \
-                          constants or functions"));
+                    "paths in constants may only refer to \
+                     constants or functions");
               }
               None => {
-                sess.span_bug(e.span, ~"unbound path in const?!");
+                sess.span_bug(e.span, "unbound path in const?!");
               }
             }
           }
@@ -148,8 +146,8 @@ pub fn check_expr(sess: Session,
                 _ => {
                     sess.span_err(
                         e.span,
-                        ~"function calls in constants are limited to \
-                          struct and enum constructors");
+                        "function calls in constants are limited to \
+                         struct and enum constructors");
                 }
             }
           }
@@ -165,12 +163,12 @@ pub fn check_expr(sess: Session,
           expr_addr_of(*) => {
                 sess.span_err(
                     e.span,
-                    ~"borrowed pointers in constants may only refer to \
-                      immutable values");
+                    "borrowed pointers in constants may only refer to \
+                     immutable values");
           }
           _ => {
             sess.span_err(e.span,
-                          ~"constant contains unimplemented expression type");
+                          "constant contains unimplemented expression type");
             return;
           }
         }
@@ -180,14 +178,14 @@ pub fn check_expr(sess: Session,
         if t != ty_char {
             if (v as u64) > ast_util::int_ty_max(
                 if t == ty_i { sess.targ_cfg.int_type } else { t }) {
-                sess.span_err(e.span, ~"literal out of range for its type");
+                sess.span_err(e.span, "literal out of range for its type");
             }
         }
       }
       expr_lit(@codemap::spanned {node: lit_uint(v, t), _}) => {
         if v > ast_util::uint_ty_max(
             if t == ty_u { sess.targ_cfg.uint_type } else { t }) {
-            sess.span_err(e.span, ~"literal out of range for its type");
+            sess.span_err(e.span, "literal out of range for its type");
         }
       }
       _ => ()
@@ -224,22 +222,22 @@ pub fn check_item_recursion(sess: Session,
     });
     (visitor.visit_item)(it, env, visitor);
 
-    fn visit_item(it: @item, &&env: env, v: visit::vt<env>) {
+    fn visit_item(it: @item, env: env, v: visit::vt<env>) {
         if env.idstack.contains(&(it.id)) {
-            env.sess.span_fatal(env.root_it.span, ~"recursive constant");
+            env.sess.span_fatal(env.root_it.span, "recursive constant");
         }
         env.idstack.push(it.id);
         visit::visit_item(it, env, v);
         env.idstack.pop();
     }
 
-    fn visit_expr(e: @expr, &&env: env, v: visit::vt<env>) {
+    fn visit_expr(e: @expr, env: env, v: visit::vt<env>) {
         match e.node {
           expr_path(*) => {
             match env.def_map.find(&e.id) {
               Some(&def_const(def_id)) => {
                 if ast_util::is_local(def_id) {
-                  match *env.ast_map.get(&def_id.node) {
+                  match env.ast_map.get_copy(&def_id.node) {
                     ast_map::node_item(it, _) => {
                       (v.visit_item)(it, env, v);
                     }
@@ -255,11 +253,3 @@ pub fn check_item_recursion(sess: Session,
         visit::visit_expr(e, env, v);
     }
 }
-
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

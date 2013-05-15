@@ -8,15 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use codemap::{Pos, span};
 use codemap;
-
-use core::io::WriterUtil;
-use core::io;
-use core::str;
-use core::vec;
 
 use std::term;
 
@@ -31,6 +24,7 @@ pub trait handler {
     fn fatal(@mut self, msg: &str) -> !;
     fn err(@mut self, msg: &str);
     fn bump_err_count(@mut self);
+    fn err_count(@mut self) -> uint;
     fn has_errors(@mut self) -> bool;
     fn abort_if_errors(@mut self);
     fn warn(@mut self, msg: &str);
@@ -105,7 +99,12 @@ impl handler for HandlerT {
     fn bump_err_count(@mut self) {
         self.err_count += 1u;
     }
-    fn has_errors(@mut self) -> bool { self.err_count > 0u }
+    fn err_count(@mut self) -> uint {
+        self.err_count
+    }
+    fn has_errors(@mut self) -> bool {
+        self.err_count > 0u
+    }
     fn abort_if_errors(@mut self) {
         let s;
         match self.err_count {
@@ -264,7 +263,7 @@ fn highlight_lines(cm: @codemap::CodeMap,
         while num > 0u { num /= 10u; digits += 1u; }
 
         // indent past |name:## | and the 0-offset column location
-        let mut left = str::len(fm.name) + digits + lo.col.to_uint() + 3u;
+        let left = str::len(fm.name) + digits + lo.col.to_uint() + 3u;
         let mut s = ~"";
         // Skip is the number of characters we need to skip because they are
         // part of the 'filename:line ' part of the previous line.

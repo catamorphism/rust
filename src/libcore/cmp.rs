@@ -64,6 +64,15 @@ totaleq_impl!(i64)
 totaleq_impl!(int)
 totaleq_impl!(uint)
 
+totaleq_impl!(char)
+
+/// Trait for testing approximate equality
+pub trait ApproxEq<Eps> {
+    fn approx_epsilon() -> Eps;
+    fn approx_eq(&self, other: &Self) -> bool;
+    fn approx_eq_eps(&self, other: &Self, approx_epsilon: &Eps) -> bool;
+}
+
 #[deriving(Clone, Eq)]
 pub enum Ordering { Less = -1, Equal = 0, Greater = 1 }
 
@@ -115,6 +124,8 @@ totalord_impl!(i64)
 
 totalord_impl!(int)
 totalord_impl!(uint)
+
+totalord_impl!(char)
 
 pub fn cmp2<A:TotalOrd,B:TotalOrd>(
     a1: &A, b1: &B,

@@ -13,11 +13,9 @@
 use iotask = uv_iotask;
 use uv_iotask::{IoTask, spawn_iotask};
 
-use core::clone::Clone;
 use core::comm::Chan;
 use core::option::{Some, None};
 use core::task::task;
-use core::task;
 use core::unstable::global::{global_data_clone_create, global_data_clone};
 use core::unstable::weak_task::weaken_task;
 
@@ -64,7 +62,9 @@ fn get_monitor_task_gl() -> IoTask {
                 }
             };
             if installed {
-                do task().unlinked().spawn() {
+                let mut task = task();
+                task.unlinked();
+                do task.spawn {
                     unsafe {
                         debug!("global monitor task starting");
                         // As a weak task the runtime will notify us
@@ -90,7 +90,9 @@ fn get_monitor_task_gl() -> IoTask {
 }
 
 fn spawn_loop() -> IoTask {
-    let builder = do task().add_wrapper |task_body| {
+    let mut builder = task();
+
+    do builder.add_wrapper |task_body| {
         let result: ~fn() = || {
             // The I/O loop task also needs to be weak so it doesn't keep
             // the runtime alive
@@ -109,20 +111,20 @@ fn spawn_loop() -> IoTask {
         };
         result
     };
-    let builder = builder.unlinked();
+
+    builder.unlinked();
     spawn_iotask(builder)
 }
 
 #[cfg(test)]
 mod test {
-    use core::prelude::*;
 
     use get_gl = uv_global_loop::get;
     use uv::iotask;
     use uv::ll;
     use uv_iotask::IoTask;
 
-    use core::iter;
+    use core::old_iter;
     use core::libc;
     use core::ptr;
     use core::task;
@@ -165,7 +167,7 @@ mod test {
             debug!("EXIT_CH_PTR newly created exit_ch_ptr: %?",
                             exit_ch_ptr);
             let timer_handle = ll::timer_t();
-            let timer_ptr = ptr::addr_of(&timer_handle);
+            let timer_ptr: *ll::uv_timer_t = &timer_handle;
             do iotask::interact(iotask) |loop_ptr| {
                 unsafe {
                     debug!(~"user code inside interact loop!!!");
@@ -211,9 +213,9 @@ mod test {
     #[ignore]
     fn test_stress_gl_uv_global_loop_high_level_global_timer() {
         let (exit_po, exit_ch) = stream::<()>();
-        let exit_ch = SharedChan(exit_ch);
+        let exit_ch = SharedChan::new(exit_ch);
         let cycles = 5000u;
-        for iter::repeat(cycles) {
+        for old_iter::repeat(cycles) {
             let exit_ch_clone = exit_ch.clone();
             task::spawn_sched(task::ManualThreads(1u), || {
                 let hl_loop = &get_gl();
@@ -221,10 +223,10 @@ mod test {
                 exit_ch_clone.send(());
             });
         };
-        for iter::repeat(cycles) {
+        for old_iter::repeat(cycles) {
             exit_po.recv();
         };
         debug!(~"test_stress_gl_uv_global_loop_high_level_global_timer"+
-            ~" exiting sucessfully!");
+            ~" exiting successfully!");
     }
 }

@@ -32,7 +32,7 @@ fn test00() {
 
     debug!("Creating tasks");
 
-    let po = comm::PortSet();
+    let po = comm::PortSet::new();
 
     let mut i: int = 0;
 
@@ -40,9 +40,9 @@ fn test00() {
     let mut results = ~[];
     while i < number_of_tasks {
         let ch = po.chan();
-        task::task().future_result(|+r| {
-            results.push(r);
-        }).spawn({
+        let mut builder = task::task();
+        builder.future_result(|r| results.push(r));
+        builder.spawn({
             let i = i;
             || test00_start(&ch, i, number_of_messages)
         });

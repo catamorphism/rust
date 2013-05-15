@@ -12,7 +12,6 @@
 //! Complex numbers.
 
 use core::num::{Zero,One,ToStrRadix};
-use core::prelude::*;
 
 // FIXME #1284: handle complex NaN & infinity etc. This
 // probably doesn't map to C's _Complex correctly.
@@ -32,8 +31,7 @@ pub type Complex = Cmplx<float>;
 pub type Complex32 = Cmplx<f32>;
 pub type Complex64 = Cmplx<f64>;
 
-impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
-    Cmplx<T> {
+impl<T: Copy + Num> Cmplx<T> {
     /// Create a new Cmplx
     #[inline]
     pub fn new(re: T, im: T) -> Cmplx<T> {
@@ -80,24 +78,21 @@ impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
 
 /* arithmetic */
 // (a + i b) + (c + i d) == (a + c) + i (b + d)
-impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
-    Add<Cmplx<T>, Cmplx<T>> for Cmplx<T> {
+impl<T: Copy + Num> Add<Cmplx<T>, Cmplx<T>> for Cmplx<T> {
     #[inline]
     fn add(&self, other: &Cmplx<T>) -> Cmplx<T> {
         Cmplx::new(self.re + other.re, self.im + other.im)
     }
 }
 // (a + i b) - (c + i d) == (a - c) + i (b - d)
-impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
-    Sub<Cmplx<T>, Cmplx<T>> for Cmplx<T> {
+impl<T: Copy + Num> Sub<Cmplx<T>, Cmplx<T>> for Cmplx<T> {
     #[inline]
     fn sub(&self, other: &Cmplx<T>) -> Cmplx<T> {
         Cmplx::new(self.re - other.re, self.im - other.im)
     }
 }
 // (a + i b) * (c + i d) == (a*c - b*d) + i (a*d + b*c)
-impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
-    Mul<Cmplx<T>, Cmplx<T>> for Cmplx<T> {
+impl<T: Copy + Num> Mul<Cmplx<T>, Cmplx<T>> for Cmplx<T> {
     #[inline]
     fn mul(&self, other: &Cmplx<T>) -> Cmplx<T> {
         Cmplx::new(self.re*other.re - self.im*other.im,
@@ -107,8 +102,7 @@ impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
 
 // (a + i b) / (c + i d) == [(a + i b) * (c - i d)] / (c*c + d*d)
 //   == [(a*c + b*d) / (c*c + d*d)] + i [(b*c - a*d) / (c*c + d*d)]
-impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
-    Div<Cmplx<T>, Cmplx<T>> for Cmplx<T> {
+impl<T: Copy + Num> Div<Cmplx<T>, Cmplx<T>> for Cmplx<T> {
     #[inline]
     fn div(&self, other: &Cmplx<T>) -> Cmplx<T> {
         let norm_sqr = other.norm_sqr();
@@ -117,8 +111,7 @@ impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
     }
 }
 
-impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
-    Neg<Cmplx<T>> for Cmplx<T> {
+impl<T: Copy + Num> Neg<Cmplx<T>> for Cmplx<T> {
     #[inline]
     fn neg(&self) -> Cmplx<T> {
         Cmplx::new(-self.re, -self.im)
@@ -126,16 +119,19 @@ impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T>>
 }
 
 /* constants */
-impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T> + Zero>
-    Zero for Cmplx<T> {
+impl<T: Copy + Num> Zero for Cmplx<T> {
     #[inline]
     fn zero() -> Cmplx<T> {
         Cmplx::new(Zero::zero(), Zero::zero())
     }
+
+    #[inline]
+    fn is_zero(&self) -> bool {
+        *self == Zero::zero()
+    }
 }
 
-impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T> + Zero + One>
-    One for Cmplx<T> {
+impl<T: Copy + Num> One for Cmplx<T> {
     #[inline]
     fn one() -> Cmplx<T> {
         Cmplx::new(One::one(), Zero::zero())
@@ -143,7 +139,7 @@ impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Neg<T> + Zero + One>
 }
 
 /* string conversions */
-impl<T: ToStr + Zero + Ord + Neg<T>> ToStr for Cmplx<T> {
+impl<T: ToStr + Num + Ord> ToStr for Cmplx<T> {
     fn to_str(&self) -> ~str {
         if self.im < Zero::zero() {
             fmt!("%s-%si", self.re.to_str(), (-self.im).to_str())
@@ -153,7 +149,7 @@ impl<T: ToStr + Zero + Ord + Neg<T>> ToStr for Cmplx<T> {
     }
 }
 
-impl<T: ToStrRadix + Zero + Ord + Neg<T>> ToStrRadix for Cmplx<T> {
+impl<T: ToStrRadix + Num + Ord> ToStrRadix for Cmplx<T> {
     fn to_str_radix(&self, radix: uint) -> ~str {
         if self.im < Zero::zero() {
             fmt!("%s-%si", self.re.to_str_radix(radix), (-self.im).to_str_radix(radix))
@@ -165,7 +161,6 @@ impl<T: ToStrRadix + Zero + Ord + Neg<T>> ToStrRadix for Cmplx<T> {
 
 #[cfg(test)]
 mod test {
-    use core::prelude::*;
     use super::*;
     use core::num::{Zero,One};
 

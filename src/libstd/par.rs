@@ -8,15 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::cast;
-use core::prelude::*;
-use core::ptr;
-use core::sys;
-use core::uint;
-use core::vec;
-
 use future_spawn = future::spawn;
-
 
 /**
  * The maximum number of tasks this module will spawn for a single
@@ -65,7 +57,7 @@ fn map_slices<A:Copy + Owned,B:Copy + Owned>(
                                      len * sys::size_of::<A>());
                         info!("pre-slice: %?", (base, slice));
                         let slice : &[A] =
-                            cast::reinterpret_cast(&slice);
+                            cast::transmute(slice);
                         info!("slice: %?",
                                        (base, vec::len(slice), end - base));
                         assert!((vec::len(slice) == end - base));
@@ -81,10 +73,10 @@ fn map_slices<A:Copy + Owned,B:Copy + Owned>(
         info!("num_tasks: %?", (num_tasks, futures.len()));
         assert!((num_tasks == futures.len()));
 
-        let r = do futures.map() |ys| {
+        let r = do vec::map_consume(futures) |ys| {
+            let mut ys = ys;
             ys.get()
         };
-        assert!((r.len() == futures.len()));
         r
     }
 }

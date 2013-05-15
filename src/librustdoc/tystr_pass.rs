@@ -10,8 +10,6 @@
 
 //! Pulls type information out of the AST and attaches it to the document
 
-use core::prelude::*;
-
 use astsrv;
 use doc::ItemUtils;
 use doc;
@@ -21,7 +19,6 @@ use fold::Fold;
 use fold;
 use pass::Pass;
 
-use core::vec;
 use syntax::ast;
 use syntax::print::pprust;
 use syntax::ast_map;
@@ -335,13 +332,7 @@ fn fold_struct(
 /// what I actually want
 fn strip_struct_extra_stuff(item: @ast::item) -> @ast::item {
     let node = match copy item.node {
-        ast::item_struct(def, tys) => {
-            let def = @ast::struct_def {
-                dtor: None, // Remove the drop { } block
-                .. copy *def
-            };
-            ast::item_struct(def, tys)
-        }
+        ast::item_struct(def, tys) => ast::item_struct(def, tys),
         _ => fail!(~"not a struct")
     };
 
@@ -358,7 +349,6 @@ mod test {
     use doc;
     use extract;
     use tystr_pass::run;
-    use core::prelude::*;
 
     fn mk_doc(source: ~str) -> doc::Doc {
         do astsrv::from_str(copy source) |srv| {
@@ -442,13 +432,6 @@ mod test {
         let doc = mk_doc(~"struct S { field: () }");
         assert!((&doc.cratemod().structs()[0].sig).get().contains(
             "struct S {"));
-    }
-
-    #[test]
-    fn should_not_serialize_struct_drop_blocks() {
-        // All we care about are the fields
-        let doc = mk_doc(~"struct S { field: (), drop { } }");
-        assert!(!(&doc.cratemod().structs()[0].sig).get().contains("drop"));
     }
 
     #[test]

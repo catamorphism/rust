@@ -8,9 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-enum bottom { } 
+enum bottom { }
 
 fn main() {
-    let x = ptr::addr_of(&()) as *bottom;
+    let x = ptr::to_unsafe_ptr(&()) as *bottom;
     match x { } //~ ERROR non-exhaustive patterns
 }

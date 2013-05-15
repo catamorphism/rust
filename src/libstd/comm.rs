@@ -17,7 +17,6 @@ Higher level communication abstractions.
 use core::comm::{GenericChan, GenericSmartChan, GenericPort};
 use core::comm::{Chan, Port, Selectable, Peekable};
 use core::pipes;
-use core::prelude::*;
 
 /// An extension of `pipes::stream` that allows both sending and receiving.
 pub struct DuplexStream<T, U> {
@@ -73,7 +72,7 @@ impl<T:Owned,U:Owned> Peekable<U> for DuplexStream<T, U> {
 }
 
 impl<T:Owned,U:Owned> Selectable for DuplexStream<T, U> {
-    fn header(&self) -> *pipes::PacketHeader {
+    fn header(&mut self) -> *mut pipes::PacketHeader {
         self.port.header()
     }
 }

@@ -18,18 +18,14 @@
 #[license = "MIT/ASL2"];
 #[crate_type = "lib"];
 
-#[no_core];
-
 #[allow(vecs_implicitly_copyable,
         non_implicitly_copyable_typarams)];
 
-extern mod core(vers = "0.7-pre");
 extern mod std(vers = "0.7-pre");
 extern mod rustc(vers = "0.7-pre");
 extern mod syntax(vers = "0.7-pre");
 
 use core::*;
-use core::io::{ReaderUtil, WriterUtil};
 use rustc::driver::{driver, session};
 use syntax::{ast, diagnostic};
 use syntax::ast_util::*;
@@ -93,17 +89,13 @@ fn record(repl: Repl, blk: @ast::blk, intr: @token::ident_interner) -> Repl {
             for blk.node.stmts.each |stmt| {
                 match stmt.node {
                     ast::stmt_decl(*) | ast::stmt_mac(*) => {
-                        pprust::print_stmt(pp, **stmt);
+                        pprust::print_stmt(pp, *stmt);
                         writer.write_line(~"");
                     }
                     ast::stmt_expr(expr, _) | ast::stmt_semi(expr, _) => {
                         match expr.node {
                             ast::expr_assign(*) |
                             ast::expr_assign_op(*) |
-                            ast::expr_swap(*) => {
-                                pprust::print_stmt(pp, **stmt);
-                                writer.write_line(~"");
-                            }
                             _ => {}
                         }
                     }
@@ -127,7 +119,7 @@ fn record(repl: Repl, blk: @ast::blk, intr: @token::ident_interner) -> Repl {
 fn run(repl: Repl, input: ~str) -> Repl {
     let options = @session::options {
         crate_type: session::unknown_crate,
-        binary: repl.binary,
+        binary: @repl.binary,
         addl_lib_search_paths: repl.lib_search_paths.map(|p| Path(*p)),
         jit: true,
         .. *session::basic_options()
@@ -146,21 +138,21 @@ fn run(repl: Repl, input: ~str) -> Repl {
 
     debug!("building driver configuration");
     let cfg = driver::build_configuration(sess,
-                                          repl.binary,
-                                          wrapped);
+                                          @repl.binary,
+                                          &wrapped);
 
-    let outputs = driver::build_output_filenames(wrapped, &None, &None, sess);
+    let outputs = driver::build_output_filenames(&wrapped, &None, &None, sess);
     debug!("calling compile_upto");
-    let (crate, _) = driver::compile_upto(sess, cfg, wrapped,
-                                                 driver::cu_everything,
-                                                 Some(outputs));
+    let (crate, _) = driver::compile_upto(sess, cfg, &wrapped,
+                                          driver::cu_everything,
+                                          Some(outputs));
 
     let mut opt = None;
 
     for crate.node.module.items.each |item| {
         match item.node {
             ast::item_fn(_, _, _, _, blk) => {
-                if item.ident == sess.ident_of(~"main") {
+                if item.ident == sess.ident_of("main") {
                     opt = blk.node.expr;
                 }
             }
@@ -191,16 +183,16 @@ fn compile_crate(src_filename: ~str, binary: ~str) -> Option<bool> {
     match do task::try {
         let src_path = Path(src_filename);
         let options = @session::options {
-            binary: binary,
+            binary: @binary,
             addl_lib_search_paths: ~[os::getcwd()],
             .. *session::basic_options()
         };
         let input = driver::file_input(src_path);
         let sess = driver::build_session(options, diagnostic::emit);
         *sess.building_library = true;
-        let cfg = driver::build_configuration(sess, binary, input);
+        let cfg = driver::build_configuration(sess, @binary, &input);
         let outputs = driver::build_output_filenames(
-            input, &None, &None, sess);
+            &input, &None, &None, sess);
         // If the library already exists and is newer than the source
         // file, skip compilation and return None.
         let mut should_compile = true;
@@ -228,7 +220,7 @@ fn compile_crate(src_filename: ~str, binary: ~str) -> Option<bool> {
         }
         if (should_compile) {
             io::println(fmt!("compiling %s...", src_filename));
-            driver::compile_upto(sess, cfg, input, driver::cu_everything,
+            driver::compile_upto(sess, cfg, &input, driver::cu_everything,
                                  Some(outputs));
             true
         } else { false }

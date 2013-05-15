@@ -12,8 +12,12 @@
 // allows bidirectional lookup; i.e. given a value, one can easily find the
 // type, and vice versa.
 
-use core::prelude::*;
+// allow the interner_key macro to escape this module:
+#[macro_escape];
+
+use core::cmp::Equiv;
 use core::hashmap::HashMap;
+use syntax::parse::token::StringRef;
 
 pub struct Interner<T> {
     priv map: @mut HashMap<T, uint>,
@@ -41,10 +45,10 @@ pub impl<T:Eq + IterBytes + Hash + Const + Copy> Interner<T> {
             None => (),
         }
 
-        let vect = &*self.vect;
+        let vect = &mut *self.vect;
         let new_idx = vect.len();
         self.map.insert(val, new_idx);
-        self.vect.push(val);
+        vect.push(val);
         new_idx
     }
 
@@ -64,7 +68,81 @@ pub impl<T:Eq + IterBytes + Hash + Const + Copy> Interner<T> {
     fn get(&self, idx: uint) -> T { self.vect[idx] }
 
     fn len(&self) -> uint { let vect = &*self.vect; vect.len() }
+
+    fn find_equiv<Q:Hash + IterBytes + Equiv<T>>(&self, val: &Q)
+                                              -> Option<uint> {
+        match self.map.find_equiv(val) {
+            Some(v) => Some(*v),
+            None => None,
+        }
+    }
 }
+
+pub struct StrInterner {
+    priv map: @mut HashMap<@~str, uint>,
+    priv vect: @mut ~[@~str],
+}
+
+// when traits can extend traits, we should extend index<uint,T> to get []
+pub impl StrInterner {
+    fn new() -> StrInterner {
+        StrInterner {
+            map: @mut HashMap::new(),
+            vect: @mut ~[],
+        }
+    }
+
+    fn prefill(init: &[&str]) -> StrInterner {
+        let rv = StrInterner::new();
+        for init.each() |v| { rv.intern(*v); }
+        rv
+    }
+
+    fn intern(&self, val: &str) -> uint {
+        match self.map.find_equiv(&StringRef(val)) {
+            Some(&idx) => return idx,
+            None => (),
+        }
+
+        let new_idx = self.len();
+        self.map.insert(@val.to_owned(), new_idx);
+        self.vect.push(@val.to_owned());
+        new_idx
+    }
+
+    fn gensym(&self, val: &str) -> uint {
+        let new_idx = self.len();
+        // leave out of .map to avoid colliding
+        self.vect.push(@val.to_owned());
+        new_idx
+    }
+
+    // this isn't "pure" in the traditional sense, because it can go from
+    // failing to returning a value as items are interned. But for typestate,
+    // where we first check a pred and then rely on it, ceasing to fail is ok.
+    fn get(&self, idx: uint) -> @~str { self.vect[idx] }
+
+    fn len(&self) -> uint { let vect = &*self.vect; vect.len() }
+
+    fn find_equiv<Q:Hash + IterBytes + Equiv<@~str>>(&self, val: &Q)
+                                              -> Option<uint> {
+        match self.map.find_equiv(val) {
+            Some(v) => Some(*v),
+            None => None,
+        }
+    }
+}
+
+/* Key for thread-local data for sneaking interner information to the
+* encoder/decoder. It sounds like a hack because it is one.
+* Bonus ultra-hack: functions as keys don't work across crates,
+* so we have to use a unique number. See taskgroup_key! in task.rs
+* for another case of this. */
+macro_rules! interner_key (
+    () => (cast::transmute::<(uint, uint),
+           &fn(v: @@::parse::token::ident_interner)>(
+        (-3 as uint, 0u)))
+)
 
 #[cfg(test)]
 mod tests {

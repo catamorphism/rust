@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use core::cmp::{Ord, Eq};
-use ops::{Add, Div, Modulo, Mul, Neg, Sub};
+use ops::{Add, Sub, Mul, Div, Rem, Neg};
 use option::{None, Option, Some};
 use char;
 use str;
@@ -171,7 +171,7 @@ static nan_buf:          [u8, ..3] = ['N' as u8, 'a' as u8, 'N' as u8];
  * - Fails if `radix` < 2 or `radix` > 36.
  */
 pub fn to_str_bytes_common<T:NumCast+Zero+One+Eq+Ord+NumStrConv+Copy+
-                                  Div<T,T>+Neg<T>+Modulo<T,T>+Mul<T,T>>(
+                                  Div<T,T>+Neg<T>+Rem<T,T>+Mul<T,T>>(
         num: &T, radix: uint, negative_zero: bool,
         sign: SignFormat, digits: SignificantDigits) -> (~[u8], bool) {
     if (radix as int) < 2 {
@@ -379,7 +379,7 @@ pub fn to_str_bytes_common<T:NumCast+Zero+One+Eq+Ord+NumStrConv+Copy+
  */
 #[inline(always)]
 pub fn to_str_common<T:NumCast+Zero+One+Eq+Ord+NumStrConv+Copy+
-                            Div<T,T>+Neg<T>+Modulo<T,T>+Mul<T,T>>(
+                            Div<T,T>+Neg<T>+Rem<T,T>+Mul<T,T>>(
         num: &T, radix: uint, negative_zero: bool,
         sign: SignFormat, digits: SignificantDigits) -> (~str, bool) {
     let (bytes, special) = to_str_bytes_common(num, radix,
@@ -655,9 +655,9 @@ mod test {
                                              ExpNone, false, false);
         assert_eq!(n, None);
 
-        let f : Option<f32> = from_str_common("_1_._1_e_1_", 10, false, true, false,
+        let f : Option<f32> = from_str_common("_1_._5_e_1_", 10, false, true, false,
                                               ExpDec, false, true);
-        assert_eq!(f, Some(1.1e1f32));
+        assert_eq!(f, Some(1.5e1f32));
     }
 
     #[test]

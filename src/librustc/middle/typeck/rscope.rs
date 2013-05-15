@@ -8,12 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use middle::ty;
 
-use core::result::Result;
-use core::result;
 use syntax::ast;
 use syntax::codemap::span;
 use syntax::opt_vec::OptVec;
@@ -158,7 +154,7 @@ impl MethodRscope {
                variance: Option<ty::region_variance>,
                rcvr_generics: &ast::Generics)
             -> MethodRscope {
-        let mut region_param_names =
+        let region_param_names =
             RegionParamNames::from_generics(rcvr_generics);
         MethodRscope {
             self_ty: self_ty,
@@ -270,9 +266,9 @@ pub struct binding_rscope {
     region_param_names: RegionParamNames,
 }
 
-pub fn in_binding_rscope<RS:region_scope + Copy + Durable>(
+pub fn in_binding_rscope<RS:region_scope + Copy + 'static>(
         self: &RS,
-        +region_param_names: RegionParamNames)
+        region_param_names: RegionParamNames)
      -> binding_rscope {
     let base = @copy *self;
     let base = base as @region_scope;

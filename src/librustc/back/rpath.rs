@@ -8,16 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use driver::session;
 use metadata::cstore;
 use metadata::filesearch;
 
-use core::os;
-use core::uint;
 use core::util;
-use core::vec;
 use core::hashmap::HashSet;
 
 fn not_win32(os: session::os) -> bool {
@@ -45,7 +40,7 @@ pub fn get_rpath_flags(sess: session::Session, out_filename: &Path)
     // where rustrt is and we know every rust program needs it
     let libs = vec::append_one(libs, get_sysroot_absolute_rt_lib(sess));
 
-    let rpaths = get_rpaths(os, &sysroot, output, libs,
+    let rpaths = get_rpaths(os, sysroot, output, libs,
                             sess.opts.target_triple);
     rpaths_to_flags(rpaths)
 }
@@ -201,7 +196,6 @@ mod test {
     // FIXME(#2119): the outer attribute should be #[cfg(unix, test)], then
     // these redundant #[cfg(test)] blocks can be removed
     #[cfg(test)]
-    use core::prelude::*;
     #[cfg(test)]
     use back::rpath::{get_absolute_rpath, get_install_prefix_rpath};
     #[cfg(test)]

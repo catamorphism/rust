@@ -19,8 +19,6 @@
 
 */
 
-#[legacy_modes];
-
 extern mod std;
 
 use std::{time, getopts};
@@ -28,27 +26,26 @@ use core::int::range;
 use core::comm::*;
 use core::io::WriterUtil;
 
-use core::result;
 use core::result::{Ok, Err};
 
 fn fib(n: int) -> int {
-    fn pfib(c: Chan<int>, n: int) {
+    fn pfib(c: &Chan<int>, n: int) {
         if n == 0 {
             c.send(0);
         } else if n <= 2 {
             c.send(1);
         } else {
-            let p = PortSet();
+            let p = PortSet::new();
             let ch = p.chan();
-            task::spawn(|| pfib(ch, n - 1) );
+            task::spawn(|| pfib(&ch, n - 1) );
             let ch = p.chan();
-            task::spawn(|| pfib(ch, n - 2) );
+            task::spawn(|| pfib(&ch, n - 2) );
             c.send(p.recv() + p.recv());
         }
     }
 
     let (p, ch) = stream();
-    let _t = task::spawn(|| pfib(ch, n) );
+    let _t = task::spawn(|| pfib(&ch, n) );
     p.recv()
 }
 
@@ -69,7 +66,7 @@ fn parse_opts(argv: ~[~str]) -> Config {
     }
 }
 
-fn stress_task(&&id: int) {
+fn stress_task(id: int) {
     let mut i = 0;
     loop {
         let n = 15;
@@ -82,13 +79,15 @@ fn stress_task(&&id: int) {
 fn stress(num_tasks: int) {
     let mut results = ~[];
     for range(0, num_tasks) |i| {
-        do task::task().future_result(|+r| {
-            results.push(r);
-        }).spawn {
+        let mut builder = task::task();
+        builder.future_result(|r| results.push(r));
+        do builder.spawn {
             stress_task(i);
         }
     }
-    for results.each |r| { r.recv(); }
+    for results.each |r| {
+        r.recv();
+    }
 }
 
 fn main() {

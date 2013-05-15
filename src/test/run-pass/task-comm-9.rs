@@ -22,13 +22,14 @@ fn test00_start(c: &comm::Chan<int>, number_of_messages: int) {
 fn test00() {
     let r: int = 0;
     let mut sum: int = 0;
-    let p = comm::PortSet();
+    let p = comm::PortSet::new();
     let number_of_messages: int = 10;
     let ch = p.chan();
 
     let mut result = None;
-    do task::task().future_result(|+r| { result = Some(r); }).spawn
-          || {
+    let mut builder = task::task();
+    builder.future_result(|r| result = Some(r));
+    do builder.spawn {
         test00_start(&ch, number_of_messages);
     }
 

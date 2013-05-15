@@ -8,11 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use driver::session::Session;
 
-use core::vec;
 use syntax::ast;
 use syntax::attr;
 use syntax::codemap;
@@ -45,7 +42,7 @@ fn inject_libcore_ref(sess: Session,
             let n1 = sess.next_node_id();
             let vi1 = @ast::view_item {
                 node: ast::view_item_extern_mod(
-                        sess.ident_of(~"core"), ~[], n1),
+                        sess.ident_of("core"), ~[], n1),
                 attrs: ~[
                     spanned(ast::attribute_ {
                         style: ast::attr_inner,
@@ -81,8 +78,8 @@ fn inject_libcore_ref(sess: Session,
                 span: dummy_sp(),
                 global: false,
                 idents: ~[
-                    sess.ident_of(~"core"),
-                    sess.ident_of(~"prelude")
+                    sess.ident_of("core"),
+                    sess.ident_of("prelude")
                 ],
                 rp: None,
                 types: ~[]

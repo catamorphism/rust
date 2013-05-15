@@ -10,19 +10,44 @@
 
 //! Unsafe casting functions
 
+use sys;
+use unstable;
+
 pub mod rusti {
     #[abi = "rust-intrinsic"]
     #[link_name = "rusti"]
     pub extern "rust-intrinsic" {
-        fn forget<T>(+x: T);
-        fn reinterpret_cast<T, U>(&&e: T) -> U;
+        fn forget<T>(x: T);
+
+        fn transmute<T,U>(e: T) -> U;
     }
 }
 
 /// Casts the value at `src` to U. The two types must have the same length.
-#[inline(always)]
-pub unsafe fn reinterpret_cast<T, U>(src: &T) -> U {
-    rusti::reinterpret_cast(*src)
+#[cfg(not(stage0))]
+pub unsafe fn transmute_copy<T, U>(src: &T) -> U {
+    let mut dest: U = unstable::intrinsics::uninit();
+    {
+        let dest_ptr: *mut u8 = rusti::transmute(&mut dest);
+        let src_ptr: *u8 = rusti::transmute(src);
+        unstable::intrinsics::memmove64(dest_ptr,
+                                        src_ptr,
+                                        sys::size_of::<U>() as u64);
+    }
+    dest
+}
+
+#[cfg(stage0)]
+pub unsafe fn transmute_copy<T, U>(src: &T) -> U {
+    let mut dest: U = unstable::intrinsics::init();
+    {
+        let dest_ptr: *mut u8 = rusti::transmute(&mut dest);
+        let src_ptr: *u8 = rusti::transmute(src);
+        unstable::intrinsics::memmove64(dest_ptr,
+                                        src_ptr,
+                                        sys::size_of::<U>() as u64);
+    }
+    dest
 }
 
 /**
@@ -54,9 +79,7 @@ pub unsafe fn bump_box_refcount<T>(t: @T) { forget(t); }
  */
 #[inline(always)]
 pub unsafe fn transmute<L, G>(thing: L) -> G {
-    let newthing: G = reinterpret_cast(&thing);
-    forget(thing);
-    newthing
+    rusti::transmute(thing)
 }
 
 /// Coerce an immutable reference to be mutable.
@@ -101,6 +124,12 @@ pub unsafe fn copy_lifetime<'a,S,T>(_ptr: &'a S, ptr: &T) -> &'a T {
 
 /// Transforms lifetime of the second pointer to match the first.
 #[inline(always)]
+pub unsafe fn copy_mut_lifetime<'a,S,T>(_ptr: &'a mut S, ptr: &mut T) -> &'a mut T {
+    transmute_mut_region(ptr)
+}
+
+/// Transforms lifetime of the second pointer to match the first.
+#[inline(always)]
 pub unsafe fn copy_lifetime_vec<'a,S,T>(_ptr: &'a [S], ptr: &T) -> &'a T {
     transmute_region(ptr)
 }
@@ -112,11 +141,11 @@ pub unsafe fn copy_lifetime_vec<'a,S,T>(_ptr: &'a [S], ptr: &T) -> &'a T {
 
 #[cfg(test)]
 mod tests {
-    use cast::{bump_box_refcount, reinterpret_cast, transmute};
+    use cast::{bump_box_refcount, transmute};
 
     #[test]
-    fn test_reinterpret_cast() {
-        assert!(1u == unsafe { reinterpret_cast(&1) });
+    fn test_transmute_copy() {
+        assert!(1u == unsafe { ::cast::transmute_copy(&1) });
     }
 
     #[test]
@@ -125,8 +154,8 @@ mod tests {
             let box = @~"box box box";       // refcount 1
             bump_box_refcount(box);         // refcount 2
             let ptr: *int = transmute(box); // refcount 2
-            let _box1: @~str = reinterpret_cast(&ptr);
-            let _box2: @~str = reinterpret_cast(&ptr);
+            let _box1: @~str = ::cast::transmute_copy(&ptr);
+            let _box2: @~str = ::cast::transmute_copy(&ptr);
             assert!(*_box1 == ~"box box box");
             assert!(*_box2 == ~"box box box");
             // Will destroy _box1 and _box2. Without the bump, this would

@@ -15,6 +15,7 @@ use std::time;
 use std::treemap::TreeMap;
 use core::hashmap::{HashMap, HashSet};
 use core::trie::TrieMap;
+use core::rand::Rng;
 
 fn timed(label: &str, f: &fn()) {
     let start = time::precise_time_s();
@@ -88,6 +89,7 @@ fn vector<M: Map<uint, uint>>(map: &mut M, n_keys: uint, dist: &[uint]) {
     }
 }
 
+#[fixed_stack_segment]
 fn main() {
     let args = os::args();
     let n_keys = {
@@ -101,7 +103,7 @@ fn main() {
     let mut rand = vec::with_capacity(n_keys);
 
     {
-        let rng = core::rand::seeded_rng([1, 1, 1, 1, 1, 1, 1]);
+        let mut rng = core::rand::IsaacRng::new_seeded([1, 1, 1, 1, 1, 1, 1]);
         let mut set = HashSet::new();
         while set.len() != n_keys {
             let next = rng.next() as uint;

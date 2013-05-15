@@ -13,9 +13,6 @@
 
 use core::num::{Zero,One,ToStrRadix,FromStrRadix,Round};
 use core::from_str::FromStr;
-use core::to_str::ToStr;
-use core::prelude::*;
-use core::cmp::TotalEq;
 use super::bigint::BigInt;
 
 /// Represents the ratio between 2 numbers.
@@ -33,7 +30,7 @@ pub type Rational64 = Ratio<i64>;
 /// Alias for arbitrary precision rationals.
 pub type BigRational = Ratio<BigInt>;
 
-impl<T: Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
+impl<T: Copy + Num + Ord>
     Ratio<T> {
     /// Create a ratio representing the integer `t`.
     #[inline(always)]
@@ -51,7 +48,7 @@ impl<T: Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
     #[inline(always)]
     pub fn new(numer: T, denom: T) -> Ratio<T> {
         if denom == Zero::zero() {
-            fail!(~"divide by 0");
+            fail!(~"denominator == 0");
         }
         let mut ret = Ratio::new_raw(numer, denom);
         ret.reduce();
@@ -60,7 +57,7 @@ impl<T: Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
 
     /// Put self into lowest terms, with denom > 0.
     fn reduce(&mut self) {
-        let mut g : T = gcd(self.numer, self.denom);
+        let g : T = gcd(self.numer, self.denom);
 
         self.numer /= g;
         self.denom /= g;
@@ -85,7 +82,7 @@ Compute the greatest common divisor of two numbers, via Euclid's algorithm.
 The result can be negative.
 */
 #[inline]
-pub fn gcd_raw<T: Modulo<T,T> + Zero + Eq>(n: T, m: T) -> T {
+pub fn gcd_raw<T: Num>(n: T, m: T) -> T {
     let mut m = m, n = n;
     while m != Zero::zero() {
         let temp = m;
@@ -101,7 +98,7 @@ Compute the greatest common divisor of two numbers, via Euclid's algorithm.
 The result is always positive.
 */
 #[inline]
-pub fn gcd<T: Modulo<T,T> + Neg<T> + Zero + Ord + Eq>(n: T, m: T) -> T {
+pub fn gcd<T: Num + Ord>(n: T, m: T) -> T {
     let g = gcd_raw(n, m);
     if g < Zero::zero() { -g }
     else { g }
@@ -136,7 +133,7 @@ cmp_impl!(impl TotalOrd, cmp -> cmp::Ordering)
 
 /* Arithmetic */
 // a/b * c/d = (a*c)/(b*d)
-impl<T: Copy + Mul<T,T> + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
+impl<T: Copy + Num + Ord>
     Mul<Ratio<T>,Ratio<T>> for Ratio<T> {
     #[inline]
     fn mul(&self, rhs: &Ratio<T>) -> Ratio<T> {
@@ -145,7 +142,7 @@ impl<T: Copy + Mul<T,T> + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + E
 }
 
 // (a/b) / (c/d) = (a*d)/(b*c)
-impl<T: Copy + Mul<T,T> + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
+impl<T: Copy + Num + Ord>
     Div<Ratio<T>,Ratio<T>> for Ratio<T> {
     #[inline]
     fn div(&self, rhs: &Ratio<T>) -> Ratio<T> {
@@ -156,9 +153,7 @@ impl<T: Copy + Mul<T,T> + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + E
 // Abstracts the a/b `op` c/d = (a*d `op` b*d) / (b*d) pattern
 macro_rules! arith_impl {
     (impl $imp:ident, $method:ident) => {
-        impl<T: Copy +
-                Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Modulo<T,T> + Neg<T> +
-                Zero + One + Ord + Eq>
+        impl<T: Copy + Num + Ord>
             $imp<Ratio<T>,Ratio<T>> for Ratio<T> {
             #[inline]
             fn $method(&self, rhs: &Ratio<T>) -> Ratio<T> {
@@ -176,9 +171,9 @@ arith_impl!(impl Add, add)
 arith_impl!(impl Sub, sub)
 
 // a/b % c/d = (a*d % b*c)/(b*d)
-arith_impl!(impl Modulo, modulo)
+arith_impl!(impl Rem, rem)
 
-impl<T: Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
+impl<T: Copy + Num + Ord>
     Neg<Ratio<T>> for Ratio<T> {
     #[inline]
     fn neg(&self) -> Ratio<T> {
@@ -187,15 +182,20 @@ impl<T: Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
 }
 
 /* Constants */
-impl<T: Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
+impl<T: Copy + Num + Ord>
     Zero for Ratio<T> {
     #[inline]
     fn zero() -> Ratio<T> {
         Ratio::new_raw(Zero::zero(), One::one())
     }
+
+    #[inline]
+    fn is_zero(&self) -> bool {
+        *self == Zero::zero()
+    }
 }
 
-impl<T: Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
+impl<T: Copy + Num + Ord>
     One for Ratio<T> {
     #[inline]
     fn one() -> Ratio<T> {
@@ -203,24 +203,12 @@ impl<T: Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
     }
 }
 
+impl<T: Copy + Num + Ord>
+    Num for Ratio<T> {}
+
 /* Utils */
-impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Modulo<T,T> + Neg<T> +
-    Zero + One + Ord + Eq>
+impl<T: Copy + Num + Ord>
     Round for Ratio<T> {
-    fn round(&self, mode: num::RoundMode) -> Ratio<T> {
-        match mode {
-            num::RoundUp => { self.ceil() }
-            num::RoundDown => { self.floor()}
-            num::RoundToZero => { Ratio::from_integer(self.numer / self.denom) }
-            num::RoundFromZero => {
-                if *self < Zero::zero() {
-                    Ratio::from_integer((self.numer - self.denom + One::one()) / self.denom)
-                } else {
-                    Ratio::from_integer((self.numer + self.denom - One::one()) / self.denom)
-                }
-            }
-        }
-    }
 
     fn floor(&self) -> Ratio<T> {
         if *self < Zero::zero() {
@@ -229,6 +217,7 @@ impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Modulo<T,T> + Neg<T> 
             Ratio::from_integer(self.numer / self.denom)
         }
     }
+
     fn ceil(&self) -> Ratio<T> {
         if *self < Zero::zero() {
             Ratio::from_integer(self.numer / self.denom)
@@ -236,11 +225,32 @@ impl<T: Copy + Add<T,T> + Sub<T,T> + Mul<T,T> + Div<T,T> + Modulo<T,T> + Neg<T> 
             Ratio::from_integer((self.numer + self.denom - One::one()) / self.denom)
         }
     }
+
+    #[inline(always)]
+    fn round(&self) -> Ratio<T> {
+        if *self < Zero::zero() {
+            Ratio::from_integer((self.numer - self.denom + One::one()) / self.denom)
+        } else {
+            Ratio::from_integer((self.numer + self.denom - One::one()) / self.denom)
+        }
+    }
+
+    #[inline(always)]
+    fn trunc(&self) -> Ratio<T> {
+        Ratio::from_integer(self.numer / self.denom)
+    }
+
     fn fract(&self) -> Ratio<T> {
         Ratio::new_raw(self.numer % self.denom, self.denom)
     }
 }
 
+impl<T: Copy + Num + Ord> Fractional for Ratio<T> {
+    #[inline]
+    fn recip(&self) -> Ratio<T> {
+        Ratio::new_raw(self.denom, self.numer)
+    }
+}
 
 /* String conversions */
 impl<T: ToStr> ToStr for Ratio<T> {
@@ -256,7 +266,7 @@ impl<T: ToStrRadix> ToStrRadix for Ratio<T> {
     }
 }
 
-impl<T: FromStr + Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
+impl<T: FromStr + Copy + Num + Ord>
     FromStr for Ratio<T> {
     /// Parses `numer/denom`.
     fn from_str(s: &str) -> Option<Ratio<T>> {
@@ -273,7 +283,7 @@ impl<T: FromStr + Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq
         }
     }
 }
-impl<T: FromStrRadix + Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord + Eq>
+impl<T: FromStrRadix + Copy + Num + Ord>
     FromStrRadix for Ratio<T> {
     /// Parses `numer/denom` where the numbers are in base `radix`.
     fn from_str_radix(s: &str, radix: uint) -> Option<Ratio<T>> {
@@ -295,7 +305,6 @@ impl<T: FromStrRadix + Copy + Div<T,T> + Modulo<T,T> + Neg<T> + Zero + One + Ord
 
 #[cfg(test)]
 mod test {
-    use core::prelude::*;
     use super::*;
     use core::num::{Zero,One,FromStrRadix};
     use core::from_str::FromStr;
@@ -393,7 +402,7 @@ mod test {
         }
 
         #[test]
-        fn test_modulo() {
+        fn test_rem() {
             assert_eq!(_3_2 % _1, _1_2);
             assert_eq!(_2 % _neg1_2, _0);
             assert_eq!(_1_2 % _2,  _1_2);
@@ -424,18 +433,18 @@ mod test {
     fn test_round() {
         assert_eq!(_1_2.ceil(), _1);
         assert_eq!(_1_2.floor(), _0);
-        assert_eq!(_1_2.round(num::RoundToZero), _0);
-        assert_eq!(_1_2.round(num::RoundFromZero), _1);
+        assert_eq!(_1_2.round(), _1);
+        assert_eq!(_1_2.trunc(), _0);
 
         assert_eq!(_neg1_2.ceil(), _0);
         assert_eq!(_neg1_2.floor(), -_1);
-        assert_eq!(_neg1_2.round(num::RoundToZero), _0);
-        assert_eq!(_neg1_2.round(num::RoundFromZero), -_1);
+        assert_eq!(_neg1_2.round(), -_1);
+        assert_eq!(_neg1_2.trunc(), _0);
 
         assert_eq!(_1.ceil(), _1);
         assert_eq!(_1.floor(), _1);
-        assert_eq!(_1.round(num::RoundToZero), _1);
-        assert_eq!(_1.round(num::RoundFromZero), _1);
+        assert_eq!(_1.round(), _1);
+        assert_eq!(_1.trunc(), _1);
     }
 
     #[test]
@@ -444,6 +453,15 @@ mod test {
         assert_eq!(_neg1_2.fract(), _neg1_2);
         assert_eq!(_1_2.fract(), _1_2);
         assert_eq!(_3_2.fract(), _1_2);
+    }
+
+    #[test]
+    fn test_recip() {
+        assert_eq!(_1 * _1.recip(), _1);
+        assert_eq!(_2 * _2.recip(), _1);
+        assert_eq!(_1_2 * _1_2.recip(), _1);
+        assert_eq!(_3_2 * _3_2.recip(), _1);
+        assert_eq!(_neg1_2 * _neg1_2.recip(), _1);
     }
 
     #[test]

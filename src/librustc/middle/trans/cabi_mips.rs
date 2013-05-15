@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::{ptr, vec, uint};
-use core::option::*;
 use core::libc::c_uint;
 use lib::llvm::{llvm, TypeRef, Integer, Pointer, Float, Double};
 use lib::llvm::{Struct, Array, Attribute};
@@ -227,6 +225,6 @@ impl ABIInfo for MIPS_ABIInfo {
     }
 }
 
-pub fn mips_abi_info() -> @ABIInfo {
+pub fn abi_info() -> @ABIInfo {
     return @MIPS_ABIInfo as @ABIInfo;
 }

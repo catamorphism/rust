@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use middle::ty::RegionVid;
 use middle::ty;
 use middle::typeck::infer::combine::*;
@@ -18,6 +16,7 @@ use middle::typeck::infer::lattice::*;
 use middle::typeck::infer::sub::Sub;
 use middle::typeck::infer::to_str::InferStr;
 use middle::typeck::infer::{cres, InferCtxt};
+use middle::typeck::infer::fold_regions_in_sig;
 use middle::typeck::isr_alist;
 use util::common::indent;
 use util::ppaux::mt_to_str;
@@ -143,7 +142,8 @@ impl Combine for Lub {
         let new_vars =
             self.infcx.region_vars.vars_created_since_snapshot(snapshot);
         let sig1 =
-            self.infcx.fold_regions_in_sig(
+            fold_regions_in_sig(
+                self.infcx.tcx,
                 &sig0,
                 |r, _in_fn| generalize_region(self, snapshot, new_vars,
                                               a_isr, r));
@@ -234,10 +234,6 @@ impl Combine for Lub {
                     b: ty::TraitStore)
                  -> cres<ty::TraitStore> {
         super_trait_stores(self, vk, a, b)
-    }
-
-    fn modes(&self, a: ast::mode, b: ast::mode) -> cres<ast::mode> {
-        super_modes(self, a, b)
     }
 
     fn args(&self, a: ty::arg, b: ty::arg) -> cres<ty::arg> {

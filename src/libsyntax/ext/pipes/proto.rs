@@ -8,14 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use ast;
 use codemap::span;
 use ext::base::ext_ctxt;
 use ext::pipes::ast_builder::{append_types, ext_ctxt_ast_builder, path};
-
-use core::to_str::ToStr;
 
 #[deriving(Eq)]
 pub enum direction { send, recv }
@@ -81,8 +77,8 @@ pub struct state_ {
 }
 
 pub impl state_ {
-    fn add_message(@self, +name: ~str, span: span,
-                   +data: ~[@ast::Ty], +next: Option<next_state>) {
+    fn add_message(@self, name: ~str, span: span,
+                   data: ~[@ast::Ty], next: Option<next_state>) {
         self.messages.push(message(name, span, data, self,
                                    next));
     }
@@ -104,6 +100,7 @@ pub impl state_ {
 
     /// Iterate over the states that can be reached in one message
     /// from this state.
+    #[cfg(stage0)]
     fn reachable(&self, f: &fn(state) -> bool) {
         for self.messages.each |m| {
             match *m {
@@ -115,15 +112,30 @@ pub impl state_ {
             }
         }
     }
+    /// Iterate over the states that can be reached in one message
+    /// from this state.
+    #[cfg(not(stage0))]
+    fn reachable(&self, f: &fn(state) -> bool) -> bool {
+        for self.messages.each |m| {
+            match *m {
+              message(_, _, _, _, Some(next_state { state: ref id, _ })) => {
+                let state = self.proto.get_state((*id));
+                if !f(state) { return false; }
+              }
+              _ => ()
+            }
+        }
+        return true;
+    }
 }
 
 pub type protocol = @mut protocol_;
 
-pub fn protocol(+name: ~str, +span: span) -> protocol {
+pub fn protocol(name: ~str, span: span) -> protocol {
     @mut protocol_(name, span)
 }
 
-pub fn protocol_(+name: ~str, span: span) -> protocol_ {
+pub fn protocol_(name: ~str, span: span) -> protocol_ {
     protocol_ {
         name: name,
         span: span,
@@ -142,26 +154,26 @@ pub struct protocol_ {
 
 pub impl protocol_ {
     /// Get a state.
-    fn get_state(&mut self, name: ~str) -> state {
+    fn get_state(&self, name: ~str) -> state {
         self.states.find(|i| i.name == name).get()
     }
 
-    fn get_state_by_id(&mut self, id: uint) -> state { self.states[id] }
+    fn get_state_by_id(&self, id: uint) -> state { self.states[id] }
 
-    fn has_state(&mut self, name: ~str) -> bool {
+    fn has_state(&self, name: ~str) -> bool {
         self.states.find(|i| i.name == name).is_some()
     }
 
-    fn filename(&mut self) -> ~str {
+    fn filename(&self) -> ~str {
         ~"proto://" + self.name
     }
 
-    fn num_states(&mut self) -> uint {
+    fn num_states(&self) -> uint {
         let states = &mut *self.states;
         states.len()
     }
 
-    fn has_ty_params(&mut self) -> bool {
+    fn has_ty_params(&self) -> bool {
         for self.states.each |s| {
             if s.generics.ty_params.len() > 0 {
                 return true;
@@ -169,7 +181,7 @@ pub impl protocol_ {
         }
         false
     }
-    fn is_bounded(&mut self) -> bool {
+    fn is_bounded(&self) -> bool {
         let bounded = self.bounded.get();
         bounded
     }
@@ -177,13 +189,13 @@ pub impl protocol_ {
 
 pub impl protocol_ {
     fn add_state_poly(@mut self,
-                      +name: ~str,
+                      name: ~str,
                       ident: ast::ident,
                       dir: direction,
-                      +generics: ast::Generics)
+                      generics: ast::Generics)
                    -> state {
         let messages = @mut ~[];
-        let states = &*self.states;
+        let states = &mut *self.states;
 
         let state = @state_ {
             id: states.len(),
@@ -196,7 +208,7 @@ pub impl protocol_ {
             proto: self
         };
 
-        self.states.push(state);
+        states.push(state);
         state
     }
 }
@@ -221,4 +233,3 @@ pub fn visit<Tproto, Tstate, Tmessage, V: visitor<Tproto, Tstate, Tmessage>>(
     };
     visitor.visit_proto(proto, states)
 }
-

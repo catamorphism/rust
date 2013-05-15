@@ -12,9 +12,8 @@
 
 use cast::transmute;
 use kinds::Copy;
-use iter;
+use old_iter;
 use option::Option;
-use ptr::addr_of;
 use sys;
 use uint;
 use vec;
@@ -30,9 +29,9 @@ pub mod rustrt {
     #[abi = "cdecl"]
     #[link_name = "rustrt"]
     pub extern {
-        pub unsafe fn vec_reserve_shared_actual(++t: *sys::TypeDesc,
-                                                ++v: **vec::raw::VecRepr,
-                                                ++n: libc::size_t);
+        pub unsafe fn vec_reserve_shared_actual(t: *sys::TypeDesc,
+                                                v: **vec::raw::VecRepr,
+                                                n: libc::size_t);
     }
 }
 
@@ -40,8 +39,7 @@ pub mod rustrt {
 #[inline(always)]
 pub fn capacity<T>(v: @[T]) -> uint {
     unsafe {
-        let repr: **raw::VecRepr =
-            ::cast::reinterpret_cast(&addr_of(&v));
+        let repr: **raw::VecRepr = transmute(&v);
         (**repr).unboxed.alloc / sys::size_of::<T>()
     }
 }
@@ -54,7 +52,7 @@ pub fn capacity<T>(v: @[T]) -> uint {
  * # Arguments
  *
  * * size - An initial size of the vector to reserve
- * * builder - A function that will construct the vector. It recieves
+ * * builder - A function that will construct the vector. It receives
  *             as an argument a function that will push an element
  *             onto the vector being constructed.
  */
@@ -62,7 +60,7 @@ pub fn capacity<T>(v: @[T]) -> uint {
 pub fn build_sized<A>(size: uint, builder: &fn(push: &fn(v: A))) -> @[A] {
     let mut vec: @[A] = @[];
     unsafe { raw::reserve(&mut vec, size); }
-    builder(|+x| unsafe { raw::push(&mut vec, x) });
+    builder(|x| unsafe { raw::push(&mut vec, x) });
     return unsafe { transmute(vec) };
 }
 
@@ -72,7 +70,7 @@ pub fn build_sized<A>(size: uint, builder: &fn(push: &fn(v: A))) -> @[A] {
  *
  * # Arguments
  *
- * * builder - A function that will construct the vector. It recieves
+ * * builder - A function that will construct the vector. It receives
  *             as an argument a function that will push an element
  *             onto the vector being constructed.
  */
@@ -89,7 +87,7 @@ pub fn build<A>(builder: &fn(push: &fn(v: A))) -> @[A] {
  * # Arguments
  *
  * * size - An option, maybe containing initial size of the vector to reserve
- * * builder - A function that will construct the vector. It recieves
+ * * builder - A function that will construct the vector. It receives
  *             as an argument a function that will push an element
  *             onto the vector being constructed.
  */
@@ -104,7 +102,7 @@ pub fn build_sized_opt<A>(size: Option<uint>,
 #[inline(always)]
 pub fn append<T:Copy>(lhs: @[T], rhs: &const [T]) -> @[T] {
     do build_sized(lhs.len() + rhs.len()) |push| {
-        for vec::each(lhs) |x| { push(*x); }
+        for lhs.each |x| { push(*x); }
         for uint::range(0, rhs.len()) |i| { push(rhs[i]); }
     }
 }
@@ -113,7 +111,7 @@ pub fn append<T:Copy>(lhs: @[T], rhs: &const [T]) -> @[T] {
 /// Apply a function to each element of a vector and return the results
 pub fn map<T, U>(v: &[T], f: &fn(x: &T) -> U) -> @[U] {
     do build_sized(v.len()) |push| {
-        for vec::each(v) |elem| {
+        for v.each |elem| {
             push(f(elem));
         }
     }
@@ -125,7 +123,7 @@ pub fn map<T, U>(v: &[T], f: &fn(x: &T) -> U) -> @[U] {
  * Creates an immutable vector of size `n_elts` and initializes the elements
  * to the value returned by the function `op`.
  */
-pub fn from_fn<T>(n_elts: uint, op: iter::InitOp<T>) -> @[T] {
+pub fn from_fn<T>(n_elts: uint, op: old_iter::InitOp<T>) -> @[T] {
     do build_sized(n_elts) |push| {
         let mut i: uint = 0u;
         while i < n_elts { push(op(i)); i += 1u; }
@@ -168,7 +166,7 @@ pub fn from_slice<T:Copy>(v: &[T]) -> @[T] {
     from_fn(v.len(), |i| v[i])
 }
 
-#[cfg(notest)]
+#[cfg(not(test))]
 pub mod traits {
     use at_vec::append;
     use kinds::Copy;
@@ -187,13 +185,12 @@ pub mod traits {}
 
 pub mod raw {
     use at_vec::{capacity, rustrt};
-    use cast::transmute;
+    use cast::{transmute, transmute_copy};
     use libc;
-    use unstable::intrinsics::{move_val_init};
-    use ptr::addr_of;
     use ptr;
     use sys;
     use uint;
+    use unstable::intrinsics::{move_val_init};
     use vec;
 
     pub type VecRepr = vec::raw::VecRepr;
@@ -208,28 +205,27 @@ pub mod raw {
      */
     #[inline(always)]
     pub unsafe fn set_len<T>(v: @[T], new_len: uint) {
-        let repr: **mut VecRepr = ::cast::reinterpret_cast(&addr_of(&v));
+        let repr: **mut VecRepr = transmute(&v);
         (**repr).unboxed.fill = new_len * sys::size_of::<T>();
     }
 
     #[inline(always)]
     pub unsafe fn push<T>(v: &mut @[T], initval: T) {
-        let repr: **VecRepr = ::cast::reinterpret_cast(&v);
+        let repr: **VecRepr = transmute_copy(&v);
         let fill = (**repr).unboxed.fill;
         if (**repr).unboxed.alloc > fill {
             push_fast(v, initval);
-        }
-        else {
+        } else {
             push_slow(v, initval);
         }
     }
 
     #[inline(always)] // really pretty please
     pub unsafe fn push_fast<T>(v: &mut @[T], initval: T) {
-        let repr: **mut VecRepr = ::cast::reinterpret_cast(&v);
+        let repr: **mut VecRepr = ::cast::transmute(v);
         let fill = (**repr).unboxed.fill;
         (**repr).unboxed.fill += sys::size_of::<T>();
-        let p = addr_of(&((**repr).unboxed.data));
+        let p = &((**repr).unboxed.data);
         let p = ptr::offset(p, fill) as *mut T;
         move_val_init(&mut(*p), initval);
     }

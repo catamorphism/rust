@@ -11,7 +11,6 @@
 //! Types/fns concerning Internet Protocol (IP), versions 4 & 6
 
 use core::libc;
-use core::prelude::*;
 use core::comm::{stream, SharedChan};
 use core::ptr;
 use core::result;
@@ -111,18 +110,18 @@ enum IpGetAddrErr {
  * object in the case of failure
 */
 pub fn get_addr(node: &str, iotask: &iotask)
-    -> result::Result<~[IpAddr], IpGetAddrErr> {
+                -> result::Result<~[IpAddr], IpGetAddrErr> {
     let (output_po, output_ch) = stream();
-    let mut output_ch = Some(SharedChan(output_ch));
+    let mut output_ch = Some(SharedChan::new(output_ch));
     do str::as_buf(node) |node_ptr, len| {
         let output_ch = output_ch.swap_unwrap();
         debug!("slice len %?", len);
         let handle = create_uv_getaddrinfo_t();
-        let handle_ptr = ptr::addr_of(&handle);
+        let handle_ptr: *uv_getaddrinfo_t = &handle;
         let handle_data = GetAddrData {
             output_ch: output_ch.clone()
         };
-        let handle_data_ptr = ptr::addr_of(&handle_data);
+        let handle_data_ptr: *GetAddrData = &handle_data;
         do interact(iotask) |loop_ptr| {
             unsafe {
                 let result = uv_getaddrinfo(
@@ -152,8 +151,7 @@ pub mod v4 {
     use uv_ip4_addr = uv::ll::ip4_addr;
     use uv_ip4_name = uv::ll::ip4_name;
 
-    use core::prelude::*;
-    use core::ptr;
+    use core::cast::transmute;
     use core::result;
     use core::str;
     use core::uint;
@@ -177,7 +175,7 @@ pub mod v4 {
     pub fn parse_addr(ip: &str) -> IpAddr {
         match try_parse_addr(ip) {
           result::Ok(addr) => addr,
-          result::Err(ref err_data) => fail!(err_data.err_msg)
+          result::Err(ref err_data) => fail!(copy err_data.err_msg)
         }
     }
     // the simple, old style numberic representation of
@@ -191,7 +189,8 @@ pub mod v4 {
     impl AsUnsafeU32 for Ipv4Rep {
         // this is pretty dastardly, i know
         unsafe fn as_u32(&self) -> u32 {
-            *((ptr::addr_of(self)) as *u32)
+            let this: &mut u32 = transmute(self);
+            *this
         }
     }
     pub fn parse_to_ipv4_rep(ip: &str) -> result::Result<Ipv4Rep, ~str> {
@@ -252,7 +251,6 @@ pub mod v6 {
     use uv_ip6_addr = uv::ll::ip6_addr;
     use uv_ip6_name = uv::ll::ip6_name;
 
-    use core::prelude::*;
     use core::result;
     use core::str;
 
@@ -274,7 +272,7 @@ pub mod v6 {
     pub fn parse_addr(ip: &str) -> IpAddr {
         match try_parse_addr(ip) {
           result::Ok(addr) => addr,
-          result::Err(copy err_data) => fail!(err_data.err_msg)
+          result::Err(copy err_data) => fail!(copy err_data.err_msg)
         }
     }
     pub fn try_parse_addr(ip: &str) -> result::Result<IpAddr,ParseAddrErr> {
@@ -300,7 +298,8 @@ struct GetAddrData {
     output_ch: SharedChan<result::Result<~[IpAddr],IpGetAddrErr>>
 }
 
-extern fn get_addr_cb(handle: *uv_getaddrinfo_t, status: libc::c_int,
+extern fn get_addr_cb(handle: *uv_getaddrinfo_t,
+                      status: libc::c_int,
                       res: *addrinfo) {
     unsafe {
         debug!("in get_addr_cb");
@@ -364,7 +363,6 @@ extern fn get_addr_cb(handle: *uv_getaddrinfo_t, status: libc::c_int,
 
 #[cfg(test)]
 mod test {
-    use core::prelude::*;
 
     use net_ip::*;
     use net_ip::v4;
@@ -422,12 +420,12 @@ mod test {
         if result::is_err(&ga_result) {
             fail!(~"got err result from net::ip::get_addr();")
         }
-        // note really sure how to realiably test/assert
+        // note really sure how to reliably test/assert
         // this.. mostly just wanting to see it work, atm.
         let results = result::unwrap(ga_result);
         debug!("test_get_addr: Number of results for %s: %?",
                         localhost_name, vec::len(results));
-        for vec::each(results) |r| {
+        for results.each |r| {
             let ipv_prefix = match *r {
               Ipv4(_) => ~"IPv4",
               Ipv6(_) => ~"IPv6"

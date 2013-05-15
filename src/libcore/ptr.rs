@@ -15,7 +15,7 @@ use libc;
 use libc::{c_void, size_t};
 use sys;
 
-#[cfg(notest)] use cmp::{Eq, Ord};
+#[cfg(not(test))] use cmp::{Eq, Ord};
 use uint;
 
 pub mod libc_ {
@@ -38,17 +38,6 @@ pub mod libc_ {
                       -> *c_void;
     }
 }
-
-pub mod rusti {
-    #[abi = "rust-intrinsic"]
-    pub extern "rust-intrinsic" {
-        fn addr_of<T>(&&val: T) -> *T;
-    }
-}
-
-/// Get an unsafe pointer to a value
-#[inline(always)]
-pub fn addr_of<T>(val: &T) -> *T { unsafe { rusti::addr_of(*val) } }
 
 /// Calculate the offset from a pointer
 #[inline(always)]
@@ -86,11 +75,11 @@ pub unsafe fn position<T>(buf: *T, f: &fn(&T) -> bool) -> uint {
 
 /// Create an unsafe null pointer
 #[inline(always)]
-pub fn null<T>() -> *T { unsafe { cast::reinterpret_cast(&0u) } }
+pub fn null<T>() -> *T { unsafe { cast::transmute(0u) } }
 
 /// Create an unsafe mutable null pointer
 #[inline(always)]
-pub fn mut_null<T>() -> *mut T { unsafe { cast::reinterpret_cast(&0u) } }
+pub fn mut_null<T>() -> *mut T { unsafe { cast::transmute(0u) } }
 
 /// Returns true if the pointer is equal to the null pointer.
 #[inline(always)]
@@ -130,44 +119,44 @@ pub unsafe fn set_memory<T>(dst: *mut T, c: int, count: uint) {
 /**
   Transform a region pointer - &T - to an unsafe pointer - *T.
   This is safe, but is implemented with an unsafe block due to
-  reinterpret_cast.
+  transmute.
 */
 #[inline(always)]
 pub fn to_unsafe_ptr<T>(thing: &T) -> *T {
-    unsafe { cast::reinterpret_cast(&thing) }
+    unsafe { cast::transmute(thing) }
 }
 
 /**
   Transform a const region pointer - &const T - to a const unsafe pointer -
   *const T. This is safe, but is implemented with an unsafe block due to
-  reinterpret_cast.
+  transmute.
 */
 #[inline(always)]
 pub fn to_const_unsafe_ptr<T>(thing: &const T) -> *const T {
-    unsafe { cast::reinterpret_cast(&thing) }
+    unsafe { cast::transmute(thing) }
 }
 
 /**
   Transform a mutable region pointer - &mut T - to a mutable unsafe pointer -
   *mut T. This is safe, but is implemented with an unsafe block due to
-  reinterpret_cast.
+  transmute.
 */
 #[inline(always)]
 pub fn to_mut_unsafe_ptr<T>(thing: &mut T) -> *mut T {
-    unsafe { cast::reinterpret_cast(&thing) }
+    unsafe { cast::transmute(thing) }
 }
 
 /**
   Cast a region pointer - &T - to a uint.
   This is safe, but is implemented with an unsafe block due to
-  reinterpret_cast.
+  transmute.
 
   (I couldn't think of a cutesy name for this one.)
 */
 #[inline(always)]
 pub fn to_uint<T>(thing: &T) -> uint {
     unsafe {
-        cast::reinterpret_cast(&thing)
+        cast::transmute(thing)
     }
 }
 
@@ -254,13 +243,13 @@ impl<T> Ptr<T> for *mut T {
 }
 
 // Equality for pointers
-#[cfg(notest)]
+#[cfg(not(test))]
 impl<T> Eq for *const T {
     #[inline(always)]
     fn eq(&self, other: &*const T) -> bool {
         unsafe {
-            let a: uint = cast::reinterpret_cast(&(*self));
-            let b: uint = cast::reinterpret_cast(&(*other));
+            let a: uint = cast::transmute(*self);
+            let b: uint = cast::transmute(*other);
             return a == b;
         }
     }
@@ -269,72 +258,72 @@ impl<T> Eq for *const T {
 }
 
 // Comparison for pointers
-#[cfg(notest)]
+#[cfg(not(test))]
 impl<T> Ord for *const T {
     #[inline(always)]
     fn lt(&self, other: &*const T) -> bool {
         unsafe {
-            let a: uint = cast::reinterpret_cast(&(*self));
-            let b: uint = cast::reinterpret_cast(&(*other));
+            let a: uint = cast::transmute(*self);
+            let b: uint = cast::transmute(*other);
             return a < b;
         }
     }
     #[inline(always)]
     fn le(&self, other: &*const T) -> bool {
         unsafe {
-            let a: uint = cast::reinterpret_cast(&(*self));
-            let b: uint = cast::reinterpret_cast(&(*other));
+            let a: uint = cast::transmute(*self);
+            let b: uint = cast::transmute(*other);
             return a <= b;
         }
     }
     #[inline(always)]
     fn ge(&self, other: &*const T) -> bool {
         unsafe {
-            let a: uint = cast::reinterpret_cast(&(*self));
-            let b: uint = cast::reinterpret_cast(&(*other));
+            let a: uint = cast::transmute(*self);
+            let b: uint = cast::transmute(*other);
             return a >= b;
         }
     }
     #[inline(always)]
     fn gt(&self, other: &*const T) -> bool {
         unsafe {
-            let a: uint = cast::reinterpret_cast(&(*self));
-            let b: uint = cast::reinterpret_cast(&(*other));
+            let a: uint = cast::transmute(*self);
+            let b: uint = cast::transmute(*other);
             return a > b;
         }
     }
 }
 
 // Equality for region pointers
-#[cfg(notest)]
-impl<'self,T:Eq> Eq for &'self const T {
+#[cfg(not(test))]
+impl<'self,T:Eq> Eq for &'self T {
     #[inline(always)]
-    fn eq(&self, other: & &'self const T) -> bool {
+    fn eq(&self, other: & &'self T) -> bool {
         return *(*self) == *(*other);
     }
     #[inline(always)]
-    fn ne(&self, other: & &'self const T) -> bool {
+    fn ne(&self, other: & &'self T) -> bool {
         return *(*self) != *(*other);
     }
 }
 
 // Comparison for region pointers
-#[cfg(notest)]
-impl<'self,T:Ord> Ord for &'self const T {
+#[cfg(not(test))]
+impl<'self,T:Ord> Ord for &'self T {
     #[inline(always)]
-    fn lt(&self, other: & &'self const T) -> bool {
+    fn lt(&self, other: & &'self T) -> bool {
         *(*self) < *(*other)
     }
     #[inline(always)]
-    fn le(&self, other: & &'self const T) -> bool {
+    fn le(&self, other: & &'self T) -> bool {
         *(*self) <= *(*other)
     }
     #[inline(always)]
-    fn ge(&self, other: & &'self const T) -> bool {
+    fn ge(&self, other: & &'self T) -> bool {
         *(*self) >= *(*other)
     }
     #[inline(always)]
-    fn gt(&self, other: & &'self const T) -> bool {
+    fn gt(&self, other: & &'self T) -> bool {
         *(*self) > *(*other)
     }
 }
@@ -347,10 +336,13 @@ pub mod ptr_tests {
     #[test]
     fn test() {
         unsafe {
-            struct Pair {mut fst: int, mut snd: int};
+            struct Pair {
+                fst: int,
+                snd: int
+            };
             let mut p = Pair {fst: 10, snd: 20};
             let pptr: *mut Pair = &mut p;
-            let iptr: *mut int = cast::reinterpret_cast(&pptr);
+            let iptr: *mut int = cast::transmute(pptr);
             assert!((*iptr == 10));;
             *iptr = 30;
             assert!((*iptr == 30));

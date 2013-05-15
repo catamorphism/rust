@@ -41,7 +41,7 @@ enum x86_64_reg_class {
     memory_class
 }
 
-fn is_sse(++c: x86_64_reg_class) -> bool {
+fn is_sse(c: x86_64_reg_class) -> bool {
     return match c {
         sse_fs_class | sse_fv_class |
         sse_ds_class | sse_dv_class => true,
@@ -161,7 +161,7 @@ fn classify_ty(ty: TypeRef) -> ~[x86_64_reg_class] {
                        cls: &mut [x86_64_reg_class], i: uint,
                        off: uint) {
         let mut field_off = off;
-        for vec::each(tys) |ty| {
+        for tys.each |ty| {
             field_off = align(field_off, *ty);
             classify(*ty, cls, i, field_off);
             field_off += ty_size(*ty);
@@ -283,7 +283,7 @@ fn classify_ty(ty: TypeRef) -> ~[x86_64_reg_class] {
 fn llreg_ty(cls: &[x86_64_reg_class]) -> TypeRef {
     fn llvec_len(cls: &[x86_64_reg_class]) -> uint {
         let mut len = 1u;
-        for vec::each(cls) |c| {
+        for cls.each |c| {
             if *c != sseup_class {
                 break;
             }
@@ -370,7 +370,7 @@ fn x86_64_tys(atys: &[TypeRef],
 
     let mut arg_tys = ~[];
     let mut attrs = ~[];
-    for vec::each(atys) |t| {
+    for atys.each |t| {
         let (ty, attr) = x86_64_ty(*t, is_pass_byval, ByValAttribute);
         arg_tys.push(ty);
         attrs.push(attr);
@@ -410,6 +410,6 @@ impl ABIInfo for X86_64_ABIInfo {
     }
 }
 
-pub fn x86_64_abi_info() -> @ABIInfo {
+pub fn abi_info() -> @ABIInfo {
     return @X86_64_ABIInfo as @ABIInfo;
 }

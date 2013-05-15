@@ -79,7 +79,6 @@
  */
 
 use core::cmp::Eq;
-use core::prelude::*;
 use core::result::{Err, Ok};
 use core::result;
 use core::option::{Some, None};
@@ -230,13 +229,13 @@ pub fn getopts(args: &[~str], opts: &[Opt]) -> Result {
     let l = args.len();
     let mut i = 0;
     while i < l {
-        let cur = args[i];
+        let cur = copy args[i];
         let curlen = cur.len();
         if !is_arg(cur) {
             free.push(cur);
         } else if cur == ~"--" {
             let mut j = i + 1;
-            while j < l { free.push(args[j]); j += 1; }
+            while j < l { free.push(copy args[j]); j += 1; }
             break;
         } else {
             let mut names;
@@ -249,8 +248,8 @@ pub fn getopts(args: &[~str], opts: &[Opt]) -> Result {
                     names = ~[Long(tail)];
                 } else {
                     names =
-                        ~[Long(tail_eq[0])];
-                    i_arg = Some(tail_eq[1]);
+                        ~[Long(copy tail_eq[0])];
+                    i_arg = Some(copy tail_eq[1]);
                 }
             } else {
                 let mut j = 1;
@@ -267,7 +266,7 @@ pub fn getopts(args: &[~str], opts: &[Opt]) -> Result {
                        interpreted correctly
                     */
 
-                    match find_opt(opts, opt) {
+                    match find_opt(opts, copy opt) {
                       Some(id) => last_valid_opt_id = Some(id),
                       None => {
                         let arg_follows =
@@ -293,7 +292,7 @@ pub fn getopts(args: &[~str], opts: &[Opt]) -> Result {
             let mut name_pos = 0;
             for names.each() |nm| {
                 name_pos += 1;
-                let optid = match find_opt(opts, *nm) {
+                let optid = match find_opt(opts, copy *nm) {
                   Some(id) => id,
                   None => return Err(UnrecognizedOption(name_str(nm)))
                 };
@@ -306,18 +305,18 @@ pub fn getopts(args: &[~str], opts: &[Opt]) -> Result {
                   }
                   Maybe => {
                     if !i_arg.is_none() {
-                        vals[optid].push(Val(i_arg.get()));
+                        vals[optid].push(Val((copy i_arg).get()));
                     } else if name_pos < names.len() ||
                                   i + 1 == l || is_arg(args[i + 1]) {
                         vals[optid].push(Given);
-                    } else { i += 1; vals[optid].push(Val(args[i])); }
+                    } else { i += 1; vals[optid].push(Val(copy args[i])); }
                   }
                   Yes => {
                     if !i_arg.is_none() {
-                        vals[optid].push(Val(i_arg.get()));
+                        vals[optid].push(Val((copy i_arg).get()));
                     } else if i + 1 == l {
                         return Err(ArgumentMissing(name_str(nm)));
-                    } else { i += 1; vals[optid].push(Val(args[i])); }
+                    } else { i += 1; vals[optid].push(Val(copy args[i])); }
                   }
                 }
             }
@@ -347,7 +346,7 @@ pub fn getopts(args: &[~str], opts: &[Opt]) -> Result {
 
 fn opt_vals(mm: &Matches, nm: &str) -> ~[Optval] {
     return match find_opt(mm.opts, mkname(nm)) {
-      Some(id) => mm.vals[id],
+      Some(id) => copy mm.vals[id],
       None => {
         error!("No option '%s' defined", nm);
         fail!()
@@ -355,7 +354,7 @@ fn opt_vals(mm: &Matches, nm: &str) -> ~[Optval] {
     };
 }
 
-fn opt_val(mm: &Matches, nm: &str) -> Optval { return opt_vals(mm, nm)[0]; }
+fn opt_val(mm: &Matches, nm: &str) -> Optval { copy opt_vals(mm, nm)[0] }
 
 /// Returns true if an option was matched
 pub fn opt_present(mm: &Matches, nm: &str) -> bool {
@@ -369,7 +368,7 @@ pub fn opt_count(mm: &Matches, nm: &str) -> uint {
 
 /// Returns true if any of several options were matched
 pub fn opts_present(mm: &Matches, names: &[~str]) -> bool {
-    for vec::each(names) |nm| {
+    for names.each |nm| {
         match find_opt(mm.opts, mkname(*nm)) {
             Some(id) if !mm.vals[id].is_empty() => return true,
             _ => (),
@@ -396,7 +395,7 @@ pub fn opt_str(mm: &Matches, nm: &str) -> ~str {
  * option took an argument
  */
 pub fn opts_str(mm: &Matches, names: &[~str]) -> ~str {
-    for vec::each(names) |nm| {
+    for names.each |nm| {
         match opt_val(mm, *nm) {
           Val(copy s) => return s,
           _ => ()
@@ -461,7 +460,6 @@ pub mod groups {
     use getopts::{HasArg, Long, Maybe, Multi, No, Occur, Opt, Optional, Req};
     use getopts::{Short, Yes};
 
-    use core::prelude::*;
     use core::str;
     use core::vec;
 
@@ -549,25 +547,29 @@ pub mod groups {
     // translate OptGroup into Opt
     // (both short and long names correspond to different Opts)
     pub fn long_to_short(lopt: &OptGroup) -> ~[Opt] {
-        match ((*lopt).short_name.len(),
-               (*lopt).long_name.len()) {
+        let OptGroup{short_name: short_name,
+                     long_name: long_name,
+                     hasarg: hasarg,
+                     occur: occur,
+                     _} = copy *lopt;
 
+        match (short_name.len(), long_name.len()) {
            (0,0) => fail!(~"this long-format option was given no name"),
 
-           (0,_) => ~[Opt {name:   Long(((*lopt).long_name)),
-                           hasarg: (*lopt).hasarg,
-                           occur:  (*lopt).occur}],
+           (0,_) => ~[Opt {name: Long((long_name)),
+                           hasarg: hasarg,
+                           occur: occur}],
 
-           (1,0) => ~[Opt {name: Short(str::char_at((*lopt).short_name, 0)),
-                           hasarg: (*lopt).hasarg,
-                           occur:  (*lopt).occur}],
+           (1,0) => ~[Opt {name: Short(str::char_at(short_name, 0)),
+                           hasarg: hasarg,
+                           occur: occur}],
 
-           (1,_) => ~[Opt {name: Short(str::char_at((*lopt).short_name, 0)),
-                           hasarg: (*lopt).hasarg,
-                           occur:  (*lopt).occur},
-                      Opt {name:   Long(((*lopt).long_name)),
-                           hasarg: (*lopt).hasarg,
-                           occur:  (*lopt).occur}],
+           (1,_) => ~[Opt {name: Short(str::char_at(short_name, 0)),
+                           hasarg: hasarg,
+                           occur:  occur},
+                      Opt {name:   Long((long_name)),
+                           hasarg: hasarg,
+                           occur:  occur}],
 
            (_,_) => fail!(~"something is wrong with the long-form opt")
         }
@@ -588,11 +590,12 @@ pub mod groups {
         let desc_sep = ~"\n" + str::repeat(~" ", 24);
 
         let rows = vec::map(opts, |optref| {
-            let short_name = (*optref).short_name;
-            let long_name = (*optref).long_name;
-            let hint = (*optref).hint;
-            let desc = (*optref).desc;
-            let hasarg = (*optref).hasarg;
+            let OptGroup{short_name: short_name,
+                         long_name: long_name,
+                         hint: hint,
+                         desc: desc,
+                         hasarg: hasarg,
+                         _} = copy *optref;
 
             let mut row = str::repeat(~" ", 4);
 
@@ -622,10 +625,10 @@ pub mod groups {
             row += if rowlen < 24 {
                 str::repeat(~" ", 24 - rowlen)
             } else {
-                desc_sep
+                copy desc_sep
             };
 
-            // Normalize desc to contain words seperated by one space character
+            // Normalize desc to contain words separated by one space character
             let mut desc_normalized_whitespace = ~"";
             for str::each_word(desc) |word| {
                 desc_normalized_whitespace.push_str(word);
@@ -654,7 +657,6 @@ pub mod groups {
 
 #[cfg(test)]
 mod tests {
-    use core::prelude::*;
 
     use getopts::groups::OptGroup;
     use getopts::*;
@@ -895,7 +897,7 @@ mod tests {
         let rs = getopts(args, opts);
         match rs {
           Err(copy f) => {
-            error!(fail_str(f));
+            error!(fail_str(copy f));
             check_fail_type(f, UnexpectedArgument_);
           }
           _ => fail!()
@@ -1377,11 +1379,3 @@ Options:
         assert!(usage == expected)
     }
 }
-
-// Local Variables:
-// mode: rust;
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

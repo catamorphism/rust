@@ -8,7 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
 
 use ast::{ident, matcher_, matcher, match_tok, match_nonterminal, match_seq};
 use ast::{tt_delim};
@@ -37,8 +36,8 @@ pub fn add_new_extension(cx: @ext_ctxt,
         spanned { node: copy m, span: dummy_sp() }
     }
 
-    let lhs_nm =  cx.parse_sess().interner.gensym(@~"lhs");
-    let rhs_nm =  cx.parse_sess().interner.gensym(@~"rhs");
+    let lhs_nm =  cx.parse_sess().interner.gensym("lhs");
+    let rhs_nm =  cx.parse_sess().interner.gensym("rhs");
 
     // The grammar for macro_rules! is:
     // $( $lhs:mtcs => $rhs:tt );+

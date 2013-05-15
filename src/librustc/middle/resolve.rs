@@ -8,9 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
-use driver::session;
 use driver::session::Session;
 use metadata::csearch::{each_path, get_trait_method_def_ids};
 use metadata::csearch::get_method_name_and_self_ty;
@@ -23,8 +20,6 @@ use middle::lint::{allow, level, unused_imports};
 use middle::lint::{get_lint_level, get_lint_settings_level};
 use middle::pat_util::pat_bindings;
 
-use core::str;
-use core::vec;
 use syntax::ast::{RegionTyParamBound, TraitTyParamBound, _mod, add, arm};
 use syntax::ast::{binding_mode, bitand, bitor, bitxor, blk};
 use syntax::ast::{bind_infer, bind_by_ref, bind_by_copy};
@@ -46,12 +41,12 @@ use syntax::ast::Generics;
 use syntax::ast::{gt, ident, inherited, item, item_struct};
 use syntax::ast::{item_const, item_enum, item_fn, item_foreign_mod};
 use syntax::ast::{item_impl, item_mac, item_mod, item_trait, item_ty, le};
-use syntax::ast::{local, local_crate, lt, method, mode, mul};
+use syntax::ast::{local, local_crate, lt, method, mul};
 use syntax::ast::{named_field, ne, neg, node_id, pat, pat_enum, pat_ident};
 use syntax::ast::{Path, pat_lit, pat_range, pat_struct};
 use syntax::ast::{prim_ty, private, provided};
 use syntax::ast::{public, required, rem, self_ty_, shl, shr, stmt_decl};
-use syntax::ast::{struct_dtor, struct_field, struct_variant_kind};
+use syntax::ast::{struct_field, struct_variant_kind};
 use syntax::ast::{sty_static, subtract, trait_ref, tuple_variant_kind, Ty};
 use syntax::ast::{ty_bool, ty_char, ty_f, ty_f32, ty_f64, ty_float, ty_i};
 use syntax::ast::{ty_i16, ty_i32, ty_i64, ty_i8, ty_int, TyParam, ty_path};
@@ -65,11 +60,11 @@ use syntax::ast_util::{def_id_of_def, local_def};
 use syntax::ast_util::{path_to_ident, walk_pat, trait_method_to_ty_method};
 use syntax::ast_util::{Privacy, Public, Private};
 use syntax::ast_util::{variant_visibility_to_privacy, visibility_to_privacy};
-use syntax::attr::{attr_metas, contains_name, attrs_contains_name};
+use syntax::attr::{attr_metas, contains_name};
 use syntax::parse::token::ident_interner;
 use syntax::parse::token::special_idents;
 use syntax::print::pprust::path_to_str;
-use syntax::codemap::{span, dummy_sp};
+use syntax::codemap::{span, dummy_sp, BytePos};
 use syntax::visit::{default_visitor, mk_vt, Visitor, visit_block};
 use syntax::visit::{visit_crate, visit_expr, visit_expr_opt};
 use syntax::visit::{visit_foreign_item, visit_item};
@@ -127,7 +122,7 @@ pub struct Export2 {
 pub enum PatternBindingMode {
     RefutableMode,
     LocalIrrefutableMode,
-    ArgumentIrrefutableMode(mode)
+    ArgumentIrrefutableMode,
 }
 
 #[deriving(Eq)]
@@ -351,7 +346,7 @@ pub struct ImportDirective {
 }
 
 pub fn ImportDirective(privacy: Privacy,
-                       +module_path: ~[ident],
+                       module_path: ~[ident],
                        subclass: @ImportDirectiveSubclass,
                        span: span)
                     -> ImportDirective {
@@ -401,7 +396,7 @@ pub struct ImportResolution {
 }
 
 pub fn ImportResolution(privacy: Privacy,
-                        +span: span,
+                        span: span,
                         state: @mut ImportState) -> ImportResolution {
     ImportResolution {
         privacy: privacy,
@@ -713,7 +708,7 @@ pub struct PrimitiveTypeTable {
 }
 
 pub impl PrimitiveTypeTable {
-    fn intern(&mut self, intr: @ident_interner, string: @~str,
+    fn intern(&mut self, intr: @ident_interner, string: &str,
               primitive_type: prim_ty) {
         let ident = intr.intern(string);
         self.primitive_types.insert(ident, primitive_type);
@@ -725,22 +720,22 @@ pub fn PrimitiveTypeTable(intr: @ident_interner) -> PrimitiveTypeTable {
         primitive_types: HashMap::new()
     };
 
-    table.intern(intr, @~"bool",    ty_bool);
-    table.intern(intr, @~"char",    ty_int(ty_char));
-    table.intern(intr, @~"float",   ty_float(ty_f));
-    table.intern(intr, @~"f32",     ty_float(ty_f32));
-    table.intern(intr, @~"f64",     ty_float(ty_f64));
-    table.intern(intr, @~"int",     ty_int(ty_i));
-    table.intern(intr, @~"i8",      ty_int(ty_i8));
-    table.intern(intr, @~"i16",     ty_int(ty_i16));
-    table.intern(intr, @~"i32",     ty_int(ty_i32));
-    table.intern(intr, @~"i64",     ty_int(ty_i64));
-    table.intern(intr, @~"str",     ty_str);
-    table.intern(intr, @~"uint",    ty_uint(ty_u));
-    table.intern(intr, @~"u8",      ty_uint(ty_u8));
-    table.intern(intr, @~"u16",     ty_uint(ty_u16));
-    table.intern(intr, @~"u32",     ty_uint(ty_u32));
-    table.intern(intr, @~"u64",     ty_uint(ty_u64));
+    table.intern(intr, "bool",    ty_bool);
+    table.intern(intr, "char",    ty_int(ty_char));
+    table.intern(intr, "float",   ty_float(ty_f));
+    table.intern(intr, "f32",     ty_float(ty_f32));
+    table.intern(intr, "f64",     ty_float(ty_f64));
+    table.intern(intr, "int",     ty_int(ty_i));
+    table.intern(intr, "i8",      ty_int(ty_i8));
+    table.intern(intr, "i16",     ty_int(ty_i16));
+    table.intern(intr, "i32",     ty_int(ty_i32));
+    table.intern(intr, "i64",     ty_int(ty_i64));
+    table.intern(intr, "str",     ty_str);
+    table.intern(intr, "uint",    ty_uint(ty_u));
+    table.intern(intr, "u8",      ty_uint(ty_u8));
+    table.intern(intr, "u16",     ty_uint(ty_u16));
+    table.intern(intr, "u32",     ty_uint(ty_u32));
+    table.intern(intr, "u64",     ty_uint(ty_u64));
 
     return table;
 }
@@ -783,9 +778,9 @@ pub fn Resolver(session: Session,
         unresolved_imports: 0,
 
         current_module: current_module,
-        value_ribs: ~[],
-        type_ribs: ~[],
-        label_ribs: ~[],
+        value_ribs: @mut ~[],
+        type_ribs: @mut ~[],
+        label_ribs: @mut ~[],
 
         xray_context: NoXray,
         current_trait_refs: None,
@@ -797,11 +792,6 @@ pub fn Resolver(session: Session,
                                                   parse_sess.interner),
 
         namespaces: ~[ TypeNS, ValueNS ],
-
-        attr_main_fn: None,
-        main_fns: ~[],
-
-        start_fn: None,
 
         def_map: @mut HashMap::new(),
         export_map2: @mut HashMap::new(),
@@ -834,13 +824,13 @@ pub struct Resolver {
 
     // The current set of local scopes, for values.
     // FIXME #4948: Reuse ribs to avoid allocation.
-    value_ribs: ~[@Rib],
+    value_ribs: @mut ~[@Rib],
 
     // The current set of local scopes, for types.
-    type_ribs: ~[@Rib],
+    type_ribs: @mut ~[@Rib],
 
     // The current set of local scopes, for labels.
-    label_ribs: ~[@Rib],
+    label_ribs: @mut ~[@Rib],
 
     // Whether the current context is an X-ray context. An X-ray context is
     // allowed to access private names of any module.
@@ -859,15 +849,6 @@ pub struct Resolver {
 
     // The four namespaces.
     namespaces: ~[Namespace],
-
-    // The function that has attribute named 'main'
-    attr_main_fn: Option<(node_id, span)>,
-
-    // The functions that could be main functions
-    main_fns: ~[Option<(node_id, span)>],
-
-    // The function that has the attribute 'start' on it
-    start_fn: Option<(node_id, span)>,
 
     def_map: DefMap,
     export_map2: ExportMap2,
@@ -889,7 +870,6 @@ pub impl Resolver {
         self.resolve_crate();
         self.session.abort_if_errors();
 
-        self.check_duplicate_main();
         self.check_for_unused_imports_if_necessary();
     }
 
@@ -904,7 +884,7 @@ pub impl Resolver {
     fn build_reduced_graph(@mut self) {
         let initial_parent =
             ModuleReducedGraphParent(self.graph_root.get_module());
-        visit_crate(*self.crate, initial_parent, mk_vt(@Visitor {
+        visit_crate(self.crate, initial_parent, mk_vt(@Visitor {
             visit_item: |item, context, visitor|
                 self.build_reduced_graph_for_item(item, context, visitor),
 
@@ -960,7 +940,7 @@ pub impl Resolver {
         // child name directly. Otherwise, we create or reuse an anonymous
         // module and add the child to that.
 
-        let mut module_;
+        let module_;
         match reduced_graph_parent {
             ModuleReducedGraphParent(parent_module) => {
                 module_ = parent_module;
@@ -975,7 +955,7 @@ pub impl Resolver {
                 module_.children.insert(name, child);
                 return (child, new_parent);
             }
-            Some(child) => {
+            Some(&child) => {
                 // Enforce the duplicate checking mode:
                 //
                 // * If we're requesting duplicate module checking, check that
@@ -1037,7 +1017,7 @@ pub impl Resolver {
                                   *self.session.str_of(name)));
                     }
                 }
-                return (*child, new_parent);
+                return (child, new_parent);
             }
         }
     }
@@ -1088,7 +1068,7 @@ pub impl Resolver {
     fn build_reduced_graph_for_item(@mut self,
                                     item: @item,
                                     parent: ReducedGraphParent,
-                                    &&visitor: vt<ReducedGraphParent>) {
+                                    visitor: vt<ReducedGraphParent>) {
         let ident = item.ident;
         let sp = item.span;
         let privacy = visibility_to_privacy(item.vis);
@@ -1173,7 +1153,7 @@ pub impl Resolver {
                     (privacy, def_ty(local_def(item.id)), sp);
 
                 for (*enum_definition).variants.each |variant| {
-                    self.build_reduced_graph_for_variant(*variant,
+                    self.build_reduced_graph_for_variant(variant,
                         local_def(item.id),
                         // inherited => privacy of the enum item
                         variant_visibility_to_privacy(variant.node.vis,
@@ -1362,11 +1342,11 @@ pub impl Resolver {
     // Constructs the reduced graph for one variant. Variants exist in the
     // type and/or value namespaces.
     fn build_reduced_graph_for_variant(@mut self,
-                                       variant: variant,
+                                       variant: &variant,
                                        item_id: def_id,
-                                       +parent_privacy: Privacy,
+                                       parent_privacy: Privacy,
                                        parent: ReducedGraphParent,
-                                       &&_visitor: vt<ReducedGraphParent>) {
+                                       _visitor: vt<ReducedGraphParent>) {
         let ident = variant.node.name;
         let (child, _) = self.add_child(ident, parent, ForbidDuplicateValues,
                                         variant.span);
@@ -1402,7 +1382,7 @@ pub impl Resolver {
     fn build_reduced_graph_for_view_item(@mut self,
                                          view_item: @view_item,
                                          parent: ReducedGraphParent,
-                                         &&_visitor: vt<ReducedGraphParent>) {
+                                         _visitor: vt<ReducedGraphParent>) {
         let privacy = visibility_to_privacy(view_item.vis);
         match view_item.node {
             view_item_use(ref view_paths) => {
@@ -1413,7 +1393,7 @@ pub impl Resolver {
 
                     let mut module_path = ~[];
                     match view_path.node {
-                        view_path_simple(_, full_path, _, _) => {
+                        view_path_simple(_, full_path, _) => {
                             let path_len = full_path.idents.len();
                             assert!(path_len != 0);
 
@@ -1435,7 +1415,7 @@ pub impl Resolver {
                     // Build up the import directives.
                     let module_ = self.get_module_from_parent(parent);
                     match view_path.node {
-                        view_path_simple(binding, full_path, _, _) => {
+                        view_path_simple(binding, full_path, _) => {
                             let source_ident = *full_path.idents.last();
                             let subclass = @SingleImport(binding,
                                                          source_ident);
@@ -1495,7 +1475,7 @@ pub impl Resolver {
     fn build_reduced_graph_for_foreign_item(@mut self,
                                             foreign_item: @foreign_item,
                                             parent: ReducedGraphParent,
-                                            &&visitor:
+                                            visitor:
                                                 vt<ReducedGraphParent>) {
         let name = foreign_item.ident;
         let (name_bindings, new_parent) =
@@ -1526,8 +1506,8 @@ pub impl Resolver {
     fn build_reduced_graph_for_block(@mut self,
                                      block: &blk,
                                      parent: ReducedGraphParent,
-                                     &&visitor: vt<ReducedGraphParent>) {
-        let mut new_parent;
+                                     visitor: vt<ReducedGraphParent>) {
+        let new_parent;
         if self.block_needs_anonymous_module(block) {
             let block_id = block.node.id;
 
@@ -1695,7 +1675,7 @@ pub impl Resolver {
 
             let mut current_module = root;
             for pieces.each |ident_str| {
-                let ident = self.session.ident_of(/*bad*/copy *ident_str);
+                let ident = self.session.ident_of(*ident_str);
                 // Create or reuse a graph node for the child.
                 let (child_name_bindings, new_parent) =
                     self.add_child(ident,
@@ -1849,7 +1829,7 @@ pub impl Resolver {
     fn build_import_directive(@mut self,
                               privacy: Privacy,
                               module_: @mut Module,
-                              +module_path: ~[ident],
+                              module_path: ~[ident],
                               subclass: @ImportDirectiveSubclass,
                               span: span) {
         let directive = @ImportDirective(privacy, module_path,
@@ -1868,7 +1848,7 @@ pub impl Resolver {
                        *self.session.str_of(target));
 
                 match module_.import_resolutions.find(&target) {
-                    Some(resolution) => {
+                    Some(&resolution) => {
                         debug!("(building import directive) bumping \
                                 reference");
                         resolution.outstanding_references += 1;
@@ -2399,7 +2379,7 @@ pub impl Resolver {
                         (*ident, new_import_resolution);
                 }
                 None => { /* continue ... */ }
-                Some(dest_import_resolution) => {
+                Some(&dest_import_resolution) => {
                     // Merge the two import resolutions at a finer-grained
                     // level.
 
@@ -2427,24 +2407,24 @@ pub impl Resolver {
 
         let merge_import_resolution = |ident,
                                        name_bindings: @mut NameBindings| {
-            let mut dest_import_resolution;
-            match module_.import_resolutions.find(ident) {
+            let dest_import_resolution;
+            match module_.import_resolutions.find(&ident) {
                 None => {
                     // Create a new import resolution from this child.
                     dest_import_resolution = @mut ImportResolution(privacy,
                                                                    span,
                                                                    state);
                     module_.import_resolutions.insert
-                        (*ident, dest_import_resolution);
+                        (ident, dest_import_resolution);
                 }
-                Some(existing_import_resolution) => {
-                    dest_import_resolution = *existing_import_resolution;
+                Some(&existing_import_resolution) => {
+                    dest_import_resolution = existing_import_resolution;
                 }
             }
 
             debug!("(resolving glob import) writing resolution `%s` in `%s` \
                     to `%s`, privacy=%?",
-                   *self.session.str_of(*ident),
+                   *self.session.str_of(ident),
                    self.module_to_str(containing_module),
                    self.module_to_str(module_),
                    copy dest_import_resolution.privacy);
@@ -2463,13 +2443,13 @@ pub impl Resolver {
         };
 
         // Add all children from the containing module.
-        for containing_module.children.each |ident, name_bindings| {
+        for containing_module.children.each |&ident, name_bindings| {
             merge_import_resolution(ident, *name_bindings);
         }
 
         // Add external module children from the containing module.
         for containing_module.external_module_children.each
-                |ident, module| {
+                |&ident, module| {
             let name_bindings =
                 @mut Resolver::create_name_bindings_from_module(*module);
             merge_import_resolution(ident, name_bindings);
@@ -2502,6 +2482,16 @@ pub impl Resolver {
                                               TypeNS,
                                               name_search_type) {
                 Failed => {
+                    let segment_name = self.session.str_of(name);
+                    let module_name = self.module_to_str(search_module);
+                    if module_name == ~"???" {
+                        self.session.span_err(span {lo: span.lo, hi: span.lo +
+                                              BytePos(str::len(*segment_name)), expn_info:
+                                              span.expn_info}, fmt!("unresolved import. maybe \
+                                                                    a missing 'extern mod %s'?",
+                                                                    *segment_name));
+                        return Failed;
+                    }
                     self.session.span_err(span, ~"unresolved name");
                     return Failed;
                 }
@@ -2583,8 +2573,8 @@ pub impl Resolver {
         let module_prefix_result = self.resolve_module_prefix(module_,
                                                               module_path);
 
-        let mut search_module;
-        let mut start_index;
+        let search_module;
+        let start_index;
         match module_prefix_result {
             Failed => {
                 self.session.span_err(span, ~"unresolved name");
@@ -2912,7 +2902,7 @@ pub impl Resolver {
                               module_: @mut Module,
                               name: ident,
                               namespace: Namespace,
-                              +name_search_type: NameSearchType)
+                              name_search_type: NameSearchType)
                            -> ResolveResult<Target> {
         debug!("(resolving name in module) resolving `%s` in `%s`",
                *self.session.str_of(name),
@@ -2996,7 +2986,14 @@ pub impl Resolver {
         let imports: &mut ~[@ImportDirective] = &mut *module_.imports;
         let import_count = imports.len();
         if index != import_count {
-            self.session.span_err(imports[index].span, ~"unresolved import");
+            let sn = self.session.codemap.span_to_snippet(imports[index].span);
+            if str::contains(sn, "::") {
+                self.session.span_err(imports[index].span, ~"unresolved import");
+            } else {
+                let err = fmt!("unresolved import (maybe you meant `%s::*`?)",
+                               sn.slice(0, sn.len() - 1)); // -1 to adjust for semicolon
+                self.session.span_err(imports[index].span, err);
+            }
         }
 
         // Descend into children and anonymous children.
@@ -3221,7 +3218,7 @@ pub impl Resolver {
                 allow_capturing_self: AllowCapturingSelfFlag)
              -> Option<def_like> {
         let mut def;
-        let mut is_ty_param;
+        let is_ty_param;
 
         match def_like {
             dl_def(d @ def_local(*)) | dl_def(d @ def_upvar(*)) |
@@ -3352,7 +3349,7 @@ pub impl Resolver {
     fn resolve_crate(@mut self) {
         debug!("(resolving crate) starting");
 
-        visit_crate(*self.crate, (), mk_vt(@Visitor {
+        visit_crate(self.crate, (), mk_vt(@Visitor {
             visit_item: |item, _context, visitor|
                 self.resolve_item(item, visitor),
             visit_arm: |arm, _context, visitor|
@@ -3509,7 +3506,6 @@ pub impl Resolver {
                 self.resolve_struct(item.id,
                                     generics,
                                     struct_def.fields,
-                                    struct_def.dtor,
                                     visitor);
             }
 
@@ -3542,40 +3538,6 @@ pub impl Resolver {
             }
 
             item_fn(ref fn_decl, _, _, ref generics, ref block) => {
-                // If this is the main function, we must record it in the
-                // session.
-
-                // FIXME #4404 android JNI hacks
-                if !*self.session.building_library ||
-                    self.session.targ_cfg.os == session::os_android {
-
-                    if self.attr_main_fn.is_none() &&
-                           item.ident == special_idents::main {
-
-                        self.main_fns.push(Some((item.id, item.span)));
-                    }
-
-                    if attrs_contains_name(item.attrs, ~"main") {
-                        if self.attr_main_fn.is_none() {
-                            self.attr_main_fn = Some((item.id, item.span));
-                        } else {
-                            self.session.span_err(
-                                    item.span,
-                                    ~"multiple 'main' functions");
-                        }
-                    }
-
-                    if attrs_contains_name(item.attrs, ~"start") {
-                        if self.start_fn.is_none() {
-                            self.start_fn = Some((item.id, item.span));
-                        } else {
-                            self.session.span_err(
-                                    item.span,
-                                    ~"multiple 'start' functions");
-                        }
-                    }
-                }
-
                 self.resolve_function(OpaqueFunctionRibKind,
                                       Some(fn_decl),
                                       HasTypeParameters
@@ -3705,8 +3667,7 @@ pub impl Resolver {
                 }
                 Some(declaration) => {
                     for declaration.inputs.each |argument| {
-                        let binding_mode =
-                            ArgumentIrrefutableMode(argument.mode);
+                        let binding_mode = ArgumentIrrefutableMode;
                         let mutability =
                             if argument.is_mutbl {Mutable} else {Immutable};
                         self.resolve_pattern(argument.pat,
@@ -3768,7 +3729,6 @@ pub impl Resolver {
                       id: node_id,
                       generics: &Generics,
                       fields: &[@struct_field],
-                      optional_destructor: Option<struct_dtor>,
                       visitor: ResolveVisitor) {
         // If applicable, create a rib for the type parameters.
         do self.with_type_parameter_rib(HasTypeParameters
@@ -3781,23 +3741,6 @@ pub impl Resolver {
             // Resolve fields.
             for fields.each |field| {
                 self.resolve_type(field.node.ty, visitor);
-            }
-
-            // Resolve the destructor, if applicable.
-            match optional_destructor {
-                None => {
-                    // Nothing to do.
-                }
-                Some(ref destructor) => {
-                    self.resolve_function(NormalRibKind,
-                                          None,
-                                          NoTypeParameters,
-                                          &destructor.node.body,
-                                          HasSelfBinding
-                                            ((*destructor).node.self_id,
-                                             true),
-                                          visitor);
-                }
             }
         }
     }
@@ -4181,10 +4124,9 @@ pub impl Resolver {
                                     // But for locals, we use `def_local`.
                                     def_local(pattern.id, is_mutable)
                                 }
-                                ArgumentIrrefutableMode(argument_mode) => {
+                                ArgumentIrrefutableMode => {
                                     // And for function arguments, `def_arg`.
-                                    def_arg(pattern.id, argument_mode,
-                                            is_mutable)
+                                    def_arg(pattern.id, is_mutable)
                                 }
                             };
 
@@ -4276,6 +4218,7 @@ pub impl Resolver {
                 pat_enum(path, _) => {
                     // This must be an enum variant, struct or const.
                     match self.resolve_path(path, ValueNS, false, visitor) {
+                        Some(def @ def_fn(*))      |
                         Some(def @ def_variant(*)) |
                         Some(def @ def_struct(*))  |
                         Some(def @ def_const(*)) => {
@@ -4311,19 +4254,18 @@ pub impl Resolver {
                 }
 
                 pat_struct(path, _, _) => {
-                    let structs: &mut HashSet<def_id> = &mut self.structs;
                     match self.resolve_path(path, TypeNS, false, visitor) {
                         Some(def_ty(class_id))
-                                if structs.contains(&class_id) => {
+                                if self.structs.contains(&class_id) => {
                             let class_def = def_struct(class_id);
                             self.record_def(pattern.id, class_def);
                         }
-                        Some(definition @ def_struct(class_id))
-                                if structs.contains(&class_id) => {
+                        Some(definition @ def_struct(class_id)) => {
+                            assert!(self.structs.contains(&class_id));
                             self.record_def(pattern.id, definition);
                         }
                         Some(definition @ def_variant(_, variant_id))
-                                if structs.contains(&variant_id) => {
+                                if self.structs.contains(&variant_id) => {
                             self.record_def(pattern.id, definition);
                         }
                         result => {
@@ -4525,12 +4467,12 @@ pub impl Resolver {
 
     fn resolve_module_relative_path(@mut self,
                                     path: @Path,
-                                    +xray: XrayFlag,
+                                    xray: XrayFlag,
                                     namespace: Namespace)
                                  -> Option<def> {
         let module_path_idents = self.intern_module_part_of_path(path);
 
-        let mut containing_module;
+        let containing_module;
         match self.resolve_module_path_for_import(self.current_module,
                                                   module_path_idents,
                                                   UseLexicalScope,
@@ -4571,14 +4513,14 @@ pub impl Resolver {
     /// import resolution.
     fn resolve_crate_relative_path(@mut self,
                                    path: @Path,
-                                   +xray: XrayFlag,
+                                   xray: XrayFlag,
                                    namespace: Namespace)
                                 -> Option<def> {
         let module_path_idents = self.intern_module_part_of_path(path);
 
         let root_module = self.graph_root.get_module();
 
-        let mut containing_module;
+        let containing_module;
         match self.resolve_module_path_from_root(root_module,
                                                  module_path_idents,
                                                  0,
@@ -4622,15 +4564,15 @@ pub impl Resolver {
                                         span: span)
                                      -> Option<def> {
         // Check the local set of ribs.
-        let mut search_result;
+        let search_result;
         match namespace {
             ValueNS => {
-                search_result = self.search_ribs(&mut self.value_ribs, ident,
+                search_result = self.search_ribs(self.value_ribs, ident,
                                                  span,
                                                  DontAllowCapturingSelf);
             }
             TypeNS => {
-                search_result = self.search_ribs(&mut self.type_ribs, ident,
+                search_result = self.search_ribs(self.type_ribs, ident,
                                                  span, AllowCapturingSelf);
             }
         }
@@ -4698,7 +4640,7 @@ pub impl Resolver {
         }
 
         let mut smallest = 0;
-        for vec::eachi(maybes) |i, &other| {
+        for maybes.eachi |i, &other| {
 
             values[i] = str::levdistance(name, other);
 
@@ -4732,10 +4674,10 @@ pub impl Resolver {
                 if item.id == node_id {
                   match item.node {
                     item_struct(class_def, _) => {
-                      for vec::each(class_def.fields) |field| {
+                      for class_def.fields.each |field| {
                         match field.node.kind {
                           unnamed_field => {},
-                          named_field(ident, _, _) => {
+                          named_field(ident, _) => {
                               if str::eq_slice(*this.session.str_of(ident),
                                                name) {
                                 return true
@@ -4820,15 +4762,14 @@ pub impl Resolver {
 
             expr_struct(path, _, _) => {
                 // Resolve the path to the structure it goes to.
-                let structs: &mut HashSet<def_id> = &mut self.structs;
                 match self.resolve_path(path, TypeNS, false, visitor) {
                     Some(def_ty(class_id)) | Some(def_struct(class_id))
-                            if structs.contains(&class_id) => {
+                            if self.structs.contains(&class_id) => {
                         let class_def = def_struct(class_id);
                         self.record_def(expr.id, class_def);
                     }
                     Some(definition @ def_variant(_, class_id))
-                            if structs.contains(&class_id) => {
+                            if self.structs.contains(&class_id) => {
                         self.record_def(expr.id, definition);
                     }
                     _ => {
@@ -4844,17 +4785,19 @@ pub impl Resolver {
 
             expr_loop(_, Some(label)) => {
                 do self.with_label_rib {
-                    let this = &mut *self;
-                    let def_like = dl_def(def_label(expr.id));
-                    let rib = this.label_ribs[this.label_ribs.len() - 1];
-                    rib.bindings.insert(label, def_like);
+                    {
+                        let this = &mut *self;
+                        let def_like = dl_def(def_label(expr.id));
+                        let rib = this.label_ribs[this.label_ribs.len() - 1];
+                        rib.bindings.insert(label, def_like);
+                    }
 
                     visit_expr(expr, (), visitor);
                 }
             }
 
             expr_break(Some(label)) | expr_again(Some(label)) => {
-                match self.search_ribs(&mut self.label_ribs, label, expr.span,
+                match self.search_ribs(self.label_ribs, label, expr.span,
                                        DontAllowCapturingSelf) {
                     None =>
                         self.session.span_err(expr.span,
@@ -4905,7 +4848,7 @@ pub impl Resolver {
             }
             expr_binary(rem, _, _) | expr_assign_op(rem, _, _) => {
                 self.add_fixed_trait_for_expr(expr.id,
-                                              self.lang_items.modulo_trait());
+                                              self.lang_items.rem_trait());
             }
             expr_binary(bitxor, _, _) | expr_assign_op(bitxor, _, _) => {
                 self.add_fixed_trait_for_expr(expr.id,
@@ -5076,7 +5019,7 @@ pub impl Resolver {
 
     fn add_fixed_trait_for_expr(@mut self,
                                 expr_id: node_id,
-                                +trait_id: def_id) {
+                                trait_id: def_id) {
         self.trait_map.insert(expr_id, @mut ~[trait_id]);
     }
 
@@ -5103,35 +5046,6 @@ pub impl Resolver {
                     fmt!("cannot use `ref` binding mode with %s",
                          descr));
             }
-        }
-    }
-
-    //
-    // main function checking
-    //
-    // be sure that there is only one main function
-    //
-    fn check_duplicate_main(@mut self) {
-        let this = &mut *self;
-        if this.attr_main_fn.is_none() && this.start_fn.is_none() {
-            if this.main_fns.len() >= 1u {
-                let mut i = 1u;
-                while i < this.main_fns.len() {
-                    let (_, dup_main_span) = this.main_fns[i].unwrap();
-                    this.session.span_err(
-                        dup_main_span,
-                        ~"multiple 'main' functions");
-                    i += 1;
-                }
-                *this.session.entry_fn = this.main_fns[0];
-                *this.session.entry_type = Some(session::EntryMain);
-            }
-        } else if !this.start_fn.is_none() {
-            *this.session.entry_fn = this.start_fn;
-            *this.session.entry_type = Some(session::EntryStart);
-        } else {
-            *this.session.entry_fn = this.attr_main_fn;
-            *this.session.entry_type = Some(session::EntryMain);
         }
     }
 
@@ -5265,7 +5179,7 @@ pub impl Resolver {
 
         debug!("Import resolutions:");
         for module_.import_resolutions.each |name, import_resolution| {
-            let mut value_repr;
+            let value_repr;
             match import_resolution.target_for_namespace(ValueNS) {
                 None => { value_repr = ~""; }
                 Some(_) => {
@@ -5274,7 +5188,7 @@ pub impl Resolver {
                 }
             }
 
-            let mut type_repr;
+            let type_repr;
             match import_resolution.target_for_namespace(TypeNS) {
                 None => { type_repr = ~""; }
                 Some(_) => {

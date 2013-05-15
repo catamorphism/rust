@@ -10,9 +10,9 @@
 
 //! Operations on managed box types
 
-use ptr;
+use ptr::to_unsafe_ptr;
 
-#[cfg(notest)] use cmp::{Eq, Ord};
+#[cfg(not(test))] use cmp::{Eq, Ord};
 
 pub mod raw {
     use intrinsic::TyDesc;
@@ -38,16 +38,18 @@ pub mod raw {
 #[inline(always)]
 pub fn ptr_eq<T>(a: @T, b: @T) -> bool {
     //! Determine if two shared boxes point to the same object
-    ptr::addr_of(&(*a)) == ptr::addr_of(&(*b))
+    let a_ptr: *T = to_unsafe_ptr(&*a), b_ptr: *T = to_unsafe_ptr(&*b);
+    a_ptr == b_ptr
 }
 
 #[inline(always)]
 pub fn mut_ptr_eq<T>(a: @mut T, b: @mut T) -> bool {
     //! Determine if two mutable shared boxes point to the same object
-    ptr::addr_of(&(*a)) == ptr::addr_of(&(*b))
+    let a_ptr: *T = to_unsafe_ptr(&*a), b_ptr: *T = to_unsafe_ptr(&*b);
+    a_ptr == b_ptr
 }
 
-#[cfg(notest)]
+#[cfg(not(test))]
 impl<T:Eq> Eq for @T {
     #[inline(always)]
     fn eq(&self, other: &@T) -> bool { *(*self) == *(*other) }
@@ -55,7 +57,7 @@ impl<T:Eq> Eq for @T {
     fn ne(&self, other: &@T) -> bool { *(*self) != *(*other) }
 }
 
-#[cfg(notest)]
+#[cfg(not(test))]
 impl<T:Eq> Eq for @mut T {
     #[inline(always)]
     fn eq(&self, other: &@mut T) -> bool { *(*self) == *(*other) }
@@ -63,7 +65,7 @@ impl<T:Eq> Eq for @mut T {
     fn ne(&self, other: &@mut T) -> bool { *(*self) != *(*other) }
 }
 
-#[cfg(notest)]
+#[cfg(not(test))]
 impl<T:Ord> Ord for @T {
     #[inline(always)]
     fn lt(&self, other: &@T) -> bool { *(*self) < *(*other) }
@@ -75,7 +77,7 @@ impl<T:Ord> Ord for @T {
     fn gt(&self, other: &@T) -> bool { *(*self) > *(*other) }
 }
 
-#[cfg(notest)]
+#[cfg(not(test))]
 impl<T:Ord> Ord for @mut T {
     #[inline(always)]
     fn lt(&self, other: &@mut T) -> bool { *(*self) < *(*other) }

@@ -10,8 +10,6 @@
 
 // #[warn(deprecated_mode)];
 
-use core::prelude::*;
-
 use middle::ty;
 
 use middle::typeck::isr_alist;
@@ -89,7 +87,7 @@ pub fn replace_bound_regions_in_fn_sig(
                       to_r: &fn(ty::bound_region) -> ty::Region,
                       r: ty::Region) -> isr_alist {
             match r {
-              ty::re_free(*) | ty::re_static | ty::re_scope(_) |
+              ty::re_empty | ty::re_free(*) | ty::re_static | ty::re_scope(_) |
               ty::re_infer(_) => {
                 isr
               }
@@ -155,6 +153,7 @@ pub fn replace_bound_regions_in_fn_sig(
               }
 
               // Free regions like these just stay the same:
+              ty::re_empty |
               ty::re_static |
               ty::re_scope(_) |
               ty::re_free(*) |

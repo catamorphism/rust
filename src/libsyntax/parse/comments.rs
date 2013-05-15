@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use ast;
 use codemap::{BytePos, CharPos, CodeMap, Pos};
 use diagnostic;
@@ -19,12 +17,6 @@ use parse::lexer::{is_line_non_doc_comment, is_block_non_doc_comment};
 use parse::lexer;
 use parse::token;
 use parse;
-
-use core::io::ReaderUtil;
-use core::io;
-use core::str;
-use core::uint;
-use core::vec;
 
 #[deriving(Eq)]
 pub enum cmnt_style {
@@ -210,15 +202,14 @@ fn all_whitespace(s: ~str, begin: uint, end: uint) -> bool {
 
 fn trim_whitespace_prefix_and_push_line(lines: &mut ~[~str],
                                         s: ~str, col: CharPos) {
-    let mut s1;
-    let len = str::len(s);
+    let len = s.len();
     // FIXME #3961: Doing bytewise comparison and slicing with CharPos
     let col = col.to_uint();
-    if all_whitespace(s, 0u, uint::min(len, col)) {
+    let s1 = if all_whitespace(s, 0, uint::min(len, col)) {
         if col < len {
-            s1 = str::slice(s, col, len).to_owned();
-        } else { s1 = ~""; }
-    } else { s1 = s; }
+            str::slice(s, col, len).to_owned()
+        } else {  ~"" }
+    } else { s };
     debug!("pushing line: %s", s1);
     lines.push(s1);
 }
@@ -229,7 +220,7 @@ fn read_block_comment(rdr: @mut StringReader,
     debug!(">>> block comment");
     let p = rdr.last_pos;
     let mut lines: ~[~str] = ~[];
-    let mut col: CharPos = rdr.col;
+    let col: CharPos = rdr.col;
     bump(rdr);
     bump(rdr);
 
@@ -317,9 +308,11 @@ pub struct lit {
     pos: BytePos
 }
 
+// it appears this function is called only from pprust... that's
+// probably not a good thing.
 pub fn gather_comments_and_literals(span_diagnostic:
                                     @diagnostic::span_handler,
-                                    +path: ~str,
+                                    path: ~str,
                                     srdr: @io::Reader)
                                  -> (~[cmnt], ~[lit]) {
     let src = @str::from_bytes(srdr.read_whole_stream());

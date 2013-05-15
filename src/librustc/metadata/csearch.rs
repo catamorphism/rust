@@ -8,10 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-
 // Searching for information from the cstore
-
-use core::prelude::*;
 
 use metadata::common::*;
 use metadata::cstore;
@@ -19,7 +16,6 @@ use metadata::decoder;
 use metadata;
 use middle::{ty, resolve};
 
-use core::vec;
 use reader = std::ebml::reader;
 use syntax::ast;
 use syntax::ast_map;
@@ -48,14 +44,24 @@ pub fn get_type_param_count(cstore: @mut cstore::CStore, def: ast::def_id)
 }
 
 /// Iterates over all the language items in the given crate.
+#[cfg(stage0)]
 pub fn each_lang_item(cstore: @mut cstore::CStore,
                       cnum: ast::crate_num,
                       f: &fn(ast::node_id, uint) -> bool) {
     let crate_data = cstore::get_crate_data(cstore, cnum);
     decoder::each_lang_item(crate_data, f)
 }
+/// Iterates over all the language items in the given crate.
+#[cfg(not(stage0))]
+pub fn each_lang_item(cstore: @mut cstore::CStore,
+                      cnum: ast::crate_num,
+                      f: &fn(ast::node_id, uint) -> bool) -> bool {
+    let crate_data = cstore::get_crate_data(cstore, cnum);
+    decoder::each_lang_item(crate_data, f)
+}
 
 /// Iterates over all the paths in the given crate.
+#[cfg(stage0)]
 pub fn each_path(cstore: @mut cstore::CStore,
                  cnum: ast::crate_num,
                  f: &fn(&str, decoder::def_like) -> bool) {
@@ -64,6 +70,17 @@ pub fn each_path(cstore: @mut cstore::CStore,
         cstore::get_crate_data(cstore, cnum)
     };
     decoder::each_path(cstore.intr, crate_data, get_crate_data, f);
+}
+/// Iterates over all the paths in the given crate.
+#[cfg(not(stage0))]
+pub fn each_path(cstore: @mut cstore::CStore,
+                 cnum: ast::crate_num,
+                 f: &fn(&str, decoder::def_like) -> bool) -> bool {
+    let crate_data = cstore::get_crate_data(cstore, cnum);
+    let get_crate_data: decoder::GetCrateDataCb = |cnum| {
+        cstore::get_crate_data(cstore, cnum)
+    };
+    decoder::each_path(cstore.intr, crate_data, get_crate_data, f)
 }
 
 pub fn get_item_path(tcx: ty::ctxt, def: ast::def_id) -> ast_map::path {
@@ -74,7 +91,7 @@ pub fn get_item_path(tcx: ty::ctxt, def: ast::def_id) -> ast_map::path {
     // FIXME #1920: This path is not always correct if the crate is not linked
     // into the root namespace.
     vec::append(~[ast_map::path_mod(tcx.sess.ident_of(
-        /*bad*/copy *cdata.name))], path)
+        *cdata.name))], path)
 }
 
 pub enum found_ast {
@@ -234,13 +251,6 @@ pub fn get_impl_method(cstore: @mut cstore::CStore,
     decoder::get_impl_method(cstore.intr, cdata, def.node, mname)
 }
 
-/* If def names a class with a dtor, return it. Otherwise, return none. */
-pub fn struct_dtor(cstore: @mut cstore::CStore, def: ast::def_id)
-    -> Option<ast::def_id> {
-    let cdata = cstore::get_crate_data(cstore, def.crate);
-    decoder::struct_dtor(cdata, def.node)
-}
-
 pub fn get_item_visibility(cstore: @mut cstore::CStore,
                            def_id: ast::def_id)
                         -> ast::visibility {
@@ -254,11 +264,3 @@ pub fn get_link_args_for_crate(cstore: @mut cstore::CStore,
     let cdata = cstore::get_crate_data(cstore, crate_num);
     decoder::get_link_args_for_crate(cdata)
 }
-
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

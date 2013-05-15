@@ -8,15 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::cmp::{Eq, Ord};
-use core::int;
-use core::i32;
-use core::io::{Reader, ReaderUtil};
-use core::io;
-use core::prelude::*;
-use core::result::{Result, Ok, Err};
-use core::str;
-
 static NSEC_PER_SEC: i32 = 1_000_000_000_i32;
 
 pub mod rustrt {
@@ -147,7 +138,7 @@ pub fn empty_tm() -> Tm {
 /// Returns the specified time in UTC
 pub fn at_utc(clock: Timespec) -> Tm {
     unsafe {
-        let mut Timespec { sec, nsec } = clock;
+        let Timespec { sec, nsec } = clock;
         let mut tm = empty_tm();
         rustrt::rust_gmtime(sec, nsec, &mut tm);
         tm
@@ -162,7 +153,7 @@ pub fn now_utc() -> Tm {
 /// Returns the specified time in the local timezone
 pub fn at(clock: Timespec) -> Tm {
     unsafe {
-        let mut Timespec { sec, nsec } = clock;
+        let Timespec { sec, nsec } = clock;
         let mut tm = empty_tm();
         rustrt::rust_localtime(sec, nsec, &mut tm);
         tm
@@ -870,7 +861,6 @@ mod tests {
     use core::result;
     use core::result::{Err, Ok};
     use core::str;
-    use core::vec;
 
     fn test_get_time() {
         static some_recent_date: i64 = 1325376000i64; // 2012-01-01T00:00:00Z
@@ -1037,7 +1027,7 @@ mod tests {
             }
         }
 
-        for vec::each([
+        for [
             ~"Sunday",
             ~"Monday",
             ~"Tuesday",
@@ -1045,11 +1035,11 @@ mod tests {
             ~"Thursday",
             ~"Friday",
             ~"Saturday"
-        ]) |day| {
+        ].each |day| {
             assert!(test(*day, ~"%A"));
         }
 
-        for vec::each([
+        for [
             ~"Sun",
             ~"Mon",
             ~"Tue",
@@ -1057,11 +1047,11 @@ mod tests {
             ~"Thu",
             ~"Fri",
             ~"Sat"
-        ]) |day| {
+        ].each |day| {
             assert!(test(*day, ~"%a"));
         }
 
-        for vec::each([
+        for [
             ~"January",
             ~"February",
             ~"March",
@@ -1074,11 +1064,11 @@ mod tests {
             ~"October",
             ~"November",
             ~"December"
-        ]) |day| {
+        ].each |day| {
             assert!(test(*day, ~"%B"));
         }
 
-        for vec::each([
+        for [
             ~"Jan",
             ~"Feb",
             ~"Mar",
@@ -1091,7 +1081,7 @@ mod tests {
             ~"Oct",
             ~"Nov",
             ~"Dec"
-        ]) |day| {
+        ].each |day| {
             assert!(test(*day, ~"%b"));
         }
 

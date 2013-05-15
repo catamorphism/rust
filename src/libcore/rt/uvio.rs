@@ -11,16 +11,17 @@
 use option::*;
 use result::*;
 
+use super::io::net::ip::IpAddr;
 use super::uv::*;
 use super::rtio::*;
 use ops::Drop;
 use cell::{Cell, empty_cell};
 use cast::transmute;
-use super::sched::Scheduler;
+use super::sched::{Scheduler, local_sched};
 
-#[cfg(test)] use super::sched::Task;
-#[cfg(test)] use unstable::run_in_bare_thread;
 #[cfg(test)] use uint;
+#[cfg(test)] use unstable::run_in_bare_thread;
+#[cfg(test)] use super::test::*;
 
 pub struct UvEventLoop {
     uvio: UvIoFactory
@@ -45,8 +46,7 @@ impl Drop for UvEventLoop {
         let self = unsafe {
             transmute::<&UvEventLoop, &mut UvEventLoop>(self)
         };
-        let mut uv_loop = self.uvio.uv_loop();
-        uv_loop.close();
+        self.uvio.uv_loop().close();
     }
 }
 
@@ -67,14 +67,6 @@ impl EventLoop for UvEventLoop {
         }
     }
 
-    #[cfg(stage0)]
-    fn io(&mut self) -> Option<&'self mut IoFactoryObject> {
-        Some(&mut self.uvio)
-    }
-
-    #[cfg(stage1)]
-    #[cfg(stage2)]
-    #[cfg(stage3)]
     fn io<'a>(&'a mut self) -> Option<&'a mut IoFactoryObject> {
         Some(&mut self.uvio)
     }
@@ -97,14 +89,6 @@ fn test_callback_run_once() {
 pub struct UvIoFactory(Loop);
 
 pub impl UvIoFactory {
-    #[cfg(stage0)]
-    fn uv_loop(&mut self) -> &'self mut Loop {
-        match self { &UvIoFactory(ref mut ptr) => ptr }
-    }
-
-    #[cfg(stage1)]
-    #[cfg(stage2)]
-    #[cfg(stage3)]
     fn uv_loop<'a>(&'a mut self) -> &'a mut Loop {
         match self { &UvIoFactory(ref mut ptr) => ptr }
     }
@@ -120,37 +104,37 @@ impl IoFactory for UvIoFactory {
         let result_cell = empty_cell();
         let result_cell_ptr: *Cell<Option<~StreamObject>> = &result_cell;
 
-        do Scheduler::local |scheduler| {
-            assert!(scheduler.in_task_context());
+        let scheduler = local_sched::take();
+        assert!(scheduler.in_task_context());
 
-            // Block this task and take ownership, switch to scheduler context
-            do scheduler.block_running_task_and_then |scheduler, task| {
+        // Block this task and take ownership, switch to scheduler context
+        do scheduler.deschedule_running_task_and_then |task| {
 
-                rtdebug!("connect: entered scheduler context");
+            rtdebug!("connect: entered scheduler context");
+            do local_sched::borrow |scheduler| {
                 assert!(!scheduler.in_task_context());
-                let mut tcp_watcher = TcpWatcher::new(self.uv_loop());
-                let task_cell = Cell(task);
+            }
+            let mut tcp_watcher = TcpWatcher::new(self.uv_loop());
+            let task_cell = Cell(task);
 
-                // Wait for a connection
-                do tcp_watcher.connect(addr) |stream_watcher, status| {
-                    rtdebug!("connect: in connect callback");
-                    let maybe_stream = if status.is_none() {
-                        rtdebug!("status is none");
-                        Some(~UvStream(stream_watcher))
-                    } else {
-                        rtdebug!("status is some");
-                        stream_watcher.close(||());
-                        None
-                    };
+            // Wait for a connection
+            do tcp_watcher.connect(addr) |stream_watcher, status| {
+                rtdebug!("connect: in connect callback");
+                let maybe_stream = if status.is_none() {
+                    rtdebug!("status is none");
+                    Some(~UvStream(stream_watcher))
+                } else {
+                    rtdebug!("status is some");
+                    stream_watcher.close(||());
+                    None
+                };
 
-                    // Store the stream in the task's stack
-                    unsafe { (*result_cell_ptr).put_back(maybe_stream); }
+                // Store the stream in the task's stack
+                unsafe { (*result_cell_ptr).put_back(maybe_stream); }
 
-                    // Context switch
-                    do Scheduler::local |scheduler| {
-                        scheduler.resume_task_immediately(task_cell.take());
-                    }
-                }
+                // Context switch
+                let scheduler = local_sched::take();
+                scheduler.resume_task_immediately(task_cell.take());
             }
         }
 
@@ -194,33 +178,30 @@ impl TcpListener for UvTcpListener {
 
         let server_tcp_watcher = self.watcher();
 
-        do Scheduler::local |scheduler| {
-            assert!(scheduler.in_task_context());
+        let scheduler = local_sched::take();
+        assert!(scheduler.in_task_context());
 
-            do scheduler.block_running_task_and_then |_, task| {
-                let task_cell = Cell(task);
-                let mut server_tcp_watcher = server_tcp_watcher;
-                do server_tcp_watcher.listen |server_stream_watcher, status| {
-                    let maybe_stream = if status.is_none() {
-                        let mut server_stream_watcher = server_stream_watcher;
-                        let mut loop_ = loop_from_watcher(&server_stream_watcher);
-                        let mut client_tcp_watcher = TcpWatcher::new(&mut loop_);
-                        let mut client_tcp_watcher = client_tcp_watcher.as_stream();
-                        // XXX: Need's to be surfaced in interface
-                        server_stream_watcher.accept(client_tcp_watcher);
-                        Some(~UvStream::new(client_tcp_watcher))
-                    } else {
-                        None
-                    };
+        do scheduler.deschedule_running_task_and_then |task| {
+            let task_cell = Cell(task);
+            let mut server_tcp_watcher = server_tcp_watcher;
+            do server_tcp_watcher.listen |server_stream_watcher, status| {
+                let maybe_stream = if status.is_none() {
+                    let mut server_stream_watcher = server_stream_watcher;
+                    let mut loop_ = loop_from_watcher(&server_stream_watcher);
+                    let client_tcp_watcher = TcpWatcher::new(&mut loop_).as_stream();
+                    // XXX: Needs to be surfaced in interface
+                    server_stream_watcher.accept(client_tcp_watcher);
+                    Some(~UvStream::new(client_tcp_watcher))
+                } else {
+                    None
+                };
 
-                    unsafe { (*result_cell_ptr).put_back(maybe_stream); }
+                unsafe { (*result_cell_ptr).put_back(maybe_stream); }
 
-                    rtdebug!("resuming task from listen");
-                    // Context switch
-                    do Scheduler::local |scheduler| {
-                        scheduler.resume_task_immediately(task_cell.take());
-                    }
-                }
+                rtdebug!("resuming task from listen");
+                // Context switch
+                let scheduler = local_sched::take();
+                scheduler.resume_task_immediately(task_cell.take());
             }
         }
 
@@ -259,42 +240,42 @@ impl Stream for UvStream {
         let result_cell = empty_cell();
         let result_cell_ptr: *Cell<Result<uint, ()>> = &result_cell;
 
-        do Scheduler::local |scheduler| {
-            assert!(scheduler.in_task_context());
-            let watcher = self.watcher();
-            let buf_ptr: *&mut [u8] = &buf;
-            do scheduler.block_running_task_and_then |scheduler, task| {
-                rtdebug!("read: entered scheduler context");
+        let scheduler = local_sched::take();
+        assert!(scheduler.in_task_context());
+        let watcher = self.watcher();
+        let buf_ptr: *&mut [u8] = &buf;
+        do scheduler.deschedule_running_task_and_then |task| {
+            rtdebug!("read: entered scheduler context");
+            do local_sched::borrow |scheduler| {
                 assert!(!scheduler.in_task_context());
+            }
+            let mut watcher = watcher;
+            let task_cell = Cell(task);
+            // XXX: We shouldn't reallocate these callbacks every
+            // call to read
+            let alloc: AllocCallback = |_| unsafe {
+                slice_to_uv_buf(*buf_ptr)
+            };
+            do watcher.read_start(alloc) |watcher, nread, _buf, status| {
+
+                // Stop reading so that no read callbacks are
+                // triggered before the user calls `read` again.
+                // XXX: Is there a performance impact to calling
+                // stop here?
                 let mut watcher = watcher;
-                let task_cell = Cell(task);
-                // XXX: We shouldn't reallocate these callbacks every
-                // call to read
-                let alloc: AllocCallback = |_| unsafe {
-                    slice_to_uv_buf(*buf_ptr)
+                watcher.read_stop();
+
+                let result = if status.is_none() {
+                    assert!(nread >= 0);
+                    Ok(nread as uint)
+                } else {
+                    Err(())
                 };
-                do watcher.read_start(alloc) |watcher, nread, _buf, status| {
 
-                    // Stop reading so that no read callbacks are
-                    // triggered before the user calls `read` again.
-                    // XXX: Is there a performance impact to calling
-                    // stop here?
-                    let mut watcher = watcher;
-                    watcher.read_stop();
+                unsafe { (*result_cell_ptr).put_back(result); }
 
-                    let result = if status.is_none() {
-                        assert!(nread >= 0);
-                        Ok(nread as uint)
-                    } else {
-                        Err(())
-                    };
-
-                    unsafe { (*result_cell_ptr).put_back(result); }
-
-                    do Scheduler::local |scheduler| {
-                        scheduler.resume_task_immediately(task_cell.take());
-                    }
-                }
+                let scheduler = local_sched::take();
+                scheduler.resume_task_immediately(task_cell.take());
             }
         }
 
@@ -305,29 +286,27 @@ impl Stream for UvStream {
     fn write(&mut self, buf: &[u8]) -> Result<(), ()> {
         let result_cell = empty_cell();
         let result_cell_ptr: *Cell<Result<(), ()>> = &result_cell;
-        do Scheduler::local |scheduler| {
-            assert!(scheduler.in_task_context());
-            let watcher = self.watcher();
-            let buf_ptr: *&[u8] = &buf;
-            do scheduler.block_running_task_and_then |_, task| {
-                let mut watcher = watcher;
-                let task_cell = Cell(task);
-                let buf = unsafe { &*buf_ptr };
-                // XXX: OMGCOPIES
-                let buf = buf.to_vec();
-                do watcher.write(buf) |_watcher, status| {
-                    let result = if status.is_none() {
-                        Ok(())
-                    } else {
-                        Err(())
-                    };
+        let scheduler = local_sched::take();
+        assert!(scheduler.in_task_context());
+        let watcher = self.watcher();
+        let buf_ptr: *&[u8] = &buf;
+        do scheduler.deschedule_running_task_and_then |task| {
+            let mut watcher = watcher;
+            let task_cell = Cell(task);
+            let buf = unsafe { &*buf_ptr };
+            // XXX: OMGCOPIES
+            let buf = buf.to_vec();
+            do watcher.write(buf) |_watcher, status| {
+                let result = if status.is_none() {
+                    Ok(())
+                } else {
+                    Err(())
+                };
 
-                    unsafe { (*result_cell_ptr).put_back(result); }
+                unsafe { (*result_cell_ptr).put_back(result); }
 
-                    do Scheduler::local |scheduler| {
-                        scheduler.resume_task_immediately(task_cell.take());
-                    }
-                }
+                let scheduler = local_sched::take();
+                scheduler.resume_task_immediately(task_cell.take());
             }
         }
 
@@ -337,42 +316,24 @@ impl Stream for UvStream {
 }
 
 #[test]
-#[ignore(reason = "ffi struct issues")]
 fn test_simple_io_no_connect() {
-    do run_in_bare_thread {
-        let mut sched = ~UvEventLoop::new_scheduler();
-        let task = ~do Task::new(&mut sched.stack_pool) {
-            do Scheduler::local |sched| {
-                let io = sched.event_loop.io().unwrap();
-                let addr = Ipv4(127, 0, 0, 1, 2926);
-                let maybe_chan = io.connect(addr);
-                assert!(maybe_chan.is_none());
-            }
-        };
-        sched.task_queue.push_back(task);
-        sched.run();
+    do run_in_newsched_task {
+        let io = unsafe { local_sched::unsafe_borrow_io() };
+        let addr = next_test_ip4();
+        let maybe_chan = io.connect(addr);
+        assert!(maybe_chan.is_none());
     }
 }
 
 #[test]
-#[ignore(reason = "ffi struct issues")]
 fn test_simple_tcp_server_and_client() {
-    do run_in_bare_thread {
-        let mut sched = ~UvEventLoop::new_scheduler();
-        let addr = Ipv4(127, 0, 0, 1, 2929);
+    do run_in_newsched_task {
+        let addr = next_test_ip4();
 
-        let client_task = ~do Task::new(&mut sched.stack_pool) {
-            do Scheduler::local |sched| {
-                let io = sched.event_loop.io().unwrap();
-                let mut stream = io.connect(addr).unwrap();
-                stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
-                stream.close();
-            }
-        };
-
-        let server_task = ~do Task::new(&mut sched.stack_pool) {
-            do Scheduler::local |sched| {
-                let io = sched.event_loop.io().unwrap();
+        // Start the server first so it's listening when we connect
+        do spawntask_immediately {
+            unsafe {
+                let io = local_sched::unsafe_borrow_io();
                 let mut listener = io.bind(addr).unwrap();
                 let mut stream = listener.listen().unwrap();
                 let mut buf = [0, .. 2048];
@@ -385,101 +346,112 @@ fn test_simple_tcp_server_and_client() {
                 stream.close();
                 listener.close();
             }
-        };
+        }
 
-        // Start the server first so it listens before the client connects
-        sched.task_queue.push_back(server_task);
-        sched.task_queue.push_back(client_task);
-        sched.run();
+        do spawntask_immediately {
+            unsafe {
+                let io = local_sched::unsafe_borrow_io();
+                let mut stream = io.connect(addr).unwrap();
+                stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
+                stream.close();
+            }
+        }
     }
 }
 
 #[test] #[ignore(reason = "busted")]
 fn test_read_and_block() {
-    do run_in_bare_thread {
-        let mut sched = ~UvEventLoop::new_scheduler();
-        let addr = Ipv4(127, 0, 0, 1, 2930);
+    do run_in_newsched_task {
+        let addr = next_test_ip4();
 
-        let client_task = ~do Task::new(&mut sched.stack_pool) {
-            do Scheduler::local |sched| {
-                let io = sched.event_loop.io().unwrap();
-                let mut stream = io.connect(addr).unwrap();
-                stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
-                stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
-                stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
-                stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
-                stream.close();
-            }
-        };
+        do spawntask_immediately {
+            let io = unsafe { local_sched::unsafe_borrow_io() };
+            let mut listener = io.bind(addr).unwrap();
+            let mut stream = listener.listen().unwrap();
+            let mut buf = [0, .. 2048];
 
-        let server_task = ~do Task::new(&mut sched.stack_pool) {
-            do Scheduler::local |sched| {
-                let io = sched.event_loop.io().unwrap();
-                let mut listener = io.bind(addr).unwrap();
-                let mut stream = listener.listen().unwrap();
-                let mut buf = [0, .. 2048];
+            let expected = 32;
+            let mut current = 0;
+            let mut reads = 0;
 
-                let expected = 32;
-                let mut current = 0;
-                let mut reads = 0;
+            while current < expected {
+                let nread = stream.read(buf).unwrap();
+                for uint::range(0, nread) |i| {
+                    let val = buf[i] as uint;
+                    assert!(val == current % 8);
+                    current += 1;
+                }
+                reads += 1;
 
-                while current < expected {
-                    let nread = stream.read(buf).unwrap();
-                    for uint::range(0, nread) |i| {
-                        let val = buf[i] as uint;
-                        assert!(val == current % 8);
-                        current += 1;
-                    }
-                    reads += 1;
-
-                    do Scheduler::local |scheduler| {
-                        // Yield to the other task in hopes that it
-                        // will trigger a read callback while we are
-                        // not ready for it
-                        do scheduler.block_running_task_and_then |scheduler, task| {
-                            scheduler.task_queue.push_back(task);
-                        }
+                let scheduler = local_sched::take();
+                // Yield to the other task in hopes that it
+                // will trigger a read callback while we are
+                // not ready for it
+                do scheduler.deschedule_running_task_and_then |task| {
+                    let task = Cell(task);
+                    do local_sched::borrow |scheduler| {
+                        scheduler.task_queue.push_back(task.take());
                     }
                 }
-
-                // Make sure we had multiple reads
-                assert!(reads > 1);
-
-                stream.close();
-                listener.close();
             }
-        };
 
-        // Start the server first so it listens before the client connects
-        sched.task_queue.push_back(server_task);
-        sched.task_queue.push_back(client_task);
-        sched.run();
+            // Make sure we had multiple reads
+            assert!(reads > 1);
+
+            stream.close();
+            listener.close();
+        }
+
+        do spawntask_immediately {
+            let io = unsafe { local_sched::unsafe_borrow_io() };
+            let mut stream = io.connect(addr).unwrap();
+            stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
+            stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
+            stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
+            stream.write([0, 1, 2, 3, 4, 5, 6, 7]);
+            stream.close();
+        }
+
     }
 }
 
-#[test] #[ignore(reason = "needs server")]
+#[test]
 fn test_read_read_read() {
-    do run_in_bare_thread {
-        let mut sched = ~UvEventLoop::new_scheduler();
-        let addr = Ipv4(127, 0, 0, 1, 2931);
+    do run_in_newsched_task {
+        let addr = next_test_ip4();
+        static MAX: uint = 500000;
 
-        let client_task = ~do Task::new(&mut sched.stack_pool) {
-            do Scheduler::local |sched| {
-                let io = sched.event_loop.io().unwrap();
-                let mut stream = io.connect(addr).unwrap();
-                let mut buf = [0, .. 2048];
-                let mut total_bytes_read = 0;
-                while total_bytes_read < 500000000 {
-                    let nread = stream.read(buf).unwrap();
-                    rtdebug!("read %u bytes", nread as uint);
-                    total_bytes_read += nread;
+        do spawntask_immediately {
+            unsafe {
+                let io = local_sched::unsafe_borrow_io();
+                let mut listener = io.bind(addr).unwrap();
+                let mut stream = listener.listen().unwrap();
+                let mut buf = [1, .. 2048];
+                let mut total_bytes_written = 0;
+                while total_bytes_written < MAX {
+                    stream.write(buf);
+                    total_bytes_written += buf.len();
                 }
-                rtdebug_!("read %u bytes total", total_bytes_read as uint);
                 stream.close();
+                listener.close();
             }
-        };
+        }
 
-        sched.task_queue.push_back(client_task);
-        sched.run();
+        do spawntask_immediately {
+            let io = unsafe { local_sched::unsafe_borrow_io() };
+            let mut stream = io.connect(addr).unwrap();
+            let mut buf = [0, .. 2048];
+            let mut total_bytes_read = 0;
+            while total_bytes_read < MAX {
+                let nread = stream.read(buf).unwrap();
+                rtdebug!("read %u bytes", nread as uint);
+                total_bytes_read += nread;
+                for uint::range(0, nread) |i| {
+                    assert!(buf[i] == 1);
+                }
+            }
+            rtdebug!("read %u bytes total", total_bytes_read as uint);
+            stream.close();
+        }
     }
 }

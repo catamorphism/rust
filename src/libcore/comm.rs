@@ -12,13 +12,15 @@
 Message passing
 */
 
-use cast;
+use cast::{transmute, transmute_mut};
 use either::{Either, Left, Right};
 use kinds::Owned;
 use option::{Option, Some, None};
 use uint;
 use unstable;
 use vec;
+use unstable::Exclusive;
+use util::replace;
 
 use pipes::{recv, try_recv, wait_many, peek, PacketHeader};
 
@@ -56,49 +58,79 @@ pub trait Peekable<T> {
     fn peek(&self) -> bool;
 }
 
-/// Returns the index of an endpoint that is ready to receive.
-pub fn selecti<T: Selectable>(endpoints: &[T]) -> uint {
-    wait_many(endpoints)
-}
-
-/// Returns 0 or 1 depending on which endpoint is ready to receive
-pub fn select2i<A: Selectable, B: Selectable>(a: &A, b: &B) ->
-        Either<(), ()> {
-    match wait_many([a.header(), b.header()]) {
-      0 => Left(()),
-      1 => Right(()),
-      _ => fail!(~"wait returned unexpected index")
-    }
-}
 
 // Streams - Make pipes a little easier in general.
 
-proto! streamp (
+/*proto! streamp (
     Open:send<T: Owned> {
         data(T) -> Open<T>
     }
-)
+)*/
 
-#[doc(hidden)]
-struct Chan_<T> {
-    mut endp: Option<streamp::client::Open<T>>
+#[allow(non_camel_case_types)]
+pub mod streamp {
+    priv use core::kinds::Owned;
+
+    pub fn init<T: Owned>() -> (client::Open<T>, server::Open<T>) {
+        pub use core::pipes::HasBuffer;
+        ::core::pipes::entangle()
+    }
+
+    #[allow(non_camel_case_types)]
+    pub enum Open<T> { pub data(T, server::Open<T>), }
+
+    #[allow(non_camel_case_types)]
+    pub mod client {
+        priv use core::kinds::Owned;
+
+        #[allow(non_camel_case_types)]
+        pub fn try_data<T: Owned>(pipe: Open<T>, x_0: T) ->
+            ::core::option::Option<Open<T>> {
+            {
+                use super::data;
+                let (c, s) = ::core::pipes::entangle();
+                let message = data(x_0, s);
+                if ::core::pipes::send(pipe, message) {
+                    ::core::pipes::rt::make_some(c)
+                } else { ::core::pipes::rt::make_none() }
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        pub fn data<T: Owned>(pipe: Open<T>, x_0: T) -> Open<T> {
+            {
+                use super::data;
+                let (c, s) = ::core::pipes::entangle();
+                let message = data(x_0, s);
+                ::core::pipes::send(pipe, message);
+                c
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        pub type Open<T> = ::core::pipes::SendPacket<super::Open<T>>;
+    }
+
+    #[allow(non_camel_case_types)]
+    pub mod server {
+        #[allow(non_camel_case_types)]
+        pub type Open<T> = ::core::pipes::RecvPacket<super::Open<T>>;
+    }
 }
 
 /// An endpoint that can send many messages.
-pub enum Chan<T> {
-    Chan_(Chan_<T>)
-}
-
-struct Port_<T> {
-    mut endp: Option<streamp::server::Open<T>>,
+#[unsafe_mut_field(endp)]
+pub struct Chan<T> {
+    endp: Option<streamp::client::Open<T>>
 }
 
 /// An endpoint that can receive many messages.
-pub enum Port<T> {
-    Port_(Port_<T>)
+#[unsafe_mut_field(endp)]
+pub struct Port<T> {
+    endp: Option<streamp::server::Open<T>>,
 }
 
-/** Creates a `(chan, port)` pair.
+/** Creates a `(Port, Chan)` pair.
 
 These allow sending or receiving an unlimited number of messages.
 
@@ -106,130 +138,112 @@ These allow sending or receiving an unlimited number of messages.
 pub fn stream<T:Owned>() -> (Port<T>, Chan<T>) {
     let (c, s) = streamp::init();
 
-    (Port_(Port_ { endp: Some(s) }), Chan_(Chan_{ endp: Some(c) }))
-}
-
-// Add an inherent method so that imports of GenericChan are not
-// required.
-pub impl<T: Owned> Chan<T> {
-    fn send(&self, x: T) { chan_send(self, x) }
-    fn try_send(&self, x: T) -> bool { chan_try_send(self, x) }
+    (Port {
+        endp: Some(s)
+    }, Chan {
+        endp: Some(c)
+    })
 }
 
 impl<T: Owned> GenericChan<T> for Chan<T> {
-    fn send(&self, x: T) { chan_send(self, x) }
-}
-
-#[inline(always)]
-fn chan_send<T:Owned>(self: &Chan<T>, x: T) {
-    let mut endp = None;
-    endp <-> self.endp;
-    self.endp = Some(
-        streamp::client::data(endp.unwrap(), x))
+    #[inline(always)]
+    fn send(&self, x: T) {
+        unsafe {
+            let self_endp = transmute_mut(&self.endp);
+            let endp = replace(self_endp, None);
+            *self_endp = Some(streamp::client::data(endp.unwrap(), x))
+        }
+    }
 }
 
 impl<T: Owned> GenericSmartChan<T> for Chan<T> {
+    #[inline(always)]
     fn try_send(&self, x: T) -> bool {
-        chan_try_send(self, x)
-    }
-}
-
-#[inline(always)]
-fn chan_try_send<T:Owned>(self: &Chan<T>, x: T) -> bool {
-    let mut endp = None;
-    endp <-> self.endp;
-    match streamp::client::try_data(endp.unwrap(), x) {
-        Some(next) => {
-            self.endp = Some(next);
-            true
-        }
-        None => false
-    }
-}
-
-// Use an inherent impl so that imports are not required:
-pub impl<T: Owned> Port<T> {
-    fn recv(&self) -> T { port_recv(self) }
-    fn try_recv(&self) -> Option<T> { port_try_recv(self) }
-    fn peek(&self) -> bool { port_peek(self) }
-}
-
-impl<T: Owned> GenericPort<T> for Port<T> {
-    // These two calls will prefer the inherent versions above:
-    fn recv(&self) -> T { port_recv(self) }
-    fn try_recv(&self) -> Option<T> { port_try_recv(self) }
-}
-
-#[inline(always)]
-fn port_recv<T:Owned>(self: &Port<T>) -> T {
-    let mut endp = None;
-    endp <-> self.endp;
-    let streamp::data(x, endp) = recv(endp.unwrap());
-    self.endp = Some(endp);
-    x
-}
-
-#[inline(always)]
-fn port_try_recv<T:Owned>(self: &Port<T>) -> Option<T> {
-    let mut endp = None;
-    endp <-> self.endp;
-    match try_recv(endp.unwrap()) {
-        Some(streamp::data(x, endp)) => {
-            self.endp = Some(endp);
-            Some(x)
-        }
-        None => None
-    }
-}
-
-impl<T: Owned> Peekable<T> for Port<T> {
-    fn peek(&self) -> bool { port_peek(self) }
-}
-
-#[inline(always)]
-fn port_peek<T:Owned>(self: &Port<T>) -> bool {
-    let mut endp = None;
-    endp <-> self.endp;
-    let peek = match &endp {
-        &Some(ref endp) => peek(endp),
-        &None => fail!(~"peeking empty stream")
-    };
-    self.endp <-> endp;
-    peek
-}
-
-impl<T: Owned> Selectable for Port<T> {
-    fn header(&self) -> *PacketHeader {
         unsafe {
-            match self.endp {
-              Some(ref endp) => endp.header(),
-              None => fail!(~"peeking empty stream")
+            let self_endp = transmute_mut(&self.endp);
+            let endp = replace(self_endp, None);
+            match streamp::client::try_data(endp.unwrap(), x) {
+                Some(next) => {
+                    *self_endp = Some(next);
+                    true
+                }
+                None => false
             }
         }
     }
 }
 
-/// Treat many ports as one.
-pub struct PortSet<T> {
-    mut ports: ~[Port<T>],
-}
+impl<T: Owned> GenericPort<T> for Port<T> {
+    #[inline(always)]
+    fn recv(&self) -> T {
+        unsafe {
+            let self_endp = transmute_mut(&self.endp);
+            let endp = replace(self_endp, None);
+            let streamp::data(x, endp) = recv(endp.unwrap());
+            *self_endp = Some(endp);
+            x
+        }
+    }
 
-pub fn PortSet<T: Owned>() -> PortSet<T>{
-    PortSet {
-        ports: ~[]
+    #[inline(always)]
+    fn try_recv(&self) -> Option<T> {
+        unsafe {
+            let self_endp = transmute_mut(&self.endp);
+            let endp = replace(self_endp, None);
+            match try_recv(endp.unwrap()) {
+                Some(streamp::data(x, endp)) => {
+                    *self_endp = Some(endp);
+                    Some(x)
+                }
+                None => None
+            }
+        }
     }
 }
 
-// Use an inherent impl so that imports are not required:
-pub impl<T:Owned> PortSet<T> {
-    fn recv(&self) -> T { port_set_recv(self) }
-    fn try_recv(&self) -> Option<T> { port_set_try_recv(self) }
-    fn peek(&self) -> bool { port_set_peek(self) }
+impl<T: Owned> Peekable<T> for Port<T> {
+    #[inline(always)]
+    fn peek(&self) -> bool {
+        unsafe {
+            let self_endp = transmute_mut(&self.endp);
+            let mut endp = replace(self_endp, None);
+            let peek = match endp {
+                Some(ref mut endp) => peek(endp),
+                None => fail!(~"peeking empty stream")
+            };
+            *self_endp = endp;
+            peek
+        }
+    }
+}
+
+impl<T: Owned> Selectable for Port<T> {
+    fn header(&mut self) -> *mut PacketHeader {
+            match self.endp {
+                Some(ref mut endp) => endp.header(),
+                None => fail!(~"peeking empty stream")
+            }
+    }
+}
+
+/// Treat many ports as one.
+#[unsafe_mut_field(ports)]
+pub struct PortSet<T> {
+    ports: ~[Port<T>],
 }
 
 pub impl<T: Owned> PortSet<T> {
+    fn new() -> PortSet<T> {
+        PortSet {
+            ports: ~[]
+        }
+    }
+
     fn add(&self, port: Port<T>) {
-        self.ports.push(port)
+        unsafe {
+            let self_ports = transmute_mut(&self.ports);
+            self_ports.push(port)
+        }
     }
 
     fn chan(&self) -> Chan<T> {
@@ -240,155 +254,209 @@ pub impl<T: Owned> PortSet<T> {
 }
 
 impl<T:Owned> GenericPort<T> for PortSet<T> {
-    fn try_recv(&self) -> Option<T> { port_set_try_recv(self) }
-    fn recv(&self) -> T { port_set_recv(self) }
-}
-
-#[inline(always)]
-fn port_set_recv<T:Owned>(self: &PortSet<T>) -> T {
-    port_set_try_recv(self).expect("port_set: endpoints closed")
-}
-
-#[inline(always)]
-fn port_set_try_recv<T:Owned>(self: &PortSet<T>) -> Option<T> {
-    let mut result = None;
-    // we have to swap the ports array so we aren't borrowing
-    // aliasable mutable memory.
-    let mut ports = ~[];
-    ports <-> self.ports;
-    while result.is_none() && ports.len() > 0 {
-        let i = wait_many(ports);
-        match ports[i].try_recv() {
-            Some(m) => {
-                result = Some(m);
+    fn try_recv(&self) -> Option<T> {
+        unsafe {
+            let self_ports = transmute_mut(&self.ports);
+            let mut result = None;
+            // we have to swap the ports array so we aren't borrowing
+            // aliasable mutable memory.
+            let mut ports = replace(self_ports, ~[]);
+            while result.is_none() && ports.len() > 0 {
+                let i = wait_many(ports);
+                match ports[i].try_recv() {
+                    Some(m) => {
+                        result = Some(m);
+                    }
+                    None => {
+                        // Remove this port.
+                        let _ = ports.swap_remove(i);
+                    }
+                }
             }
-            None => {
-                // Remove this port.
-                let _ = ports.swap_remove(i);
-            }
+            *self_ports = ports;
+            result
         }
     }
-    ports <-> self.ports;
-    result
+    fn recv(&self) -> T {
+        self.try_recv().expect("port_set: endpoints closed")
+    }
 }
 
 impl<T: Owned> Peekable<T> for PortSet<T> {
-    fn peek(&self) -> bool { port_set_peek(self) }
-}
-
-#[inline(always)]
-fn port_set_peek<T:Owned>(self: &PortSet<T>) -> bool {
-    // It'd be nice to use self.port.each, but that version isn't
-    // pure.
-    for uint::range(0, vec::uniq_len(&const self.ports)) |i| {
-        // XXX: Botch pending demuting.
-        unsafe {
-            let port: &Port<T> = cast::transmute(&mut self.ports[i]);
-            if port.peek() { return true }
+    fn peek(&self) -> bool {
+        // It'd be nice to use self.port.each, but that version isn't
+        // pure.
+        for uint::range(0, vec::uniq_len(&const self.ports)) |i| {
+            let port: &Port<T> = &self.ports[i];
+            if port.peek() {
+                return true;
+            }
         }
+        false
     }
-    false
 }
-
 
 /// A channel that can be shared between many senders.
-pub type SharedChan<T> = unstable::Exclusive<Chan<T>>;
+pub struct SharedChan<T> {
+    ch: Exclusive<Chan<T>>
+}
 
-pub impl<T: Owned> SharedChan<T> {
-    fn send(&self, x: T) { shared_chan_send(self, x) }
-    fn try_send(&self, x: T) -> bool { shared_chan_try_send(self, x) }
+impl<T: Owned> SharedChan<T> {
+    /// Converts a `chan` into a `shared_chan`.
+    pub fn new(c: Chan<T>) -> SharedChan<T> {
+        SharedChan { ch: unstable::exclusive(c) }
+    }
 }
 
 impl<T: Owned> GenericChan<T> for SharedChan<T> {
-    fn send(&self, x: T) { shared_chan_send(self, x) }
-}
-
-#[inline(always)]
-fn shared_chan_send<T:Owned>(self: &SharedChan<T>, x: T) {
-    let mut xx = Some(x);
-    do self.with_imm |chan| {
-        let mut x = None;
-        x <-> xx;
-        chan.send(x.unwrap())
+    fn send(&self, x: T) {
+        let mut xx = Some(x);
+        do self.ch.with_imm |chan| {
+            let x = replace(&mut xx, None);
+            chan.send(x.unwrap())
+        }
     }
 }
 
 impl<T: Owned> GenericSmartChan<T> for SharedChan<T> {
-    fn try_send(&self, x: T) -> bool { shared_chan_try_send(self, x) }
-}
-
-#[inline(always)]
-fn shared_chan_try_send<T:Owned>(self: &SharedChan<T>, x: T) -> bool {
-    let mut xx = Some(x);
-    do self.with_imm |chan| {
-        let mut x = None;
-        x <-> xx;
-        chan.try_send(x.unwrap())
-    }
-}
-
-/// Converts a `chan` into a `shared_chan`.
-pub fn SharedChan<T:Owned>(c: Chan<T>) -> SharedChan<T> {
-    unstable::exclusive(c)
-}
-
-/// Receive a message from one of two endpoints.
-pub trait Select2<T: Owned, U: Owned> {
-    /// Receive a message or return `None` if a connection closes.
-    fn try_select(&self) -> Either<Option<T>, Option<U>>;
-    /// Receive a message or fail if a connection closes.
-    fn select(&self) -> Either<T, U>;
-}
-
-impl<T: Owned, U: Owned,
-     Left: Selectable + GenericPort<T>,
-     Right: Selectable + GenericPort<U>>
-    Select2<T, U> for (Left, Right) {
-
-    fn select(&self) -> Either<T, U> {
-        match *self {
-          (ref lp, ref rp) => match select2i(lp, rp) {
-            Left(()) => Left (lp.recv()),
-            Right(()) => Right(rp.recv())
-          }
-        }
-    }
-
-    fn try_select(&self) -> Either<Option<T>, Option<U>> {
-        match *self {
-          (ref lp, ref rp) => match select2i(lp, rp) {
-            Left(()) => Left (lp.try_recv()),
-            Right(()) => Right(rp.try_recv())
-          }
+    fn try_send(&self, x: T) -> bool {
+        let mut xx = Some(x);
+        do self.ch.with_imm |chan| {
+            let x = replace(&mut xx, None);
+            chan.try_send(x.unwrap())
         }
     }
 }
 
-proto! oneshot (
+impl<T: Owned> ::clone::Clone for SharedChan<T> {
+    fn clone(&self) -> SharedChan<T> {
+        SharedChan { ch: self.ch.clone() }
+    }
+}
+
+/*proto! oneshot (
     Oneshot:send<T:Owned> {
         send(T) -> !
     }
-)
+)*/
+
+#[allow(non_camel_case_types)]
+pub mod oneshot {
+    priv use core::kinds::Owned;
+    use ptr::to_mut_unsafe_ptr;
+
+    pub fn init<T: Owned>() -> (client::Oneshot<T>, server::Oneshot<T>) {
+        pub use core::pipes::HasBuffer;
+
+        let buffer = ~::core::pipes::Buffer {
+            header: ::core::pipes::BufferHeader(),
+            data: __Buffer {
+                Oneshot: ::core::pipes::mk_packet::<Oneshot<T>>()
+            },
+        };
+        do ::core::pipes::entangle_buffer(buffer) |buffer, data| {
+            data.Oneshot.set_buffer(buffer);
+            to_mut_unsafe_ptr(&mut data.Oneshot)
+        }
+    }
+    #[allow(non_camel_case_types)]
+    pub enum Oneshot<T> { pub send(T), }
+    #[allow(non_camel_case_types)]
+    pub struct __Buffer<T> {
+        Oneshot: ::core::pipes::Packet<Oneshot<T>>,
+    }
+
+    #[allow(non_camel_case_types)]
+    pub mod client {
+
+        priv use core::kinds::Owned;
+
+        #[allow(non_camel_case_types)]
+        pub fn try_send<T: Owned>(pipe: Oneshot<T>, x_0: T) ->
+            ::core::option::Option<()> {
+            {
+                use super::send;
+                let message = send(x_0);
+                if ::core::pipes::send(pipe, message) {
+                    ::core::pipes::rt::make_some(())
+                } else { ::core::pipes::rt::make_none() }
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        pub fn send<T: Owned>(pipe: Oneshot<T>, x_0: T) {
+            {
+                use super::send;
+                let message = send(x_0);
+                ::core::pipes::send(pipe, message);
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        pub type Oneshot<T> =
+            ::core::pipes::SendPacketBuffered<super::Oneshot<T>,
+                                              super::__Buffer<T>>;
+    }
+
+    #[allow(non_camel_case_types)]
+    pub mod server {
+        #[allow(non_camel_case_types)]
+        pub type Oneshot<T> =
+            ::core::pipes::RecvPacketBuffered<super::Oneshot<T>,
+                                              super::__Buffer<T>>;
+    }
+}
 
 /// The send end of a oneshot pipe.
-pub type ChanOne<T> = oneshot::client::Oneshot<T>;
+pub struct ChanOne<T> {
+    contents: oneshot::client::Oneshot<T>
+}
+
+impl<T> ChanOne<T> {
+    pub fn new(contents: oneshot::client::Oneshot<T>) -> ChanOne<T> {
+        ChanOne {
+            contents: contents
+        }
+    }
+}
+
 /// The receive end of a oneshot pipe.
-pub type PortOne<T> = oneshot::server::Oneshot<T>;
+pub struct PortOne<T> {
+    contents: oneshot::server::Oneshot<T>
+}
+
+impl<T> PortOne<T> {
+    pub fn new(contents: oneshot::server::Oneshot<T>) -> PortOne<T> {
+        PortOne {
+            contents: contents
+        }
+    }
+}
 
 /// Initialiase a (send-endpoint, recv-endpoint) oneshot pipe pair.
 pub fn oneshot<T: Owned>() -> (PortOne<T>, ChanOne<T>) {
     let (chan, port) = oneshot::init();
-    (port, chan)
+    (PortOne::new(port), ChanOne::new(chan))
 }
 
 pub impl<T: Owned> PortOne<T> {
     fn recv(self) -> T { recv_one(self) }
     fn try_recv(self) -> Option<T> { try_recv_one(self) }
+    fn unwrap(self) -> oneshot::server::Oneshot<T> {
+        match self {
+            PortOne { contents: s } => s
+        }
+    }
 }
 
 pub impl<T: Owned> ChanOne<T> {
     fn send(self, data: T) { send_one(self, data) }
     fn try_send(self, data: T) -> bool { try_send_one(self, data) }
+    fn unwrap(self) -> oneshot::client::Oneshot<T> {
+        match self {
+            ChanOne { contents: s } => s
+        }
+    }
 }
 
 /**
@@ -396,33 +464,114 @@ pub impl<T: Owned> ChanOne<T> {
  * closed.
  */
 pub fn recv_one<T: Owned>(port: PortOne<T>) -> T {
-    let oneshot::send(message) = recv(port);
-    message
+    match port {
+        PortOne { contents: port } => {
+            let oneshot::send(message) = recv(port);
+            message
+        }
+    }
 }
 
 /// Receive a message from a oneshot pipe unless the connection was closed.
 pub fn try_recv_one<T: Owned> (port: PortOne<T>) -> Option<T> {
-    let message = try_recv(port);
+    match port {
+        PortOne { contents: port } => {
+            let message = try_recv(port);
 
-    if message.is_none() { None }
-    else {
-        let oneshot::send(message) = message.unwrap();
-        Some(message)
+            if message.is_none() {
+                None
+            } else {
+                let oneshot::send(message) = message.unwrap();
+                Some(message)
+            }
+        }
     }
 }
 
 /// Send a message on a oneshot pipe, failing if the connection was closed.
 pub fn send_one<T: Owned>(chan: ChanOne<T>, data: T) {
-    oneshot::client::send(chan, data);
+    match chan {
+        ChanOne { contents: chan } => oneshot::client::send(chan, data),
+    }
 }
 
 /**
  * Send a message on a oneshot pipe, or return false if the connection was
  * closed.
  */
-pub fn try_send_one<T: Owned>(chan: ChanOne<T>, data: T)
-        -> bool {
-    oneshot::client::try_send(chan, data).is_some()
+pub fn try_send_one<T: Owned>(chan: ChanOne<T>, data: T) -> bool {
+    match chan {
+        ChanOne { contents: chan } => {
+            oneshot::client::try_send(chan, data).is_some()
+        }
+    }
+}
+
+
+
+/// Returns the index of an endpoint that is ready to receive.
+pub fn selecti<T: Selectable>(endpoints: &mut [T]) -> uint {
+    wait_many(endpoints)
+}
+
+/// Returns 0 or 1 depending on which endpoint is ready to receive
+pub fn select2i<A:Selectable, B:Selectable>(a: &mut A, b: &mut B)
+                                            -> Either<(), ()> {
+    let mut endpoints = [ a.header(), b.header() ];
+    match wait_many(endpoints) {
+        0 => Left(()),
+        1 => Right(()),
+        _ => fail!(~"wait returned unexpected index"),
+    }
+}
+
+/// Receive a message from one of two endpoints.
+pub trait Select2<T: Owned, U: Owned> {
+    /// Receive a message or return `None` if a connection closes.
+    fn try_select(&mut self) -> Either<Option<T>, Option<U>>;
+    /// Receive a message or fail if a connection closes.
+    fn select(&mut self) -> Either<T, U>;
+}
+
+impl<T:Owned,
+     U:Owned,
+     Left:Selectable + GenericPort<T>,
+     Right:Selectable + GenericPort<U>>
+     Select2<T, U>
+     for (Left, Right) {
+    fn select(&mut self) -> Either<T, U> {
+        // XXX: Bad borrow check workaround.
+        unsafe {
+            let this: &(Left, Right) = transmute(self);
+            match *this {
+                (ref lp, ref rp) => {
+                    let lp: &mut Left = transmute(lp);
+                    let rp: &mut Right = transmute(rp);
+                    match select2i(lp, rp) {
+                        Left(()) => Left(lp.recv()),
+                        Right(()) => Right(rp.recv()),
+                    }
+                }
+            }
+        }
+    }
+
+    fn try_select(&mut self) -> Either<Option<T>, Option<U>> {
+        // XXX: Bad borrow check workaround.
+        unsafe {
+            let this: &(Left, Right) = transmute(self);
+            match *this {
+                (ref lp, ref rp) => {
+                    let lp: &mut Left = transmute(lp);
+                    let rp: &mut Right = transmute(rp);
+                    match select2i(lp, rp) {
+                        Left(()) => Left (lp.try_recv()),
+                        Right(()) => Right(rp.try_recv()),
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -437,9 +586,10 @@ mod test {
 
         c1.send(~"abc");
 
-        match (p1, p2).select() {
-          Right(_) => fail!(),
-          _ => ()
+        let mut tuple = (p1, p2);
+        match tuple.select() {
+            Right(_) => fail!(),
+            _ => (),
         }
 
         c2.send(123);
@@ -447,11 +597,11 @@ mod test {
 
     #[test]
     fn test_oneshot() {
-        let (c, p) = oneshot::init();
+        let (p, c) = oneshot();
 
-        oneshot::client::send(c, ());
+        c.send(());
 
-        recv_one(p)
+        p.recv()
     }
 
     #[test]

@@ -29,7 +29,7 @@ syn match     rustIdentifier  contains=rustIdentifierPrime "\%([^[:cntrl:][:spac
 syn match     rustFuncName    "\%([^[:cntrl:][:space:][:punct:][:digit:]]\|_\)\%([^[:cntrl:][:punct:][:space:]]\|_\)*" display contained
 
 " Reserved words
-syn keyword   rustKeyword     m32 m64 m128 f80 f16 f128 be
+"syn keyword   rustKeyword     m32 m64 m128 f80 f16 f128 be " These are obsolete
 
 syn keyword   rustType        int uint float char bool u8 u16 u32 u64 f32
 syn keyword   rustType        f64 i8 i16 i32 i64 str Self
@@ -46,7 +46,7 @@ syn keyword   rustType        off_t dev_t ino_t pid_t mode_t ssize_t
 
 syn keyword   rustTrait       Const Copy Send Owned " inherent traits
 syn keyword   rustTrait       Eq Ord Num Ptr
-syn keyword   rustTrait       Drop Add Sub Mul Div Modulo Neg BitAnd BitOr
+syn keyword   rustTrait       Drop Add Sub Mul Quot Rem Neg BitAnd BitOr
 syn keyword   rustTrait       BitXor Shl Shr Index
 
 syn keyword   rustSelf        self

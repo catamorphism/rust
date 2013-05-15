@@ -11,8 +11,6 @@
 
 //! Finds crate binaries and loads their metadata
 
-use core::prelude::*;
-
 use lib::llvm::{False, llvm, mk_object_file, mk_section_iter};
 use metadata::decoder;
 use metadata::encoder;
@@ -24,16 +22,8 @@ use syntax::parse::token::ident_interner;
 use syntax::print::pprust;
 use syntax::{ast, attr};
 
-use core::cast;
-use core::flate;
-use core::io::WriterUtil;
-use core::io;
+use std::flate;
 use core::os::consts::{macos, freebsd, linux, android, win32};
-use core::option;
-use core::ptr;
-use core::str;
-use core::uint;
-use core::vec;
 
 pub enum os {
     os_macos,
@@ -55,7 +45,7 @@ pub struct Context {
     intr: @ident_interner
 }
 
-pub fn load_library_crate(cx: Context) -> (~str, @~[u8]) {
+pub fn load_library_crate(cx: &Context) -> (~str, @~[u8]) {
     match find_library_crate(cx) {
       Some(ref t) => return (/*bad*/copy *t),
       None => {
@@ -66,12 +56,12 @@ pub fn load_library_crate(cx: Context) -> (~str, @~[u8]) {
     }
 }
 
-fn find_library_crate(cx: Context) -> Option<(~str, @~[u8])> {
+fn find_library_crate(cx: &Context) -> Option<(~str, @~[u8])> {
     attr::require_unique_names(cx.diag, cx.metas);
     find_library_crate_aux(cx, libname(cx), cx.filesearch)
 }
 
-fn libname(cx: Context) -> (~str, ~str) {
+fn libname(cx: &Context) -> (~str, ~str) {
     if cx.is_static { return (~"lib", ~".rlib"); }
     let (dll_prefix, dll_suffix) = match cx.os {
         os_win32 => (win32::DLL_PREFIX, win32::DLL_SUFFIX),
@@ -85,7 +75,7 @@ fn libname(cx: Context) -> (~str, ~str) {
 }
 
 fn find_library_crate_aux(
-    cx: Context,
+    cx: &Context,
     (prefix, suffix): (~str, ~str),
     filesearch: @filesearch::FileSearch
 ) -> Option<(~str, @~[u8])> {
@@ -206,13 +196,13 @@ fn get_metadata_section(os: os,
         while llvm::LLVMIsSectionIteratorAtEnd(of.llof, si.llsi) == False {
             let name_buf = llvm::LLVMGetSectionName(si.llsi);
             let name = unsafe { str::raw::from_c_str(name_buf) };
-            debug!("get_matadata_section: name %s", name);
+            debug!("get_metadata_section: name %s", name);
             if name == read_meta_section_name(os) {
                 let cbuf = llvm::LLVMGetSectionContents(si.llsi);
                 let csz = llvm::LLVMGetSectionSize(si.llsi) as uint;
                 let mut found = None;
                 unsafe {
-                    let cvbuf: *u8 = cast::reinterpret_cast(&cbuf);
+                    let cvbuf: *u8 = cast::transmute(cbuf);
                     let vlen = vec::len(encoder::metadata_encoding_version);
                     debug!("checking %u bytes of metadata-version stamp",
                            vlen);

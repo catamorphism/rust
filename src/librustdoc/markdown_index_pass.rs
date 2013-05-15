@@ -10,8 +10,6 @@
 
 //! Build indexes as appropriate for the markdown pass
 
-use core::prelude::*;
-
 use astsrv;
 use config;
 use doc::ItemUtils;
@@ -21,8 +19,6 @@ use fold;
 use markdown_pass;
 use markdown_writer;
 use pass::Pass;
-
-use core::str;
 
 pub fn mk_pass(config: config::Config) -> Pass {
     Pass {
@@ -157,7 +153,9 @@ pub fn pandoc_header_id(header: &str) -> ~str {
         let s = str::replace(s, ~" ", ~"-");
         return s;
     }
-    fn convert_to_lowercase(s: &str) -> ~str { str::to_lower(s) }
+    // FIXME: #4318 Instead of to_ascii and to_str_ascii, could use
+    // to_ascii_consume and to_str_consume to not do a unnecessary copy.
+    fn convert_to_lowercase(s: &str) -> ~str { s.to_ascii().to_lower().to_str_ascii() }
     fn remove_up_to_first_letter(s: &str) -> ~str { s.to_str() }
     fn maybe_use_section_id(s: &str) -> ~str { s.to_str() }
 }
@@ -173,7 +171,6 @@ mod test {
     use markdown_index_pass::run;
     use path_pass;
     use super::pandoc_header_id;
-    use core::prelude::*;
 
     fn mk_doc(output_style: config::OutputStyle, source: ~str)
                -> doc::Doc {

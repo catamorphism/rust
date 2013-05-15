@@ -301,7 +301,8 @@ struct WatcherData {
     write_cb: Option<ConnectionCallback>,
     connect_cb: Option<ConnectionCallback>,
     close_cb: Option<NullCallback>,
-    alloc_cb: Option<AllocCallback>
+    alloc_cb: Option<AllocCallback>,
+    buf: Option<Buf>
 }
 
 pub fn install_watcher_data<H, W: Watcher + NativeHandle<*H>>(watcher: &mut W) {
@@ -311,7 +312,8 @@ pub fn install_watcher_data<H, W: Watcher + NativeHandle<*H>>(watcher: &mut W) {
             write_cb: None,
             connect_cb: None,
             close_cb: None,
-            alloc_cb: None
+            alloc_cb: None,
+            buf: None
         };
         let data = transmute::<~WatcherData, *c_void>(data);
         uvll::set_data_for_uv_handle(watcher.native_handle(), data);
@@ -366,14 +368,15 @@ pub fn slice_to_uv_buf(v: &[u8]) -> Buf {
 
 /// Transmute an owned vector to a Buf
 pub fn vec_to_uv_buf(v: ~[u8]) -> Buf {
-    let data = unsafe { malloc(v.len() as size_t) } as *u8;
-    assert!(data.is_not_null());
-    do vec::as_imm_buf(v) |b, l| {
-        let data = data as *mut u8;
-        unsafe { ptr::copy_memory(data, b, l) }
+    unsafe {
+        let data = malloc(v.len() as size_t) as *u8;
+        assert!(data.is_not_null());
+        do vec::as_imm_buf(v) |b, l| {
+            let data = data as *mut u8;
+            ptr::copy_memory(data, b, l)
+        }
+        uvll::buf_init(data, v.len())
     }
-    let buf = unsafe { uvll::buf_init(data, v.len()) };
-    return buf;
 }
 
 /// Transmute a Buf that was once a ~[u8] back to ~[u8]
@@ -384,6 +387,7 @@ pub fn vec_from_uv_buf(buf: Buf) -> Option<~[u8]> {
         return Some(v);
     } else {
         // No buffer
+        rtdebug!("No buffer!");
         return None;
     }
 }
@@ -402,7 +406,7 @@ fn loop_smoke_test() {
 fn idle_new_then_close() {
     do run_in_bare_thread {
         let mut loop_ = Loop::new();
-        let mut idle_watcher = { IdleWatcher::new(&mut loop_) };
+        let idle_watcher = { IdleWatcher::new(&mut loop_) };
         idle_watcher.close();
     }
 }

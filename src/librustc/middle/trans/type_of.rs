@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use lib::llvm::llvm;
 use lib::llvm::{TypeRef};
 use middle::trans::adt;
@@ -19,14 +17,10 @@ use middle::trans::common;
 use middle::ty;
 use util::ppaux;
 
-use core::option::None;
 use syntax::ast;
 
-pub fn arg_is_indirect(ccx: @CrateContext, arg: &ty::arg) -> bool {
-    match ty::resolved_mode(ccx.tcx, arg.mode) {
-        ast::by_copy => !ty::type_is_immediate(arg.ty),
-        ast::by_ref => true
-    }
+pub fn arg_is_indirect(_: @CrateContext, arg: &ty::arg) -> bool {
+    !ty::type_is_immediate(arg.ty)
 }
 
 pub fn type_of_explicit_arg(ccx: @CrateContext, arg: &ty::arg) -> TypeRef {
@@ -39,20 +33,34 @@ pub fn type_of_explicit_args(ccx: @CrateContext,
     inputs.map(|arg| type_of_explicit_arg(ccx, arg))
 }
 
-pub fn type_of_fn(cx: @CrateContext, inputs: &[ty::arg],
-                  output: ty::t) -> TypeRef {
+pub fn type_of_fn(cx: @CrateContext, inputs: &[ty::arg], output: ty::t)
+               -> TypeRef {
     unsafe {
         let mut atys: ~[TypeRef] = ~[];
 
         // Arg 0: Output pointer.
-        atys.push(T_ptr(type_of(cx, output)));
+        // (if the output type is non-immediate)
+        let output_is_immediate = ty::type_is_immediate(output);
+        let lloutputtype = type_of(cx, output);
+        if !output_is_immediate {
+            atys.push(T_ptr(lloutputtype));
+        } else {
+            // XXX: Eliminate this.
+            atys.push(T_ptr(T_i8()));
+        }
 
         // Arg 1: Environment
         atys.push(T_opaque_box_ptr(cx));
 
         // ... then explicit args.
         atys.push_all(type_of_explicit_args(cx, inputs));
-        return T_fn(atys, llvm::LLVMVoidType());
+
+        // Use the output as the actual return value if it's immediate.
+        if output_is_immediate {
+            T_fn(atys, lloutputtype)
+        } else {
+            T_fn(atys, llvm::LLVMVoidType())
+        }
     }
 }
 
@@ -102,8 +110,7 @@ pub fn type_of_non_gc_box(cx: @CrateContext, t: ty::t) -> TypeRef {
 
 pub fn sizing_type_of(cx: @CrateContext, t: ty::t) -> TypeRef {
     match cx.llsizingtypes.find(&t) {
-        // FIXME(#5562): removing this copy causes a segfault in stage1 core
-        Some(t) => return /*bad*/ copy *t,
+        Some(t) => return *t,
         None => ()
     }
 
@@ -133,7 +140,7 @@ pub fn sizing_type_of(cx: @CrateContext, t: ty::t) -> TypeRef {
 
         ty::ty_bare_fn(*) => T_ptr(T_i8()),
         ty::ty_closure(*) => T_struct(~[T_ptr(T_i8()), T_ptr(T_i8())], false),
-        ty::ty_trait(_, _, store) => T_opaque_trait(cx, store),
+        ty::ty_trait(_, _, store, _) => T_opaque_trait(cx, store),
 
         ty::ty_estr(ty::vstore_fixed(size)) => T_array(T_i8(), size),
         ty::ty_evec(mt, ty::vstore_fixed(size)) => {
@@ -148,9 +155,15 @@ pub fn sizing_type_of(cx: @CrateContext, t: ty::t) -> TypeRef {
         }
 
         ty::ty_struct(did, _) => {
-            let repr = adt::represent_type(cx, t);
-            let packed = ty::lookup_packed(cx.tcx, did);
-            T_struct(adt::sizing_fields_of(cx, repr), packed)
+            if ty::type_is_simd(cx.tcx, t) {
+                let et = ty::simd_type(cx.tcx, t);
+                let n = ty::simd_size(cx.tcx, t);
+                T_vector(type_of(cx, et), n)
+            } else {
+                let repr = adt::represent_type(cx, t);
+                let packed = ty::lookup_packed(cx.tcx, did);
+                T_struct(adt::sizing_fields_of(cx, repr), packed)
+            }
         }
 
         ty::ty_self(_) | ty::ty_infer(*) | ty::ty_param(*) | ty::ty_err(*) => {
@@ -170,8 +183,7 @@ pub fn type_of(cx: @CrateContext, t: ty::t) -> TypeRef {
 
     // Check the cache.
     match cx.lltypes.find(&t) {
-        // FIXME(#5562): removing this copy causes a segfault in stage1 core
-        Some(t) => return /*bad*/ copy *t,
+        Some(&t) => return t,
         None => ()
     }
 
@@ -249,7 +261,7 @@ pub fn type_of(cx: @CrateContext, t: ty::t) -> TypeRef {
 
       ty::ty_bare_fn(_) => T_ptr(type_of_fn_from_ty(cx, t)),
       ty::ty_closure(_) => T_fn_pair(cx, type_of_fn_from_ty(cx, t)),
-      ty::ty_trait(_, _, store) => T_opaque_trait(cx, store),
+      ty::ty_trait(_, _, store, _) => T_opaque_trait(cx, store),
       ty::ty_type => T_ptr(cx.tydesc_type),
       ty::ty_tup(*) => {
           let repr = adt::represent_type(cx, t);
@@ -257,14 +269,19 @@ pub fn type_of(cx: @CrateContext, t: ty::t) -> TypeRef {
       }
       ty::ty_opaque_closure_ptr(_) => T_opaque_box_ptr(cx),
       ty::ty_struct(did, ref substs) => {
-        // Only create the named struct, but don't fill it in. We fill it
-        // in *after* placing it into the type cache. This prevents
-        // infinite recursion with recursive struct types.
-
-        common::T_named_struct(llvm_type_name(cx,
-                                              a_struct,
-                                              did,
-                                              /*bad*/ copy substs.tps))
+        if ty::type_is_simd(cx.tcx, t) {
+          let et = ty::simd_type(cx.tcx, t);
+          let n = ty::simd_size(cx.tcx, t);
+          T_vector(type_of(cx, et), n)
+        } else {
+          // Only create the named struct, but don't fill it in. We fill it
+          // in *after* placing it into the type cache. This prevents
+          // infinite recursion with recursive struct types.
+          T_named_struct(llvm_type_name(cx,
+                                        a_struct,
+                                        did,
+                                        /*bad*/ copy substs.tps))
+        }
       }
       ty::ty_self(*) => cx.tcx.sess.unimpl(~"type_of: ty_self"),
       ty::ty_infer(*) => cx.tcx.sess.bug(~"type_of with ty_infer"),
@@ -283,10 +300,12 @@ pub fn type_of(cx: @CrateContext, t: ty::t) -> TypeRef {
       }
 
       ty::ty_struct(did, _) => {
-        let repr = adt::represent_type(cx, t);
-        let packed = ty::lookup_packed(cx.tcx, did);
-        common::set_struct_body(llty, adt::fields_of(cx, repr),
-                                packed);
+        if !ty::type_is_simd(cx.tcx, t) {
+          let repr = adt::represent_type(cx, t);
+          let packed = ty::lookup_packed(cx.tcx, did);
+          common::set_struct_body(llty, adt::fields_of(cx, repr),
+                                  packed);
+        }
       }
       _ => ()
     }
@@ -318,11 +337,9 @@ pub fn llvm_type_name(cx: @CrateContext,
 }
 
 pub fn type_of_dtor(ccx: @CrateContext, self_ty: ty::t) -> TypeRef {
-    unsafe {
-        T_fn(~[T_ptr(type_of(ccx, ty::mk_nil(ccx.tcx))), // output pointer
-               T_ptr(type_of(ccx, self_ty))],            // self arg
-             llvm::LLVMVoidType())
-    }
+    T_fn(~[T_ptr(T_i8()),                   // output pointer
+           T_ptr(type_of(ccx, self_ty))],   // self arg
+         T_nil())
 }
 
 pub fn type_of_rooted(ccx: @CrateContext, t: ty::t) -> TypeRef {
@@ -336,5 +353,5 @@ pub fn type_of_glue_fn(ccx: @CrateContext, t: ty::t) -> TypeRef {
     let tydescpp = T_ptr(T_ptr(ccx.tydesc_type));
     let llty = T_ptr(type_of(ccx, t));
     return T_fn(~[T_ptr(T_nil()), T_ptr(T_nil()), tydescpp, llty],
-                T_void());
+                T_nil());
 }

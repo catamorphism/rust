@@ -242,8 +242,6 @@ section on "Type Combining" below for details.
 
 */
 
-use core::prelude::*;
-
 pub use middle::ty::IntVarValue;
 pub use middle::typeck::infer::resolve::resolve_and_force_all_but_regions;
 pub use middle::typeck::infer::resolve::{force_all, not_regions};
@@ -267,10 +265,6 @@ use middle::typeck::isr_alist;
 use util::common::indent;
 use util::ppaux::{bound_region_to_str, ty_to_str, trait_ref_to_str};
 
-use core::cmp::Eq;
-use core::result::{Result, Ok, Err};
-use core::result;
-use core::vec;
 use std::list::Nil;
 use std::smallintmap::SmallIntMap;
 use syntax::ast::{m_imm, m_mutbl};
@@ -345,7 +339,7 @@ pub fn fixup_err_to_str(f: fixup_err) -> ~str {
 
 fn new_ValsAndBindings<V:Copy,T:Copy>() -> ValsAndBindings<V, T> {
     ValsAndBindings {
-        vals: @mut SmallIntMap::new(),
+        vals: SmallIntMap::new(),
         bindings: ~[]
     }
 }
@@ -475,28 +469,6 @@ pub fn resolve_region(cx: @mut InferCtxt, r: ty::Region, modes: uint)
     resolver.resolve_region_chk(r)
 }
 
-/*
-fn resolve_borrowings(cx: @mut InferCtxt) {
-    for cx.borrowings.each |item| {
-        match resolve_region(cx, item.scope, resolve_all|force_all) {
-          Ok(region) => {
-            debug!("borrowing for expr %d resolved to region %?, mutbl %?",
-                   item.expr_id, region, item.mutbl);
-            cx.tcx.borrowings.insert(
-                item.expr_id, {region: region, mutbl: item.mutbl});
-          }
-
-          Err(e) => {
-            let str = fixup_err_to_str(e);
-            cx.tcx.sess.span_err(
-                item.span,
-                fmt!("could not resolve lifetime for borrow: %s", str));
-          }
-        }
-    }
-}
-*/
-
 trait then {
     fn then<T:Copy>(&self, f: &fn() -> Result<T,ty::type_err>)
         -> Result<T,ty::type_err>;
@@ -560,7 +532,8 @@ struct Snapshot {
 }
 
 pub impl InferCtxt {
-    fn combine_fields(@mut self, a_is_expected: bool,
+    fn combine_fields(@mut self,
+                      a_is_expected: bool,
                       span: span) -> CombineFields {
         CombineFields {infcx: self,
                        a_is_expected: a_is_expected,
@@ -571,25 +544,24 @@ pub impl InferCtxt {
         Sub(self.combine_fields(a_is_expected, span))
     }
 
-    fn in_snapshot(@mut self) -> bool {
+    fn in_snapshot(&self) -> bool {
         self.region_vars.in_snapshot()
     }
 
-    fn start_snapshot(@mut self) -> Snapshot {
-        let this = &mut *self;
+    fn start_snapshot(&mut self) -> Snapshot {
         Snapshot {
             ty_var_bindings_len:
-                this.ty_var_bindings.bindings.len(),
+                self.ty_var_bindings.bindings.len(),
             int_var_bindings_len:
-                this.int_var_bindings.bindings.len(),
+                self.int_var_bindings.bindings.len(),
             float_var_bindings_len:
-                this.float_var_bindings.bindings.len(),
+                self.float_var_bindings.bindings.len(),
             region_vars_snapshot:
-                this.region_vars.start_snapshot(),
+                self.region_vars.start_snapshot(),
         }
     }
 
-    fn rollback_to(@mut self, snapshot: &Snapshot) {
+    fn rollback_to(&mut self, snapshot: &Snapshot) {
         debug!("rollback!");
         rollback_to(&mut self.ty_var_bindings, snapshot.ty_var_bindings_len);
 
@@ -643,8 +615,8 @@ pub impl InferCtxt {
 }
 
 fn next_simple_var<V:Copy,T:Copy>(
-        +counter: &mut uint,
-        +bindings: &mut ValsAndBindings<V,Option<T>>)
+        counter: &mut uint,
+        bindings: &mut ValsAndBindings<V,Option<T>>)
      -> uint {
     let id = *counter;
     *counter += 1;
@@ -653,45 +625,47 @@ fn next_simple_var<V:Copy,T:Copy>(
 }
 
 pub impl InferCtxt {
-    fn next_ty_var_id(@mut self) -> TyVid {
+    fn next_ty_var_id(&mut self) -> TyVid {
         let id = self.ty_var_counter;
         self.ty_var_counter += 1;
-        let vals = self.ty_var_bindings.vals;
-        vals.insert(id, Root(Bounds { lb: None, ub: None }, 0u));
+        {
+            let vals = &mut self.ty_var_bindings.vals;
+            vals.insert(id, Root(Bounds { lb: None, ub: None }, 0u));
+        }
         return TyVid(id);
     }
 
-    fn next_ty_var(@mut self) -> ty::t {
+    fn next_ty_var(&mut self) -> ty::t {
         ty::mk_var(self.tcx, self.next_ty_var_id())
     }
 
-    fn next_ty_vars(@mut self, n: uint) -> ~[ty::t] {
+    fn next_ty_vars(&mut self, n: uint) -> ~[ty::t] {
         vec::from_fn(n, |_i| self.next_ty_var())
     }
 
-    fn next_int_var_id(@mut self) -> IntVid {
+    fn next_int_var_id(&mut self) -> IntVid {
         IntVid(next_simple_var(&mut self.int_var_counter,
                                &mut self.int_var_bindings))
     }
 
-    fn next_int_var(@mut self) -> ty::t {
+    fn next_int_var(&mut self) -> ty::t {
         ty::mk_int_var(self.tcx, self.next_int_var_id())
     }
 
-    fn next_float_var_id(@mut self) -> FloatVid {
+    fn next_float_var_id(&mut self) -> FloatVid {
         FloatVid(next_simple_var(&mut self.float_var_counter,
                                  &mut self.float_var_bindings))
     }
 
-    fn next_float_var(@mut self) -> ty::t {
+    fn next_float_var(&mut self) -> ty::t {
         ty::mk_float_var(self.tcx, self.next_float_var_id())
     }
 
-    fn next_region_var_nb(@mut self, span: span) -> ty::Region {
+    fn next_region_var_nb(&mut self, span: span) -> ty::Region {
         ty::re_infer(ty::ReVar(self.region_vars.new_region_var(span)))
     }
 
-    fn next_region_var_with_lb(@mut self, span: span,
+    fn next_region_var_with_lb(&mut self, span: span,
                                lb_region: ty::Region) -> ty::Region {
         let region_var = self.next_region_var_nb(span);
 
@@ -703,12 +677,12 @@ pub impl InferCtxt {
         return region_var;
     }
 
-    fn next_region_var(@mut self, span: span, scope_id: ast::node_id)
+    fn next_region_var(&mut self, span: span, scope_id: ast::node_id)
                       -> ty::Region {
         self.next_region_var_with_lb(span, ty::re_scope(scope_id))
     }
 
-    fn resolve_regions(@mut self) {
+    fn resolve_regions(&mut self) {
         self.region_vars.resolve_regions();
     }
 
@@ -728,7 +702,6 @@ pub impl InferCtxt {
           result::Err(_) => typ
         }
     }
-
     fn resolve_type_vars_in_trait_ref_if_possible(@mut self,
                                                   trait_ref: &ty::TraitRef)
         -> ty::TraitRef
@@ -737,10 +710,11 @@ pub impl InferCtxt {
         let dummy0 = ty::mk_trait(self.tcx,
                                   trait_ref.def_id,
                                   copy trait_ref.substs,
-                                  ty::UniqTraitStore);
+                                  ty::UniqTraitStore,
+                                  ast::m_imm);
         let dummy1 = self.resolve_type_vars_if_possible(dummy0);
         match ty::get(dummy1).sty {
-            ty::ty_trait(ref def_id, ref substs, _) => {
+            ty::ty_trait(ref def_id, ref substs, _, _) => {
                 ty::TraitRef {def_id: *def_id,
                               substs: copy *substs}
             }
@@ -754,6 +728,19 @@ pub impl InferCtxt {
         }
     }
 
+
+    fn type_error_message_str(@mut self, sp: span, mk_msg: &fn(~str) -> ~str,
+                          actual_ty: ~str, err: Option<&ty::type_err>) {
+        let error_str = err.map_default(~"", |t_err|
+                         fmt!(" (%s)",
+                              ty::type_err_to_str(self.tcx, *t_err)));
+        self.tcx.sess.span_err(sp,
+           fmt!("%s%s", mk_msg(actual_ty), error_str));
+        for err.each |err| {
+            ty::note_and_explain_type_err(self.tcx, *err)
+        }
+    }
+
     fn type_error_message(@mut self, sp: span, mk_msg: &fn(~str) -> ~str,
                           actual_ty: ty::t, err: Option<&ty::type_err>) {
         let actual_ty = self.resolve_type_vars_if_possible(actual_ty);
@@ -762,15 +749,9 @@ pub impl InferCtxt {
         if ty::type_is_error(actual_ty) {
             return;
         }
-        let error_str = err.map_default(~"", |t_err|
-                         fmt!(" (%s)",
-                              ty::type_err_to_str(self.tcx, *t_err)));
-        self.tcx.sess.span_err(sp,
-           fmt!("%s%s", mk_msg(self.ty_to_str(actual_ty)),
-                error_str));
-        for err.each |err| {
-            ty::note_and_explain_type_err(self.tcx, *err)
-        }
+
+        self.type_error_message_str(sp, mk_msg, self.ty_to_str(actual_ty),
+                                    err);
     }
 
     fn report_mismatched_types(@mut self, sp: span, e: ty::t, a: ty::t,
@@ -791,7 +772,7 @@ pub impl InferCtxt {
         self.type_error_message(sp, mk_msg, a, Some(err));
     }
 
-    fn replace_bound_regions_with_fresh_regions(@mut self,
+    fn replace_bound_regions_with_fresh_regions(&mut self,
             span: span,
             fsig: &ty::FnSig)
          -> (ty::FnSig, isr_alist) {
@@ -809,15 +790,14 @@ pub impl InferCtxt {
             });
         (fn_sig, isr)
     }
+}
 
-    fn fold_regions_in_sig(
-        @mut self,
-        fn_sig: &ty::FnSig,
-        fldr: &fn(r: ty::Region, in_fn: bool) -> ty::Region) -> ty::FnSig
-    {
-        do ty::fold_sig(fn_sig) |t| {
-            ty::fold_regions(self.tcx, t, fldr)
-        }
+pub fn fold_regions_in_sig(
+    tcx: ty::ctxt,
+    fn_sig: &ty::FnSig,
+    fldr: &fn(r: ty::Region, in_fn: bool) -> ty::Region) -> ty::FnSig
+{
+    do ty::fold_sig(fn_sig) |t| {
+        ty::fold_regions(tcx, t, fldr)
     }
-
 }

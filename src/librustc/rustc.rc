@@ -8,7 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-
 #[link(name = "rustc",
        vers = "0.7-pre",
        uuid = "0ce89b41-2f92-459e-bbc1-8f5fe32f16cf",
@@ -18,20 +17,13 @@
 #[license = "MIT/ASL2"];
 #[crate_type = "lib"];
 
-#[legacy_modes];
-
 #[allow(non_implicitly_copyable_typarams)];
 #[allow(non_camel_case_types)];
-#[allow(deprecated_mode)];
-#[warn(deprecated_pattern)];
+#[deny(deprecated_pattern)];
 
-#[no_core];
-
-extern mod core(vers = "0.7-pre");
 extern mod std(vers = "0.7-pre");
 extern mod syntax(vers = "0.7-pre");
 
-use core::prelude::*;
 
 use driver::driver::{host_triple, optgroups, early_error};
 use driver::driver::{str_input, file_input, build_session_options};
@@ -41,8 +33,6 @@ use driver::driver::{compile_input};
 use driver::session;
 use middle::lint;
 
-use core::io::ReaderUtil;
-use core::result::{Ok, Err};
 use std::getopts::{groups, opt_present};
 use std::getopts;
 use syntax::codemap;
@@ -56,6 +46,7 @@ pub mod middle {
         pub mod controlflow;
         pub mod glue;
         pub mod datum;
+        pub mod write_guard;
         pub mod callee;
         pub mod expr;
         pub mod common;
@@ -69,6 +60,7 @@ pub mod middle {
         pub mod tvec;
         pub mod meth;
         pub mod cabi;
+        pub mod cabi_x86;
         pub mod cabi_x86_64;
         pub mod cabi_arm;
         pub mod cabi_mips;
@@ -84,6 +76,9 @@ pub mod middle {
     }
     pub mod ty;
     pub mod subst;
+    #[cfg(stage0)] #[path = "resolve_stage0.rs"]
+    pub mod resolve;
+    #[cfg(not(stage0))]
     pub mod resolve;
     #[path = "typeck/mod.rs"]
     pub mod typeck;
@@ -93,6 +88,7 @@ pub mod middle {
     pub mod lint;
     #[path = "borrowck/mod.rs"]
     pub mod borrowck;
+    pub mod dataflow;
     pub mod mem_categorization;
     pub mod liveness;
     pub mod kind;
@@ -104,6 +100,7 @@ pub mod middle {
     pub mod lang_items;
     pub mod privacy;
     pub mod moves;
+    pub mod entry;
 }
 
 pub mod front {
@@ -134,6 +131,7 @@ pub mod driver;
 pub mod util {
     pub mod common;
     pub mod ppaux;
+    pub mod enum_set;
 }
 
 pub mod lib {
@@ -205,9 +203,9 @@ pub fn run_compiler(args: &~[~str], demitter: diagnostic::Emitter) {
     ::core::logging::console_off();
 
     let mut args = /*bad*/copy *args;
-    let binary = args.shift();
+    let binary = @args.shift();
 
-    if args.is_empty() { usage(binary); return; }
+    if args.is_empty() { usage(*binary); return; }
 
     let matches =
         &match getopts::groups::getopts(args, optgroups()) {
@@ -218,7 +216,7 @@ pub fn run_compiler(args: &~[~str], demitter: diagnostic::Emitter) {
         };
 
     if opt_present(matches, ~"h") || opt_present(matches, ~"help") {
-        usage(binary);
+        usage(*binary);
         return;
     }
 
@@ -235,7 +233,7 @@ pub fn run_compiler(args: &~[~str], demitter: diagnostic::Emitter) {
     }
 
     if opt_present(matches, ~"v") || opt_present(matches, ~"version") {
-        version(binary);
+        version(*binary);
         return;
     }
     let input = match vec::len(matches.free) {
@@ -252,19 +250,18 @@ pub fn run_compiler(args: &~[~str], demitter: diagnostic::Emitter) {
       _ => early_error(demitter, ~"multiple input filenames provided")
     };
 
-    // XXX: Bad copy.
-    let sopts = build_session_options(copy binary, matches, demitter);
+    let sopts = build_session_options(binary, matches, demitter);
     let sess = build_session(sopts, demitter);
     let odir = getopts::opt_maybe_str(matches, ~"out-dir");
     let odir = odir.map(|o| Path(*o));
     let ofile = getopts::opt_maybe_str(matches, ~"o");
     let ofile = ofile.map(|o| Path(*o));
-    let cfg = build_configuration(sess, binary, input);
+    let cfg = build_configuration(sess, binary, &input);
     let pretty = getopts::opt_default(matches, ~"pretty", "normal").map(
                     |a| parse_pretty(sess, *a));
     match pretty {
       Some::<pp_mode>(ppm) => {
-        pretty_print_input(sess, cfg, input, ppm);
+        pretty_print_input(sess, cfg, &input, ppm);
         return;
       }
       None::<pp_mode> => {/* continue */ }
@@ -282,7 +279,7 @@ pub fn run_compiler(args: &~[~str], demitter: diagnostic::Emitter) {
         return;
     }
 
-    compile_input(sess, cfg, input, &odir, &ofile);
+    compile_input(sess, cfg, &input, &odir, &ofile);
 }
 
 #[deriving(Eq)]
@@ -303,10 +300,10 @@ diagnostic emitter which records when we hit a fatal error. If the task
 fails without recording a fatal error then we've encountered a compiler
 bug and need to present an error.
 */
-pub fn monitor(+f: ~fn(diagnostic::Emitter)) {
+pub fn monitor(f: ~fn(diagnostic::Emitter)) {
     use core::comm::*;
     let (p, ch) = stream();
-    let ch = SharedChan(ch);
+    let ch = SharedChan::new(ch);
     let ch_capture = ch.clone();
     match do task::try || {
         let ch = ch_capture.clone();
@@ -366,11 +363,3 @@ pub fn main() {
         run_compiler(&args, demitter);
     }
 }
-
-
-// Local Variables:
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

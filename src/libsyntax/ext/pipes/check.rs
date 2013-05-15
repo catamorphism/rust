@@ -29,8 +29,6 @@ that.
 
 */
 
-use core::prelude::*;
-
 use ast;
 use codemap::span;
 use ext::base::ext_ctxt;
@@ -82,4 +80,3 @@ impl proto::visitor<(), (), ()> for @ext_ctxt {
         }
     }
 }
-

@@ -54,8 +54,6 @@
 // terms of error reporting, although we do not do that properly right
 // now.
 
-use core::prelude::*;
-
 use middle::ty::{FloatVar, FnSig, IntVar, TyVar};
 use middle::ty::{IntType, UintType, arg, substs};
 use middle::ty;
@@ -67,7 +65,6 @@ use middle::typeck::infer::{cres, InferCtxt, ures, IntType, UintType};
 use util::common::indent;
 
 use core::result::{iter_vec2, map_vec2};
-use core::vec;
 use syntax::ast::{Onceness, purity};
 use syntax::ast;
 use syntax::opt_vec;
@@ -98,7 +95,6 @@ pub trait Combine {
                    b: &ty::ClosureTy) -> cres<ty::ClosureTy>;
     fn fn_sigs(&self, a: &ty::FnSig, b: &ty::FnSig) -> cres<ty::FnSig>;
     fn flds(&self, a: ty::field, b: ty::field) -> cres<ty::field>;
-    fn modes(&self, a: ast::mode, b: ast::mode) -> cres<ast::mode>;
     fn args(&self, a: ty::arg, b: ty::arg) -> cres<ty::arg>;
     fn sigils(&self, p1: ast::Sigil, p2: ast::Sigil) -> cres<ast::Sigil>;
     fn purities(&self, a: purity, b: purity) -> cres<purity>;
@@ -124,7 +120,7 @@ pub struct CombineFields {
 }
 
 pub fn expected_found<C:Combine,T>(
-        self: &C, +a: T, +b: T) -> ty::expected_found<T> {
+        self: &C, a: T, b: T) -> ty::expected_found<T> {
     if self.a_is_expected() {
         ty::expected_found {expected: a, found: b}
     } else {
@@ -315,28 +311,20 @@ pub fn super_flds<C:Combine>(
     }
 }
 
-pub fn super_modes<C:Combine>(
-    self: &C, a: ast::mode, b: ast::mode)
-    -> cres<ast::mode> {
-
-    let tcx = self.infcx().tcx;
-    ty::unify_mode(tcx, expected_found(self, a, b))
-}
-
-pub fn super_args<C:Combine>(
-    self: &C, a: ty::arg, b: ty::arg)
-    -> cres<ty::arg> {
-
-    do self.modes(a.mode, b.mode).chain |m| {
-        do self.contratys(a.ty, b.ty).chain |t| {
-            Ok(arg {mode: m, ty: t})
-        }
+pub fn super_args<C:Combine>(self: &C, a: ty::arg, b: ty::arg)
+                             -> cres<ty::arg> {
+    do self.contratys(a.ty, b.ty).chain |t| {
+        Ok(arg {
+            ty: t
+        })
     }
 }
 
-pub fn super_vstores<C:Combine>(
-    self: &C, vk: ty::terr_vstore_kind,
-    a: ty::vstore, b: ty::vstore) -> cres<ty::vstore> {
+pub fn super_vstores<C:Combine>(self: &C,
+                                vk: ty::terr_vstore_kind,
+                                a: ty::vstore,
+                                b: ty::vstore)
+                                -> cres<ty::vstore> {
     debug!("%s.super_vstores(a=%?, b=%?)", self.tag(), a, b);
 
     match (a, b) {
@@ -492,20 +480,12 @@ pub fn super_tys<C:Combine>(
             unify_float_variable(self, !self.a_is_expected(), v_id, v)
         }
 
+      (ty::ty_nil, _) |
+      (ty::ty_bool, _) |
       (ty::ty_int(_), _) |
       (ty::ty_uint(_), _) |
       (ty::ty_float(_), _) => {
         if ty::get(a).sty == ty::get(b).sty {
-            Ok(a)
-        } else {
-            Err(ty::terr_sorts(expected_found(self, a, b)))
-        }
-      }
-
-      (ty::ty_nil, _) |
-      (ty::ty_bool, _) => {
-        let cfg = tcx.sess.targ_cfg;
-        if ty::mach_sty(cfg, a) == ty::mach_sty(cfg, b) {
             Ok(a)
         } else {
             Err(ty::terr_sorts(expected_found(self, a, b)))
@@ -525,13 +505,13 @@ pub fn super_tys<C:Combine>(
           }
       }
 
-      (ty::ty_trait(a_id, ref a_substs, a_store),
-       ty::ty_trait(b_id, ref b_substs, b_store))
-      if a_id == b_id => {
+      (ty::ty_trait(a_id, ref a_substs, a_store, a_mutbl),
+       ty::ty_trait(b_id, ref b_substs, b_store, b_mutbl))
+      if a_id == b_id && a_mutbl == b_mutbl => {
           let trait_def = ty::lookup_trait_def(tcx, a_id);
           do self.substs(&trait_def.generics, a_substs, b_substs).chain |substs| {
               do self.trait_stores(ty::terr_trait, a_store, b_store).chain |s| {
-                  Ok(ty::mk_trait(tcx, a_id, /*bad*/copy substs, s))
+                  Ok(ty::mk_trait(tcx, a_id, /*bad*/copy substs, s, a_mutbl))
               }
           }
       }
@@ -613,14 +593,13 @@ pub fn super_tys<C:Combine>(
         vid: ty::IntVid,
         val: ty::IntVarValue) -> cres<ty::t>
     {
-        let tcx = self.infcx().tcx;
         if val == IntType(ast::ty_char) {
             Err(ty::terr_integer_as_char)
         } else {
             if_ok!(self.infcx().simple_var_t(vid_is_expected, vid, val));
             match val {
-                IntType(v) => Ok(ty::mk_mach_int(tcx, v)),
-                UintType(v) => Ok(ty::mk_mach_uint(tcx, v))
+                IntType(v) => Ok(ty::mk_mach_int(v)),
+                UintType(v) => Ok(ty::mk_mach_uint(v))
             }
         }
     }
@@ -631,9 +610,8 @@ pub fn super_tys<C:Combine>(
         vid: ty::FloatVid,
         val: ast::float_ty) -> cres<ty::t>
     {
-        let tcx = self.infcx().tcx;
         if_ok!(self.infcx().simple_var_t(vid_is_expected, vid, val));
-        Ok(ty::mk_mach_float(tcx, val))
+        Ok(ty::mk_mach_float(val))
     }
 }
 
@@ -657,4 +635,3 @@ pub fn super_trait_refs<C:Combine>(
         })
     }
 }
-

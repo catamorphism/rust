@@ -501,7 +501,7 @@ pub mod rt {
     pub fn conv_int(cv: Conv, i: int, buf: &mut ~str) {
         let radix = 10;
         let prec = get_int_precision(cv);
-        let mut s : ~str = uint_to_str_prec(int::abs(i) as uint, radix, prec);
+        let s : ~str = uint_to_str_prec(int::abs(i) as uint, radix, prec);
 
         let head = if i >= 0 {
             if have_flag(cv.flags, flag_sign_always) {
@@ -516,11 +516,17 @@ pub mod rt {
     }
     pub fn conv_uint(cv: Conv, u: uint, buf: &mut ~str) {
         let prec = get_int_precision(cv);
-        let mut rs =
+        let rs =
             match cv.ty {
               TyDefault => uint_to_str_prec(u, 10, prec),
               TyHexLower => uint_to_str_prec(u, 16, prec),
-              TyHexUpper => str::to_upper(uint_to_str_prec(u, 16, prec)),
+
+              // FIXME: #4318 Instead of to_ascii and to_str_ascii, could use
+              // to_ascii_consume and to_str_consume to not do a unnecessary copy.
+              TyHexUpper => {
+                let s = uint_to_str_prec(u, 16, prec);
+                s.to_ascii().to_upper().to_str_ascii()
+              }
               TyBits => uint_to_str_prec(u, 2, prec),
               TyOctal => uint_to_str_prec(u, 8, prec)
             };
@@ -538,7 +544,7 @@ pub mod rt {
     pub fn conv_str(cv: Conv, s: &str, buf: &mut ~str) {
         // For strings, precision is the maximum characters
         // displayed
-        let mut unpadded = match cv.precision {
+        let unpadded = match cv.precision {
           CountImplied => s,
           CountIs(max) => if (max as uint) < str::char_len(s) {
             str::slice(s, 0, max as uint)
@@ -553,7 +559,7 @@ pub mod rt {
               CountIs(c) => (float::to_str_exact, c as uint),
               CountImplied => (float::to_str_digits, 6u)
         };
-        let mut s = to_str(f, digits);
+        let s = to_str(f, digits);
         let head = if 0.0 <= f {
             if have_flag(cv.flags, flag_sign_always) {
                 Some('+')
@@ -596,7 +602,7 @@ pub mod rt {
     #[deriving(Eq)]
     pub enum PadMode { PadSigned, PadUnsigned, PadNozero, PadFloat }
 
-    pub fn pad(cv: Conv, mut s: &str, head: Option<char>, mode: PadMode,
+    pub fn pad(cv: Conv, s: &str, head: Option<char>, mode: PadMode,
                buf: &mut ~str) {
         let headsize = match head { Some(_) => 1, _ => 0 };
         let uwidth : uint = match cv.width {
@@ -682,11 +688,3 @@ mod test {
         let _s = fmt!("%s", s);
     }
 }
-
-// Local Variables:
-// mode: rust;
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

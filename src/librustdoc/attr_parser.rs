@@ -15,9 +15,6 @@ The attribute parser provides methods for pulling documentation out of
 an AST's attributes.
 */
 
-use core::prelude::*;
-
-use core::str;
 use syntax::ast;
 use syntax::attr;
 
@@ -74,7 +71,6 @@ mod test {
     use syntax::ast;
     use syntax;
     use super::{parse_hidden, parse_crate, parse_desc};
-    use core::prelude::*;
 
     fn parse_attributes(source: ~str) -> ~[ast::attribute] {
         use syntax::parse;
@@ -83,7 +79,7 @@ mod test {
 
         let parse_sess = syntax::parse::new_parse_sess(None);
         let parser = parse::new_parser_from_source_str(
-            parse_sess, ~[], ~"-", codemap::FssNone, @source);
+            parse_sess, ~[], ~"-", @source);
 
         parser.parse_outer_attributes()
     }

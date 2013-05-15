@@ -44,7 +44,7 @@ use libc::{size_t, uintptr_t};
 use option::{None, Option, Some};
 use ptr;
 use hashmap::HashSet;
-use stackwalk;
+use stackwalk::walk_stack;
 use sys;
 
 pub use stackwalk::Word;
@@ -73,18 +73,19 @@ pub mod rustrt {
         pub unsafe fn rust_gc_metadata() -> *Word;
 
         pub unsafe fn rust_get_stack_segment() -> *StackSegment;
+        pub unsafe fn rust_get_c_stack() -> *StackSegment;
     }
 }
 
 unsafe fn bump<T, U>(ptr: *T, count: uint) -> *U {
-    return cast::reinterpret_cast(&ptr::offset(ptr, count));
+    return cast::transmute(ptr::offset(ptr, count));
 }
 
 unsafe fn align_to_pointer<T>(ptr: *T) -> *T {
     let align = sys::min_align_of::<*T>();
-    let ptr: uint = cast::reinterpret_cast(&ptr);
+    let ptr: uint = cast::transmute(ptr);
     let ptr = (ptr + (align - 1)) & -align;
-    return cast::reinterpret_cast(&ptr);
+    return cast::transmute(ptr);
 }
 
 unsafe fn get_safe_point_count() -> uint {
@@ -128,9 +129,9 @@ type Visitor<'self> = &'self fn(root: **Word, tydesc: *Word) -> bool;
 
 // Walks the list of roots for the given safe point, and calls visitor
 // on each root.
-unsafe fn walk_safe_point(fp: *Word, sp: SafePoint, visitor: Visitor) {
-    let fp_bytes: *u8 = cast::reinterpret_cast(&fp);
-    let sp_meta: *u32 = cast::reinterpret_cast(&sp.sp_meta);
+unsafe fn _walk_safe_point(fp: *Word, sp: SafePoint, visitor: Visitor) -> bool {
+    let fp_bytes: *u8 = cast::transmute(fp);
+    let sp_meta: *u32 = cast::transmute(sp.sp_meta);
 
     let num_stack_roots = *sp_meta as uint;
     let num_reg_roots = *ptr::offset(sp_meta, 1) as uint;
@@ -154,7 +155,7 @@ unsafe fn walk_safe_point(fp: *Word, sp: SafePoint, visitor: Visitor) {
             } else {
                 ptr::null()
             };
-            if !visitor(root, tydesc) { return; }
+            if !visitor(root, tydesc) { return false; }
         }
         sri += 1;
     }
@@ -167,13 +168,23 @@ unsafe fn walk_safe_point(fp: *Word, sp: SafePoint, visitor: Visitor) {
         }
         rri += 1;
     }
+    return true;
+}
+
+#[cfg(stage0)]
+unsafe fn walk_safe_point(fp: *Word, sp: SafePoint, visitor: Visitor) {
+    _walk_safe_point(fp, sp, visitor);
+}
+#[cfg(not(stage0))]
+unsafe fn walk_safe_point(fp: *Word, sp: SafePoint, visitor: Visitor) -> bool {
+    _walk_safe_point(fp, sp, visitor)
 }
 
 // Is fp contained in segment?
 unsafe fn is_frame_in_segment(fp: *Word, segment: *StackSegment) -> bool {
-    let begin: Word = cast::reinterpret_cast(&segment);
-    let end: Word = cast::reinterpret_cast(&(*segment).end);
-    let frame: Word = cast::reinterpret_cast(&fp);
+    let begin: Word = cast::transmute(segment);
+    let end: Word = cast::transmute((*segment).end);
+    let frame: Word = cast::transmute(fp);
 
     return begin <= frame && frame <= end;
 }
@@ -221,7 +232,7 @@ static need_cleanup:    Memory = exchange_heap | stack;
 
 // Walks stack, searching for roots of the requested type, and passes
 // each root to the visitor.
-unsafe fn walk_gc_roots(mem: Memory, sentinel: **Word, visitor: Visitor) {
+unsafe fn _walk_gc_roots(mem: Memory, sentinel: **Word, visitor: Visitor) -> bool {
     let mut segment = rustrt::rust_get_stack_segment();
     let mut last_ret: *Word = ptr::null();
     // To avoid collecting memory used by the GC itself, skip stack
@@ -229,70 +240,77 @@ unsafe fn walk_gc_roots(mem: Memory, sentinel: **Word, visitor: Visitor) {
     // frame is marked by a sentinel, which is a box pointer stored on
     // the stack.
     let mut reached_sentinel = ptr::is_null(sentinel);
-    for stackwalk::walk_stack |frame| {
-        unsafe {
-            let pc = last_ret;
-            let Segment {segment: next_segment, boundary: boundary} =
-                find_segment_for_frame(frame.fp, segment);
-            segment = next_segment;
-            // Each stack segment is bounded by a morestack frame. The
-            // morestack frame includes two return addresses, one for
-            // morestack itself, at the normal offset from the frame
-            // pointer, and then a second return address for the
-            // function prologue (which called morestack after
-            // determining that it had hit the end of the stack).
-            // Since morestack itself takes two parameters, the offset
-            // for this second return address is 3 greater than the
-            // return address for morestack.
-            let ret_offset = if boundary { 4 } else { 1 };
-            last_ret = *ptr::offset(frame.fp, ret_offset) as *Word;
+    for walk_stack |frame| {
+        let pc = last_ret;
+        let Segment {segment: next_segment, boundary: boundary} =
+            find_segment_for_frame(frame.fp, segment);
+        segment = next_segment;
+        // Each stack segment is bounded by a morestack frame. The
+        // morestack frame includes two return addresses, one for
+        // morestack itself, at the normal offset from the frame
+        // pointer, and then a second return address for the
+        // function prologue (which called morestack after
+        // determining that it had hit the end of the stack).
+        // Since morestack itself takes two parameters, the offset
+        // for this second return address is 3 greater than the
+        // return address for morestack.
+        let ret_offset = if boundary { 4 } else { 1 };
+        last_ret = *ptr::offset(frame.fp, ret_offset) as *Word;
 
-            if ptr::is_null(pc) {
-                loop;
-            }
+        if ptr::is_null(pc) {
+            loop;
+        }
 
-            let mut delay_reached_sentinel = reached_sentinel;
-            let sp = is_safe_point(pc);
-            match sp {
-              Some(sp_info) => {
-                for walk_safe_point(frame.fp, sp_info) |root, tydesc| {
-                    // Skip roots until we see the sentinel.
-                    if !reached_sentinel {
-                        if root == sentinel {
-                            delay_reached_sentinel = true;
-                        }
-                        loop;
+        let mut delay_reached_sentinel = reached_sentinel;
+        let sp = is_safe_point(pc);
+        match sp {
+          Some(sp_info) => {
+            for walk_safe_point(frame.fp, sp_info) |root, tydesc| {
+                // Skip roots until we see the sentinel.
+                if !reached_sentinel {
+                    if root == sentinel {
+                        delay_reached_sentinel = true;
                     }
+                    loop;
+                }
 
-                    // Skip null pointers, which can occur when a
-                    // unique pointer has already been freed.
-                    if ptr::is_null(*root) {
-                        loop;
+                // Skip null pointers, which can occur when a
+                // unique pointer has already been freed.
+                if ptr::is_null(*root) {
+                    loop;
+                }
+
+                if ptr::is_null(tydesc) {
+                    // Root is a generic box.
+                    let refcount = **root;
+                    if mem | task_local_heap != 0 && refcount != -1 {
+                        if !visitor(root, tydesc) { return false; }
+                    } else if mem | exchange_heap != 0 && refcount == -1 {
+                        if !visitor(root, tydesc) { return false; }
                     }
-
-                    if ptr::is_null(tydesc) {
-                        // Root is a generic box.
-                        let refcount = **root;
-                        if mem | task_local_heap != 0 && refcount != -1 {
-                            if !visitor(root, tydesc) { return; }
-                        } else if mem | exchange_heap != 0 && refcount == -1 {
-                            if !visitor(root, tydesc) { return; }
-                        }
-                    } else {
-                        // Root is a non-immediate.
-                        if mem | stack != 0 {
-                            if !visitor(root, tydesc) { return; }
-                        }
+                } else {
+                    // Root is a non-immediate.
+                    if mem | stack != 0 {
+                        if !visitor(root, tydesc) { return false; }
                     }
                 }
-              }
-              None => ()
             }
-            reached_sentinel = delay_reached_sentinel;
+          }
+          None => ()
         }
+        reached_sentinel = delay_reached_sentinel;
     }
+    return true;
 }
 
+#[cfg(stage0)]
+unsafe fn walk_gc_roots(mem: Memory, sentinel: **Word, visitor: Visitor) {
+    _walk_gc_roots(mem, sentinel, visitor);
+}
+#[cfg(not(stage0))]
+unsafe fn walk_gc_roots(mem: Memory, sentinel: **Word, visitor: Visitor) -> bool {
+    _walk_gc_roots(mem, sentinel, visitor)
+}
 pub fn gc() {
     unsafe {
         // Abort when GC is disabled.
@@ -339,7 +357,7 @@ pub fn cleanup_stack_for_failure() {
         // own stack roots on the stack anyway.
         let sentinel_box = ~0;
         let sentinel: **Word = if expect_sentinel() {
-            cast::reinterpret_cast(&ptr::addr_of(&sentinel_box))
+            cast::transmute(&sentinel_box)
         } else {
             ptr::null()
         };

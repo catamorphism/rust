@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 #[deriving(Eq)]
 pub enum mode {
     mode_compile_fail,
@@ -65,6 +63,18 @@ pub struct config {
 
     // Run tests using the new runtime
     newrt: bool,
+
+    // Target system to be tested
+    target: ~str,
+
+    // Extra parameter to run adb on arm-linux-androideabi
+    adb_path: ~str,
+
+    // Extra parameter to run test sute on arm-linux-androideabi
+    adb_test_dir: ~str,
+
+    // status whether android device available or not
+    adb_device_status: bool,
 
     // Explain what's going on
     verbose: bool

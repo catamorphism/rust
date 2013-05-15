@@ -8,14 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use syntax::ast;
 use syntax::codemap::{span};
 use syntax::visit;
 
 use core::hashmap::HashSet;
-use core::str;
 use std;
 
 pub fn time<T>(do_it: bool, what: ~str, thunk: &fn() -> T) -> T {
@@ -63,12 +60,12 @@ pub fn field_exprs(fields: ~[ast::field]) -> ~[@ast::expr] {
 
 // Takes a predicate p, returns true iff p is true for any subexpressions
 // of b -- skipping any inner loops (loop, while, loop_body)
-pub fn loop_query(b: &ast::blk, p: @fn(ast::expr_) -> bool) -> bool {
+pub fn loop_query(b: &ast::blk, p: @fn(&ast::expr_) -> bool) -> bool {
     let rs = @mut false;
     let visit_expr: @fn(@ast::expr,
-                        &&flag: @mut bool,
-                        v: visit::vt<@mut bool>) = |e, &&flag, v| {
-        *flag |= p(e.node);
+                        flag: @mut bool,
+                        v: visit::vt<@mut bool>) = |e, flag, v| {
+        *flag |= p(&e.node);
         match e.node {
           // Skip inner loops, since a break in the inner loop isn't a
           // break inside the outer loop
@@ -89,8 +86,8 @@ pub fn loop_query(b: &ast::blk, p: @fn(ast::expr_) -> bool) -> bool {
 pub fn block_query(b: &ast::blk, p: @fn(@ast::expr) -> bool) -> bool {
     let rs = @mut false;
     let visit_expr: @fn(@ast::expr,
-                        &&flag: @mut bool,
-                        v: visit::vt<@mut bool>) = |e, &&flag, v| {
+                        flag: @mut bool,
+                        v: visit::vt<@mut bool>) = |e, flag, v| {
         *flag |= p(e);
         visit::visit_expr(e, flag, v)
     };
@@ -108,20 +105,10 @@ pub fn local_rhs_span(l: @ast::local, def: span) -> span {
     }
 }
 
-pub fn pluralize(n: uint, +s: ~str) -> ~str {
+pub fn pluralize(n: uint, s: ~str) -> ~str {
     if n == 1 { s }
     else { str::concat([s, ~"s"]) }
 }
 
 // A set of node IDs (used to keep track of which node IDs are for statements)
 pub type stmt_set = @mut HashSet<ast::node_id>;
-
-//
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
-//

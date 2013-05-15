@@ -12,9 +12,6 @@
 // state without mutexes.
 
 use core::libc::{c_char, c_int};
-use core::prelude::*;
-use core::str;
-use core::task;
 
 pub mod rustrt {
     use core::libc::{c_char, c_int};
@@ -72,11 +69,11 @@ fn complete_key(_v: @CompletionCb) {}
 
 /// Bind to the main completion callback
 pub unsafe fn complete(cb: CompletionCb) {
-    task::local_data::local_data_set(complete_key, @(cb));
+    local_data::local_data_set(complete_key, @(cb));
 
     extern fn callback(line: *c_char, completions: *()) {
         unsafe {
-            let cb = *task::local_data::local_data_get(complete_key)
+            let cb = *local_data::local_data_get(complete_key)
                 .get();
 
             do cb(str::raw::from_c_str(line)) |suggestion| {

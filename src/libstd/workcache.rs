@@ -1,4 +1,4 @@
-// Copyright 2012 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2012-2013 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#[allow(deprecated_mode)];
-
 use json;
 use sha1;
 use serialize::{Encoder, Encodable, Decoder, Decodable};
@@ -17,24 +15,23 @@ use sort;
 
 use core::cell::Cell;
 use core::cmp;
+use core::comm::{PortOne, oneshot, send_one};
 use core::either::{Either, Left, Right};
-use core::io;
-use core::comm::{oneshot, PortOne, send_one};
-use core::pipes::recv;
-use core::prelude::*;
-use core::result;
-use core::run;
 use core::hashmap::HashMap;
-use core::task;
+use core::io;
+use core::pipes::recv;
+use core::run;
 use core::to_bytes;
+use core::util::replace;
 
 /**
 *
-* This is a loose clone of the fbuild build system, made a touch more
-* generic (not wired to special cases on files) and much less metaprogram-y
-* due to rust's comparative weakness there, relative to python.
+* This is a loose clone of the [fbuild build system](https://github.com/felix-lang/fbuild),
+* made a touch more generic (not wired to special cases on files) and much
+* less metaprogram-y due to rust's comparative weakness there, relative to
+* python.
 *
-* It's based around _imperative bulids_ that happen to have some function
+* It's based around _imperative builds_ that happen to have some function
 * calls cached. That is, it's _just_ a mechanism for describing cached
 * functions. This makes it much simpler and smaller than a "build system"
 * that produces an IR and evaluates it. The evaluation order is normal
@@ -54,7 +51,7 @@ use core::to_bytes;
 * Works are conceptually single units, but we store them most of the time
 * in maps of the form (type,name) => value. These are WorkMaps.
 *
-* A cached function divides the works it's interested up into inputs and
+* A cached function divides the works it's interested in into inputs and
 * outputs, and subdivides those into declared (input) works and
 * discovered (input and output) works.
 *
@@ -103,6 +100,7 @@ struct WorkKey {
     name: ~str
 }
 
+#[cfg(stage0)]
 impl to_bytes::IterBytes for WorkKey {
     #[inline(always)]
     fn iter_bytes(&self, lsb0: bool, f: to_bytes::Cb) {
@@ -110,6 +108,13 @@ impl to_bytes::IterBytes for WorkKey {
         self.kind.iter_bytes(lsb0, |bytes| {flag = f(bytes); flag});
         if !flag { return; }
         self.name.iter_bytes(lsb0, f);
+    }
+}
+#[cfg(not(stage0))]
+impl to_bytes::IterBytes for WorkKey {
+    #[inline(always)]
+    fn iter_bytes(&self, lsb0: bool, f: to_bytes::Cb) -> bool {
+        self.kind.iter_bytes(lsb0, f) && self.name.iter_bytes(lsb0, f)
     }
 }
 
@@ -143,7 +148,7 @@ impl WorkMap {
 }
 
 impl<S:Encoder> Encodable<S> for WorkMap {
-    fn encode(&self, s: &S) {
+    fn encode(&self, s: &mut S) {
         let mut d = ~[];
         for self.each |k, v| {
             d.push((copy *k, copy *v))
@@ -154,7 +159,7 @@ impl<S:Encoder> Encodable<S> for WorkMap {
 }
 
 impl<D:Decoder> Decodable<D> for WorkMap {
-    fn decode(d: &D) -> WorkMap {
+    fn decode(d: &mut D) -> WorkMap {
         let v : ~[(WorkKey,~str)] = Decodable::decode(d);
         let mut w = WorkMap::new();
         for v.each |&(k, v)| {
@@ -173,8 +178,8 @@ struct Database {
 pub impl Database {
     fn prepare(&mut self,
                fn_name: &str,
-               declared_inputs: &WorkMap) -> Option<(WorkMap, WorkMap, ~str)>
-    {
+               declared_inputs: &WorkMap)
+               -> Option<(WorkMap, WorkMap, ~str)> {
         let k = json_encode(&(fn_name, declared_inputs));
         match self.db_cache.find(&k) {
             None => None,
@@ -233,7 +238,8 @@ struct Work<T> {
 
 fn json_encode<T:Encodable<json::Encoder>>(t: &T) -> ~str {
     do io::with_str_writer |wr| {
-        t.encode(&json::Encoder(wr));
+        let mut encoder = json::Encoder(wr);
+        t.encode(&mut encoder);
     }
 }
 
@@ -241,7 +247,8 @@ fn json_encode<T:Encodable<json::Encoder>>(t: &T) -> ~str {
 fn json_decode<T:Decodable<json::Decoder>>(s: &str) -> T {
     do io::with_str_reader(s) |rdr| {
         let j = result::unwrap(json::from_reader(rdr));
-        Decodable::decode(&json::Decoder(j))
+        let mut decoder = json::Decoder(j);
+        Decodable::decode(&mut decoder)
     }
 }
 
@@ -341,17 +348,15 @@ impl TPrep for Prep {
                               &self.declared_inputs) &&
             self.all_fresh("discovered input", disc_in) &&
             self.all_fresh("discovered output", disc_out) => {
-                Work::new(@mut *self, Left(json_decode(*res)))
+                Work::new(@mut copy *self, Left(json_decode(*res)))
             }
 
             _ => {
-                let (chan, port) = oneshot::init();
-                let mut blk = None;
-                blk <-> bo;
-                let blk = blk.unwrap();
+                let (port, chan) = oneshot();
+                let blk = replace(&mut bo, None).unwrap();
                 let chan = Cell(chan);
 
-                do task::spawn || {
+                do task::spawn {
                     let exe = Exec {
                         discovered_inputs: WorkMap::new(),
                         discovered_outputs: WorkMap::new(),
@@ -360,7 +365,7 @@ impl TPrep for Prep {
                     let v = blk(&exe);
                     send_one(chan, (exe, v));
                 }
-                Work::new(@mut *self, Right(port))
+                Work::new(@mut copy *self, Right(port))
             }
         }
     }
@@ -380,15 +385,13 @@ fn unwrap<T:Owned +
             Decodable<json::Decoder>>( // FIXME(#5121)
         w: Work<T>) -> T {
     let mut ww = w;
-    let mut s = None;
-
-    ww.res <-> s;
+    let s = replace(&mut ww.res, None);
 
     match s {
         None => fail!(),
         Some(Left(v)) => v,
         Some(Right(port)) => {
-            let (exe, v) = match recv(port) {
+            let (exe, v) = match recv(port.unwrap()) {
                 oneshot::send(data) => data
             };
 

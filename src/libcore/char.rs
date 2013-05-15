@@ -1,4 +1,4 @@
-// Copyright 2012 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2012-2013 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -10,13 +10,15 @@
 
 //! Utilities for manipulating the char type
 
+#[cfg(not(test))]
+use cmp::Ord;
 use option::{None, Option, Some};
 use str;
 use u32;
 use uint;
-use unicode;
+use unicode::{derived_property, general_category};
 
-#[cfg(notest)] use cmp::Eq;
+#[cfg(not(test))] use cmp::Eq;
 
 /*
     Lu  Uppercase_Letter    an uppercase letter
@@ -51,10 +53,9 @@ use unicode;
     Cn  Unassigned  a reserved unassigned code point or a noncharacter
 */
 
-pub use is_alphabetic = unicode::derived_property::Alphabetic;
-pub use is_XID_start = unicode::derived_property::XID_Start;
-pub use is_XID_continue = unicode::derived_property::XID_Continue;
-
+pub fn is_alphabetic(c: char) -> bool   { derived_property::Alphabetic(c) }
+pub fn is_XID_start(c: char) -> bool    { derived_property::XID_Start(c) }
+pub fn is_XID_continue(c: char) -> bool { derived_property::XID_Continue(c) }
 
 /**
  * Indicates whether a character is in lower case, defined
@@ -62,7 +63,7 @@ pub use is_XID_continue = unicode::derived_property::XID_Continue;
  */
 #[inline(always)]
 pub fn is_lowercase(c: char) -> bool {
-    return unicode::general_category::Ll(c);
+    return general_category::Ll(c);
 }
 
 /**
@@ -71,7 +72,7 @@ pub fn is_lowercase(c: char) -> bool {
  */
 #[inline(always)]
 pub fn is_uppercase(c: char) -> bool {
-    return unicode::general_category::Lu(c);
+    return general_category::Lu(c);
 }
 
 /**
@@ -82,9 +83,9 @@ pub fn is_uppercase(c: char) -> bool {
 #[inline(always)]
 pub fn is_whitespace(c: char) -> bool {
     return ('\x09' <= c && c <= '\x0d')
-        || unicode::general_category::Zs(c)
-        || unicode::general_category::Zl(c)
-        || unicode::general_category::Zp(c);
+        || general_category::Zs(c)
+        || general_category::Zl(c)
+        || general_category::Zp(c);
 }
 
 /**
@@ -94,29 +95,23 @@ pub fn is_whitespace(c: char) -> bool {
  */
 #[inline(always)]
 pub fn is_alphanumeric(c: char) -> bool {
-    return unicode::derived_property::Alphabetic(c) ||
-        unicode::general_category::Nd(c) ||
-        unicode::general_category::Nl(c) ||
-        unicode::general_category::No(c);
-}
-
-/// Indicates whether the character is an ASCII character
-#[inline(always)]
-pub fn is_ascii(c: char) -> bool {
-   c - ('\x7F' & c) == '\x00'
+    return derived_property::Alphabetic(c) ||
+        general_category::Nd(c) ||
+        general_category::Nl(c) ||
+        general_category::No(c);
 }
 
 /// Indicates whether the character is numeric (Nd, Nl, or No)
 #[inline(always)]
 pub fn is_digit(c: char) -> bool {
-    return unicode::general_category::Nd(c) ||
-        unicode::general_category::Nl(c) ||
-        unicode::general_category::No(c);
+    return general_category::Nd(c) ||
+        general_category::Nl(c) ||
+        general_category::No(c);
 }
 
 /**
  * Checks if a character parses as a numeric digit in the given radix.
- * Compared to `is_digit()`, this function only recognizes the ascii
+ * Compared to `is_digit()`, this function only recognizes the
  * characters `0-9`, `a-z` and `A-Z`.
  *
  * Returns `true` if `c` is a valid digit under `radix`, and `false`
@@ -163,7 +158,7 @@ pub fn to_digit(c: char, radix: uint) -> Option<uint> {
 }
 
 /**
- * Converts a number to the ascii character representing it.
+ * Converts a number to the character representing it.
  *
  * Returns `Some(char)` if `num` represents one digit under `radix`,
  * using one character of `0-9` or `a-z`, or `None` if it doesn't.
@@ -234,24 +229,39 @@ pub fn escape_default(c: char) -> ~str {
     }
 }
 
-/**
- * Compare two chars
- *
- * # Return value
- *
- * -1 if a < b, 0 if a == b, +1 if a > b
- */
-#[inline(always)]
-pub fn cmp(a: char, b: char) -> int {
-    return  if b > a { -1 }
-    else if b < a { 1 }
-    else { 0 }
+/// Returns the amount of bytes this character would need if encoded in utf8
+pub fn len_utf8_bytes(c: char) -> uint {
+    static max_one_b: uint = 128u;
+    static max_two_b: uint = 2048u;
+    static max_three_b: uint = 65536u;
+    static max_four_b: uint = 2097152u;
+
+    let code = c as uint;
+    if code < max_one_b { 1u }
+    else if code < max_two_b { 2u }
+    else if code < max_three_b { 3u }
+    else if code < max_four_b { 4u }
+    else { fail!(~"invalid character!") }
 }
 
-#[cfg(notest)]
+#[cfg(not(test))]
 impl Eq for char {
+    #[inline(always)]
     fn eq(&self, other: &char) -> bool { (*self) == (*other) }
+    #[inline(always)]
     fn ne(&self, other: &char) -> bool { (*self) != (*other) }
+}
+
+#[cfg(not(test))]
+impl Ord for char {
+    #[inline(always)]
+    fn lt(&self, other: &char) -> bool { *self < *other }
+    #[inline(always)]
+    fn le(&self, other: &char) -> bool { *self <= *other }
+    #[inline(always)]
+    fn gt(&self, other: &char) -> bool { *self > *other }
+    #[inline(always)]
+    fn ge(&self, other: &char) -> bool { *self >= *other }
 }
 
 #[test]
@@ -302,12 +312,6 @@ fn test_to_digit() {
 }
 
 #[test]
-fn test_is_ascii() {
-   assert!(str::all(~"banana", is_ascii));
-   assert!(! str::all(~"ประเทศไทย中华Việt Nam", is_ascii));
-}
-
-#[test]
 fn test_is_digit() {
    assert!(is_digit('2'));
    assert!(is_digit('7'));
@@ -333,7 +337,6 @@ fn test_escape_default() {
     assert_eq!(escape_default('\u011b'), ~"\\u011b");
     assert_eq!(escape_default('\U0001d4b6'), ~"\\U0001d4b6");
 }
-
 
 #[test]
 fn test_escape_unicode() {

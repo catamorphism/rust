@@ -8,13 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-
-
 /*
  * Inline assembly support.
  */
-
-use core::prelude::*;
 
 use ast;
 use codemap::span;
@@ -56,7 +52,10 @@ pub fn expand_asm(cx: @ext_ctxt, sp: span, tts: &[ast::token_tree])
     let mut dialect = ast::asm_att;
 
     let mut state = Asm;
-    loop outer: {
+
+    // Not using labeled break to get us through one round of bootstrapping.
+    let mut continue = true;
+    while continue {
         match state {
             Asm => {
                 asm = expr_to_str(cx, p.parse_expr(),
@@ -143,20 +142,30 @@ pub fn expand_asm(cx: @ext_ctxt, sp: span, tts: &[ast::token_tree])
                 p.bump();
                 match next_state(state) {
                     Some(x) => x,
-                    None    => break outer
+                    None    => {
+                        continue = false;
+                        break
+                    }
                 }
             } else if *p.token == token::MOD_SEP {
                 p.bump();
                 let s = match next_state(state) {
                     Some(x) => x,
-                    None    => break outer
+                    None    => {
+                        continue = false;
+                        break
+                    }
                 };
                 match next_state(s) {
                     Some(x) => x,
-                    None    => break outer
+                    None    => {
+                        continue = false;
+                        break
+                    }
                 }
             } else if *p.token == token::EOF {
-                break outer;
+                continue = false;
+                break;
             } else {
                state
             };
@@ -178,15 +187,3 @@ pub fn expand_asm(cx: @ext_ctxt, sp: span, tts: &[ast::token_tree])
         span: sp
     })
 }
-
-
-
-//
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
-//

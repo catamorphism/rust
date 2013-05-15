@@ -10,6 +10,7 @@
 
 //! Misc low level stuff
 
+use option::{Some, None};
 use cast;
 use cmp::{Eq, Ord};
 use gc;
@@ -83,10 +84,22 @@ pub fn get_type_desc<T>() -> *TypeDesc {
     unsafe { rusti::get_tydesc::<T>() as *TypeDesc }
 }
 
+/// Returns a pointer to a type descriptor.
+#[inline(always)]
+pub fn get_type_desc_val<T>(_val: &T) -> *TypeDesc {
+    get_type_desc::<T>()
+}
+
 /// Returns the size of a type
 #[inline(always)]
 pub fn size_of<T>() -> uint {
     unsafe { rusti::size_of::<T>() }
+}
+
+/// Returns the size of the type that `_val` points to
+#[inline(always)]
+pub fn size_of_val<T>(_val: &T) -> uint {
+    size_of::<T>()
 }
 
 /**
@@ -100,6 +113,13 @@ pub fn nonzero_size_of<T>() -> uint {
     if s == 0 { 1 } else { s }
 }
 
+/// Returns the size of the type of the value that `_val` points to
+#[inline(always)]
+pub fn nonzero_size_of_val<T>(_val: &T) -> uint {
+    nonzero_size_of::<T>()
+}
+
+
 /**
  * Returns the ABI-required minimum alignment of a type
  *
@@ -111,17 +131,31 @@ pub fn min_align_of<T>() -> uint {
     unsafe { rusti::min_align_of::<T>() }
 }
 
+/// Returns the ABI-required minimum alignment of the type of the value that
+/// `_val` points to
+#[inline(always)]
+pub fn min_align_of_val<T>(_val: &T) -> uint {
+    min_align_of::<T>()
+}
+
 /// Returns the preferred alignment of a type
 #[inline(always)]
 pub fn pref_align_of<T>() -> uint {
     unsafe { rusti::pref_align_of::<T>() }
 }
 
+/// Returns the preferred alignment of the type of the value that
+/// `_val` points to
+#[inline(always)]
+pub fn pref_align_of_val<T>(_val: &T) -> uint {
+    pref_align_of::<T>()
+}
+
 /// Returns the refcount of a shared box (as just before calling this)
 #[inline(always)]
 pub fn refcount<T>(t: @T) -> uint {
     unsafe {
-        let ref_ptr: *uint = cast::reinterpret_cast(&t);
+        let ref_ptr: *uint = cast::transmute_copy(&t);
         *ref_ptr - 1
     }
 }
@@ -132,14 +166,35 @@ pub fn log_str<T>(t: &T) -> ~str {
     }
 }
 
-/** Initiate task failure */
-pub fn begin_unwind(msg: ~str, file: ~str, line: uint) -> ! {
-    do str::as_buf(msg) |msg_buf, _msg_len| {
-        do str::as_buf(file) |file_buf, _file_len| {
-            unsafe {
-                let msg_buf = cast::transmute(msg_buf);
-                let file_buf = cast::transmute(file_buf);
-                begin_unwind_(msg_buf, file_buf, line as libc::size_t)
+/// Trait for initiating task failure.
+pub trait FailWithCause {
+    /// Fail the current task, taking ownership of `cause`
+    fn fail_with(cause: Self, file: &'static str, line: uint) -> !;
+}
+
+impl FailWithCause for ~str {
+    fn fail_with(cause: ~str, file: &'static str, line: uint) -> ! {
+        do str::as_buf(cause) |msg_buf, _msg_len| {
+            do str::as_buf(file) |file_buf, _file_len| {
+                unsafe {
+                    let msg_buf = cast::transmute(msg_buf);
+                    let file_buf = cast::transmute(file_buf);
+                    begin_unwind_(msg_buf, file_buf, line as libc::size_t)
+                }
+            }
+        }
+    }
+}
+
+impl FailWithCause for &'static str {
+    fn fail_with(cause: &'static str, file: &'static str, line: uint) -> ! {
+        do str::as_buf(cause) |msg_buf, _msg_len| {
+            do str::as_buf(file) |file_buf, _file_len| {
+                unsafe {
+                    let msg_buf = cast::transmute(msg_buf);
+                    let file_buf = cast::transmute(file_buf);
+                    begin_unwind_(msg_buf, file_buf, line as libc::size_t)
+                }
             }
         }
     }
@@ -147,22 +202,35 @@ pub fn begin_unwind(msg: ~str, file: ~str, line: uint) -> ! {
 
 // FIXME #4427: Temporary until rt::rt_fail_ goes away
 pub fn begin_unwind_(msg: *c_char, file: *c_char, line: size_t) -> ! {
-    unsafe {
-        gc::cleanup_stack_for_failure();
-        rustrt::rust_upcall_fail(msg, file, line);
-        cast::transmute(())
-    }
-}
+    use rt::{context, OldTaskContext};
+    use rt::local_services::unsafe_borrow_local_services;
 
-pub fn fail_assert(msg: &str, file: &str, line: uint) -> ! {
-    let (msg, file) = (msg.to_owned(), file.to_owned());
-    begin_unwind(~"assertion failed: " + msg, file, line)
+    match context() {
+        OldTaskContext => {
+            unsafe {
+                gc::cleanup_stack_for_failure();
+                rustrt::rust_upcall_fail(msg, file, line);
+                cast::transmute(())
+            }
+        }
+        _ => {
+            // XXX: Need to print the failure message
+            gc::cleanup_stack_for_failure();
+            unsafe {
+                let local_services = unsafe_borrow_local_services();
+                match local_services.unwinder {
+                    Some(ref mut unwinder) => unwinder.begin_unwind(),
+                    None => abort!("failure without unwinder. aborting process")
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use cast;
-    use sys::{Closure, pref_align_of, size_of, nonzero_size_of};
+    use sys::*;
 
     #[test]
     fn size_of_basic() {
@@ -189,11 +257,27 @@ mod tests {
     }
 
     #[test]
+    fn size_of_val_basic() {
+        assert_eq!(size_of_val(&1u8), 1);
+        assert_eq!(size_of_val(&1u16), 2);
+        assert_eq!(size_of_val(&1u32), 4);
+        assert_eq!(size_of_val(&1u64), 8);
+    }
+
+    #[test]
     fn nonzero_size_of_basic() {
         type Z = [i8, ..0];
         assert!(size_of::<Z>() == 0u);
         assert!(nonzero_size_of::<Z>() == 1u);
         assert!(nonzero_size_of::<uint>() == size_of::<uint>());
+    }
+
+    #[test]
+    fn nonzero_size_of_val_basic() {
+        let z = [0u8, ..0];
+        assert_eq!(size_of_val(&z), 0u);
+        assert_eq!(nonzero_size_of_val(&z), 1u);
+        assert_eq!(nonzero_size_of_val(&1u), size_of_val(&1u));
     }
 
     #[test]
@@ -220,6 +304,13 @@ mod tests {
     }
 
     #[test]
+    fn align_of_val_basic() {
+        assert_eq!(pref_align_of_val(&1u8), 1u);
+        assert_eq!(pref_align_of_val(&1u16), 2u);
+        assert_eq!(pref_align_of_val(&1u32), 4u);
+    }
+
+    #[test]
     fn synthesize_closure() {
         unsafe {
             let x = 10;
@@ -241,12 +332,12 @@ mod tests {
             assert!(new_f(20) == 30);
         }
     }
-}
 
-// Local Variables:
-// mode: rust;
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
+    #[test]
+    #[should_fail]
+    fn fail_static() { FailWithCause::fail_with("cause", file!(), line!())  }
+
+    #[test]
+    #[should_fail]
+    fn fail_owned() { FailWithCause::fail_with(~"cause", file!(), line!())  }
+}

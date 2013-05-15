@@ -8,33 +8,17 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use driver::session::Session;
 use driver::session;
 use middle::ty;
+use middle::pat_util;
 use util::ppaux::{ty_to_str};
 
 use core::hashmap::HashMap;
-use core::char;
-use core::cmp;
-use core::i8;
-use core::i16;
-use core::i32;
-use core::i64;
-use core::int;
-use core::str;
-use core::u8;
-use core::u16;
-use core::u32;
-use core::u64;
-use core::uint;
-use core::vec;
 use std::smallintmap::SmallIntMap;
 use syntax::attr;
 use syntax::codemap::span;
 use syntax::codemap;
-use syntax::print::pprust::mode_to_str;
 use syntax::{ast, visit};
 
 /**
@@ -68,24 +52,19 @@ pub enum lint {
     unrecognized_lint,
     non_implicitly_copyable_typarams,
     vecs_implicitly_copyable,
-    deprecated_mode,
     deprecated_pattern,
     non_camel_case_types,
     type_limits,
     default_methods,
-    deprecated_mutable_fields,
-    deprecated_drop,
     unused_unsafe,
-    foreign_mode,
 
     managed_heap_memory,
     owned_heap_memory,
     heap_memory,
 
-    legacy_modes,
-
     unused_variable,
     dead_assignment,
+    unused_mut,
 }
 
 pub fn level_to_str(lv: level) -> &'static str {
@@ -110,181 +89,162 @@ struct LintSpec {
 
 pub type LintDict = @HashMap<~str, LintSpec>;
 
+static lint_table: &'static [(&'static str, LintSpec)] = &[
+    ("ctypes",
+     LintSpec {
+        lint: ctypes,
+        desc: "proper use of core::libc types in foreign modules",
+        default: warn
+     }),
+
+    ("unused_imports",
+     LintSpec {
+        lint: unused_imports,
+        desc: "imports that are never used",
+        default: warn
+     }),
+
+    ("while_true",
+     LintSpec {
+        lint: while_true,
+        desc: "suggest using loop { } instead of while(true) { }",
+        default: warn
+     }),
+
+    ("path_statement",
+     LintSpec {
+        lint: path_statement,
+        desc: "path statements with no effect",
+        default: warn
+     }),
+
+    ("unrecognized_lint",
+     LintSpec {
+        lint: unrecognized_lint,
+        desc: "unrecognized lint attribute",
+        default: warn
+     }),
+
+    ("non_implicitly_copyable_typarams",
+     LintSpec {
+        lint: non_implicitly_copyable_typarams,
+        desc: "passing non implicitly copyable types as copy type params",
+        default: warn
+     }),
+
+    ("vecs_implicitly_copyable",
+     LintSpec {
+        lint: vecs_implicitly_copyable,
+        desc: "make vecs and strs not implicitly copyable \
+              (only checked at top level)",
+        default: warn
+     }),
+
+    ("implicit_copies",
+     LintSpec {
+        lint: implicit_copies,
+        desc: "implicit copies of non implicitly copyable data",
+        default: warn
+     }),
+
+    ("deprecated_pattern",
+     LintSpec {
+        lint: deprecated_pattern,
+        desc: "warn about deprecated uses of pattern bindings",
+        default: allow
+     }),
+
+    ("non_camel_case_types",
+     LintSpec {
+        lint: non_camel_case_types,
+        desc: "types, variants and traits should have camel case names",
+        default: allow
+     }),
+
+    ("managed_heap_memory",
+     LintSpec {
+        lint: managed_heap_memory,
+        desc: "use of managed (@ type) heap memory",
+        default: allow
+     }),
+
+    ("owned_heap_memory",
+     LintSpec {
+        lint: owned_heap_memory,
+        desc: "use of owned (~ type) heap memory",
+        default: allow
+     }),
+
+    ("heap_memory",
+     LintSpec {
+        lint: heap_memory,
+        desc: "use of any (~ type or @ type) heap memory",
+        default: allow
+     }),
+
+    ("type_limits",
+     LintSpec {
+        lint: type_limits,
+        desc: "comparisons made useless by limits of the types involved",
+        default: warn
+     }),
+
+    ("default_methods",
+     LintSpec {
+        lint: default_methods,
+        desc: "allow default methods",
+        default: deny
+     }),
+
+    ("unused_unsafe",
+     LintSpec {
+        lint: unused_unsafe,
+        desc: "unnecessary use of an `unsafe` block",
+        default: warn
+    }),
+
+    ("unused_variable",
+     LintSpec {
+        lint: unused_variable,
+        desc: "detect variables which are not used in any way",
+        default: warn
+    }),
+
+    ("dead_assignment",
+     LintSpec {
+        lint: dead_assignment,
+        desc: "detect assignments that will never be read",
+        default: warn
+    }),
+
+    ("unused_mut",
+     LintSpec {
+        lint: unused_mut,
+        desc: "detect mut variables which don't need to be mutable",
+        default: warn
+    }),
+];
+
 /*
   Pass names should not contain a '-', as the compiler normalizes
   '-' to '_' in command-line flags
  */
 pub fn get_lint_dict() -> LintDict {
-    let v = ~[
-        (~"ctypes",
-         LintSpec {
-            lint: ctypes,
-            desc: "proper use of core::libc types in foreign modules",
-            default: warn
-         }),
-
-        (~"unused_imports",
-         LintSpec {
-            lint: unused_imports,
-            desc: "imports that are never used",
-            default: warn
-         }),
-
-        (~"while_true",
-         LintSpec {
-            lint: while_true,
-            desc: "suggest using loop { } instead of while(true) { }",
-            default: warn
-         }),
-
-        (~"path_statement",
-         LintSpec {
-            lint: path_statement,
-            desc: "path statements with no effect",
-            default: warn
-         }),
-
-        (~"unrecognized_lint",
-         LintSpec {
-            lint: unrecognized_lint,
-            desc: "unrecognized lint attribute",
-            default: warn
-         }),
-
-        (~"non_implicitly_copyable_typarams",
-         LintSpec {
-            lint: non_implicitly_copyable_typarams,
-            desc: "passing non implicitly copyable types as copy type params",
-            default: warn
-         }),
-
-        (~"vecs_implicitly_copyable",
-         LintSpec {
-            lint: vecs_implicitly_copyable,
-            desc: "make vecs and strs not implicitly copyable \
-                  (only checked at top level)",
-            default: warn
-         }),
-
-        (~"implicit_copies",
-         LintSpec {
-            lint: implicit_copies,
-            desc: "implicit copies of non implicitly copyable data",
-            default: warn
-         }),
-
-        (~"deprecated_mode",
-         LintSpec {
-            lint: deprecated_mode,
-            desc: "warn about deprecated uses of modes",
-            default: warn
-         }),
-
-        (~"foreign_mode",
-         LintSpec {
-            lint: foreign_mode,
-            desc: "warn about deprecated uses of modes in foreign fns",
-            default: warn
-         }),
-
-        (~"deprecated_pattern",
-         LintSpec {
-            lint: deprecated_pattern,
-            desc: "warn about deprecated uses of pattern bindings",
-            default: allow
-         }),
-
-        (~"non_camel_case_types",
-         LintSpec {
-            lint: non_camel_case_types,
-            desc: "types, variants and traits should have camel case names",
-            default: allow
-         }),
-
-        (~"managed_heap_memory",
-         LintSpec {
-            lint: managed_heap_memory,
-            desc: "use of managed (@ type) heap memory",
-            default: allow
-         }),
-
-        (~"owned_heap_memory",
-         LintSpec {
-            lint: owned_heap_memory,
-            desc: "use of owned (~ type) heap memory",
-            default: allow
-         }),
-
-        (~"heap_memory",
-         LintSpec {
-            lint: heap_memory,
-            desc: "use of any (~ type or @ type) heap memory",
-            default: allow
-         }),
-
-        (~"legacy modes",
-         LintSpec {
-            lint: legacy_modes,
-            desc: "allow legacy modes",
-            default: forbid
-         }),
-
-        (~"type_limits",
-         LintSpec {
-            lint: type_limits,
-            desc: "comparisons made useless by limits of the types involved",
-            default: warn
-         }),
-
-        (~"default_methods",
-         LintSpec {
-            lint: default_methods,
-            desc: "allow default methods",
-            default: deny
-         }),
-
-        (~"deprecated_mutable_fields",
-         LintSpec {
-            lint: deprecated_mutable_fields,
-            desc: "deprecated mutable fields in structures",
-            default: deny
-        }),
-
-        (~"deprecated_drop",
-         LintSpec {
-            lint: deprecated_drop,
-            desc: "deprecated \"drop\" notation for the destructor",
-            default: deny
-        }),
-
-        (~"unused_unsafe",
-         LintSpec {
-            lint: unused_unsafe,
-            desc: "unnecessary use of an \"unsafe\" block or function",
-            default: warn
-        }),
-
-        (~"unused_variable",
-         LintSpec {
-            lint: unused_variable,
-            desc: "detect variables which are not used in any way",
-            default: warn
-        }),
-
-        (~"dead_assignment",
-         LintSpec {
-            lint: dead_assignment,
-            desc: "detect assignments that will never be read",
-            default: warn
-        }),
-    ];
     let mut map = HashMap::new();
-    do vec::consume(v) |_, (k, v)| {
-        map.insert(k, v);
+    for lint_table.each|&(k, v)| {
+        map.insert(k.to_str(), v);
     }
     return @map;
 }
 
+pub fn get_lint_name(lint_mode: lint) -> ~str {
+    for lint_table.each |&(name, spec)| {
+        if spec.lint == lint_mode {
+            return name.to_str();
+        }
+    }
+    fail!();
+}
 // This is a highly not-optimal set of data structure decisions.
 type LintModes = @mut SmallIntMap<level>;
 type LintModeMap = @mut HashMap<ast::node_id, LintModes>;
@@ -348,7 +308,7 @@ pub impl Context {
         }
     }
 
-    fn span_lint(&self, level: level, span: span, +msg: ~str) {
+    fn span_lint(&self, level: level, span: span, msg: ~str) {
         self.sess.span_lint_level(level, span, msg);
     }
 
@@ -379,14 +339,14 @@ pub impl Context {
                           _ => {
                             self.sess.span_err(
                                 meta.span,
-                                ~"malformed lint attribute");
+                                "malformed lint attribute");
                           }
                         }
                     }
                   }
                   _  => {
                     self.sess.span_err(meta.span,
-                                       ~"malformed lint attribute");
+                                       "malformed lint attribute");
                   }
                 }
             }
@@ -438,7 +398,7 @@ pub impl Context {
 }
 
 
-fn build_settings_item(i: @ast::item, &&cx: Context, v: visit::vt<Context>) {
+fn build_settings_item(i: @ast::item, cx: Context, v: visit::vt<Context>) {
     do cx.with_lint_attrs(/*bad*/copy i.attrs) |cx| {
         if !cx.is_default {
             cx.sess.lint_settings.settings_map.insert(i.id, cx.curr);
@@ -481,7 +441,7 @@ pub fn build_settings_crate(sess: session::Session, crate: @ast::crate) {
             visit_item: build_settings_item,
             .. *visit::default_visitor()
         });
-        visit::visit_crate(*crate, cx, visit);
+        visit::visit_crate(crate, cx, visit);
     }
 
     sess.abort_if_errors();
@@ -493,12 +453,10 @@ fn check_item(i: @ast::item, cx: ty::ctxt) {
     check_item_path_statement(cx, i);
     check_item_non_camel_case_types(cx, i);
     check_item_heap(cx, i);
-    check_item_deprecated_modes(cx, i);
     check_item_type_limits(cx, i);
     check_item_default_methods(cx, i);
-    check_item_deprecated_mutable_fields(cx, i);
-    check_item_deprecated_drop(cx, i);
     check_item_unused_unsafe(cx, i);
+    check_item_unused_mut(cx, i);
 }
 
 // Take a visitor, and modify it so that it will not proceed past subitems.
@@ -527,8 +485,8 @@ fn check_item_while_true(cx: ty::ctxt, it: @ast::item) {
                                 cx.sess.span_lint(
                                     while_true, e.id, it.id,
                                     e.span,
-                                    ~"denote infinite loops \
-                                      with loop { ... }");
+                                    "denote infinite loops \
+                                     with loop { ... }");
                             }
                             _ => ()
                         }
@@ -645,7 +603,7 @@ fn check_item_type_limits(cx: ty::ctxt, it: @ast::item) {
                     && !check_limits(cx, *binop, l, r) {
                     cx.sess.span_lint(
                         type_limits, e.id, it.id, e.span,
-                        ~"comparison is useless due to type limits");
+                        "comparison is useless due to type limits");
                 }
             }
             _ => ()
@@ -672,48 +630,8 @@ fn check_item_default_methods(cx: ty::ctxt, item: @ast::item) {
                             item.id,
                             item.id,
                             item.span,
-                            ~"default methods are experimental");
+                            "default methods are experimental");
                     }
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn check_item_deprecated_mutable_fields(cx: ty::ctxt, item: @ast::item) {
-    match item.node {
-        ast::item_struct(struct_def, _) => {
-            for struct_def.fields.each |field| {
-                match field.node.kind {
-                    ast::named_field(_, ast::struct_mutable, _) => {
-                        cx.sess.span_lint(deprecated_mutable_fields,
-                                          item.id,
-                                          item.id,
-                                          field.span,
-                                          ~"mutable fields are deprecated");
-                    }
-                    ast::named_field(*) | ast::unnamed_field => {}
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn check_item_deprecated_drop(cx: ty::ctxt, item: @ast::item) {
-    match item.node {
-        ast::item_struct(struct_def, _) => {
-            match struct_def.dtor {
-                None => {}
-                Some(ref dtor) => {
-                    cx.sess.span_lint(deprecated_drop,
-                                      item.id,
-                                      item.id,
-                                      dtor.span,
-                                      ~"`drop` notation for destructors is \
-                                        deprecated; implement the `Drop` \
-                                        trait instead");
                 }
             }
         }
@@ -722,40 +640,25 @@ fn check_item_deprecated_drop(cx: ty::ctxt, item: @ast::item) {
 }
 
 fn check_item_ctypes(cx: ty::ctxt, it: @ast::item) {
-
     fn check_foreign_fn(cx: ty::ctxt, fn_id: ast::node_id,
                         decl: &ast::fn_decl) {
-        // warn about `&&` mode on foreign functions, both because it is
-        // deprecated and because its semantics have changed recently:
-        for decl.inputs.eachi |i, arg| {
-            match ty::resolved_mode(cx, arg.mode) {
-                ast::by_copy => {}
-                ast::by_ref => {
-                    cx.sess.span_lint(
-                        foreign_mode, fn_id, fn_id, arg.ty.span,
-                        fmt!("foreign function uses `&&` mode \
-                              on argument %u", i));
-                }
-            }
-        }
-
         let tys = vec::map(decl.inputs, |a| a.ty );
         for vec::each(vec::append_one(tys, decl.output)) |ty| {
             match ty.node {
               ast::ty_path(_, id) => {
-                match *cx.def_map.get(&id) {
+                match cx.def_map.get_copy(&id) {
                   ast::def_prim_ty(ast::ty_int(ast::ty_i)) => {
                     cx.sess.span_lint(
                         ctypes, id, fn_id,
                         ty.span,
-                        ~"found rust type `int` in foreign module, while \
+                        "found rust type `int` in foreign module, while \
                          libc::c_int or libc::c_long should be used");
                   }
                   ast::def_prim_ty(ast::ty_uint(ast::ty_u)) => {
                     cx.sess.span_lint(
                         ctypes, id, fn_id,
                         ty.span,
-                        ~"found rust type `uint` in foreign module, while \
+                        "found rust type `uint` in foreign module, while \
                          libc::c_uint or libc::c_ulong should be used");
                   }
                   _ => ()
@@ -871,7 +774,7 @@ fn check_item_path_statement(cx: ty::ctxt, it: @ast::item) {
                         cx.sess.span_lint(
                             path_statement, id, it.id,
                             s.span,
-                            ~"path statement with no effect");
+                            "path statement with no effect");
                     }
                     _ => ()
                 }
@@ -911,8 +814,8 @@ fn check_item_non_camel_case_types(cx: ty::ctxt, it: @ast::item) {
         if !is_camel_case(cx, ident) {
             cx.sess.span_lint(
                 non_camel_case_types, expr_id, item_id, span,
-                ~"type, variant, or trait should have \
-                  a camel case identifier");
+                "type, variant, or trait should have \
+                 a camel case identifier");
         }
     }
 
@@ -939,7 +842,7 @@ fn check_item_unused_unsafe(cx: ty::ctxt, it: @ast::item) {
                 if !cx.used_unsafe.contains(&blk.node.id) {
                     cx.sess.span_lint(unused_unsafe, blk.node.id, it.id,
                                       blk.span,
-                                      ~"unnecessary \"unsafe\" block");
+                                      "unnecessary `unsafe` block");
                 }
             }
             _ => ()
@@ -954,130 +857,60 @@ fn check_item_unused_unsafe(cx: ty::ctxt, it: @ast::item) {
     visit::visit_item(it, (), visit);
 }
 
-fn check_fn(tcx: ty::ctxt, fk: &visit::fn_kind, decl: &ast::fn_decl,
-            _body: &ast::blk, span: span, id: ast::node_id) {
+fn check_item_unused_mut(tcx: ty::ctxt, it: @ast::item) {
+    let check_pat: @fn(@ast::pat) = |p| {
+        let mut used = false;
+        let mut bindings = 0;
+        do pat_util::pat_bindings(tcx.def_map, p) |_, id, _, _| {
+            used = used || tcx.used_mut_nodes.contains(&id);
+            bindings += 1;
+        }
+        if !used {
+            let msg = if bindings == 1 {
+                "variable does not need to be mutable"
+            } else {
+                "variables do not need to be mutable"
+            };
+            tcx.sess.span_lint(unused_mut, p.id, it.id, p.span, msg);
+        }
+    };
+
+    let visit_fn_decl: @fn(&ast::fn_decl) = |fd| {
+        for fd.inputs.each |arg| {
+            if arg.is_mutbl {
+                check_pat(arg.pat);
+            }
+        }
+    };
+
+    let visit = item_stopping_visitor(
+        visit::mk_simple_visitor(@visit::SimpleVisitor {
+            visit_local: |l| {
+                if l.node.is_mutbl {
+                    check_pat(l.node.pat);
+                }
+            },
+            visit_fn: |_, fd, _, _, _| visit_fn_decl(fd),
+            visit_ty_method: |tm| visit_fn_decl(&tm.decl),
+            visit_struct_method: |sm| visit_fn_decl(&sm.decl),
+            visit_trait_method: |tm| {
+                match *tm {
+                    ast::required(ref tm) => visit_fn_decl(&tm.decl),
+                    ast::provided(m) => visit_fn_decl(&m.decl),
+                }
+            },
+            .. *visit::default_simple_visitor()
+        }));
+    visit::visit_item(it, (), visit);
+}
+
+fn check_fn(_: ty::ctxt,
+            fk: &visit::fn_kind,
+            _: &ast::fn_decl,
+            _: &ast::blk,
+            _: span,
+            id: ast::node_id) {
     debug!("lint check_fn fk=%? id=%?", fk, id);
-
-    // Check for an 'unsafe fn' which doesn't need to be unsafe
-    match *fk {
-        visit::fk_item_fn(_, _, ast::unsafe_fn, _) => {
-            if !tcx.used_unsafe.contains(&id) {
-                tcx.sess.span_lint(unused_unsafe, id, id, span,
-                                   ~"unnecessary \"unsafe\" function");
-            }
-        }
-        _ => ()
-    }
-
-    // Check for deprecated modes
-    match *fk {
-        // don't complain about blocks, since they tend to get their modes
-        // specified from the outside
-        visit::fk_fn_block(*) => {}
-
-        _ => {
-            let fn_ty = ty::node_id_to_type(tcx, id);
-            check_fn_deprecated_modes(tcx, fn_ty, decl, span, id);
-        }
-    }
-
-}
-
-fn check_fn_deprecated_modes(tcx: ty::ctxt, fn_ty: ty::t, decl: &ast::fn_decl,
-                             span: span, id: ast::node_id) {
-    match ty::get(fn_ty).sty {
-        ty::ty_closure(ty::ClosureTy {sig: ref sig, _}) |
-        ty::ty_bare_fn(ty::BareFnTy {sig: ref sig, _}) => {
-            let mut counter = 0;
-            for vec::each2(sig.inputs, decl.inputs) |arg_ty, arg_ast| {
-                counter += 1;
-                debug!("arg %d, ty=%s, mode=%s",
-                       counter,
-                       ty_to_str(tcx, arg_ty.ty),
-                       mode_to_str(arg_ast.mode));
-                match arg_ast.mode {
-                    ast::expl(ast::by_copy) => {
-                        if !tcx.legacy_modes {
-                            tcx.sess.span_lint(
-                                deprecated_mode, id, id, span,
-                                fmt!("argument %d uses by-copy mode",
-                                     counter));
-                        }
-                    }
-
-                    ast::expl(_) => {
-                        tcx.sess.span_lint(
-                            deprecated_mode, id, id,
-                            span,
-                         fmt!("argument %d uses an explicit mode", counter));
-                    }
-
-                    ast::infer(_) => {
-                        if tcx.legacy_modes {
-                            let kind = ty::type_contents(tcx, arg_ty.ty);
-                            if !kind.is_safe_for_default_mode(tcx) {
-                                tcx.sess.span_lint(
-                                    deprecated_mode, id, id,
-                                    span,
-                                    fmt!("argument %d uses the default mode \
-                                          but shouldn't",
-                                         counter));
-                            }
-                        }
-                    }
-                }
-
-                match ty::get(arg_ty.ty).sty {
-                    ty::ty_closure(*) | ty::ty_bare_fn(*) => {
-                        let span = arg_ast.ty.span;
-                        // Recurse to check fn-type argument
-                        match arg_ast.ty.node {
-                            ast::ty_closure(@ast::TyClosure{decl: ref d, _}) |
-                            ast::ty_bare_fn(@ast::TyBareFn{decl: ref d, _})=>{
-                                check_fn_deprecated_modes(tcx, arg_ty.ty,
-                                                          d, span, id);
-                            }
-                            ast::ty_path(*) => {
-                                // This is probably a typedef, so we can't
-                                // see the actual fn decl
-                                // e.g. fn foo(f: InitOp<T>)
-                            }
-                            _ => {
-                                tcx.sess.span_warn(span, ~"what");
-                                error!("arg %d, ty=%s, mode=%s",
-                                       counter,
-                                       ty_to_str(tcx, arg_ty.ty),
-                                       mode_to_str(arg_ast.mode));
-                                error!("%?",arg_ast.ty.node);
-                                fail!()
-                            }
-                        };
-                    }
-                    _ => ()
-                }
-            }
-        }
-
-        _ => tcx.sess.impossible_case(span, ~"check_fn: function has \
-                                              non-fn type")
-    }
-}
-
-fn check_item_deprecated_modes(tcx: ty::ctxt, it: @ast::item) {
-    match it.node {
-        ast::item_ty(ty, _) => {
-            match ty.node {
-                ast::ty_closure(@ast::TyClosure {decl: ref decl, _}) |
-                ast::ty_bare_fn(@ast::TyBareFn {decl: ref decl, _}) => {
-                    let fn_ty = ty::node_id_to_type(tcx, it.id);
-                    check_fn_deprecated_modes(
-                        tcx, fn_ty, decl, ty.span, it.id)
-                }
-                _ => ()
-            }
-        }
-        _ => ()
-    }
 }
 
 pub fn check_crate(tcx: ty::ctxt, crate: @ast::crate) {
@@ -1088,17 +921,7 @@ pub fn check_crate(tcx: ty::ctxt, crate: @ast::crate) {
             check_fn(tcx, fk, decl, body, span, id),
         .. *visit::default_simple_visitor()
     });
-    visit::visit_crate(*crate, (), v);
+    visit::visit_crate(crate, (), v);
 
     tcx.sess.abort_if_errors();
 }
-
-//
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
-//

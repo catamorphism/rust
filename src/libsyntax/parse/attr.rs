@@ -62,18 +62,20 @@ impl parser_attr for Parser {
         return attrs;
     }
 
+    // matches attribute = # attribute_naked
     fn parse_attribute(&self, style: ast::attr_style) -> ast::attribute {
         let lo = self.span.lo;
         self.expect(&token::POUND);
         return self.parse_attribute_naked(style, lo);
     }
 
+    // matches attribute_naked = [ meta_item ]
     fn parse_attribute_naked(&self, style: ast::attr_style, lo: BytePos) ->
         ast::attribute {
         self.expect(&token::LBRACKET);
         let meta_item = self.parse_meta_item();
         self.expect(&token::RBRACKET);
-        let mut hi = self.span.hi;
+        let hi = self.span.hi;
         return spanned(lo, hi, ast::attribute_ { style: style,
                                                  value: meta_item,
                                                  is_sugared_doc: false });
@@ -86,6 +88,7 @@ impl parser_attr for Parser {
     // is an inner attribute of the containing item or an outer attribute of
     // the first contained item until we see the semi).
 
+    // matches inner_attrs* outer_attr?
     // you can make the 'next' field an Option, but the result is going to be
     // more useful as a vector.
     fn parse_inner_attrs_and_next(&self) ->
@@ -134,6 +137,9 @@ impl parser_attr for Parser {
         (inner_attrs, next_outer_attrs)
     }
 
+    // matches meta_item = IDENT
+    // | IDENT = lit
+    // | IDENT meta_seq
     fn parse_meta_item(&self) -> @ast::meta_item {
         let lo = self.span.lo;
         let name = self.id_to_str(self.parse_ident());
@@ -141,21 +147,22 @@ impl parser_attr for Parser {
             token::EQ => {
                 self.bump();
                 let lit = self.parse_lit();
-                let mut hi = self.span.hi;
+                let hi = self.span.hi;
                 @spanned(lo, hi, ast::meta_name_value(name, lit))
             }
             token::LPAREN => {
                 let inner_items = self.parse_meta_seq();
-                let mut hi = self.span.hi;
+                let hi = self.span.hi;
                 @spanned(lo, hi, ast::meta_list(name, inner_items))
             }
             _ => {
-                let mut hi = self.span.hi;
+                let hi = self.last_span.hi;
                 @spanned(lo, hi, ast::meta_word(name))
             }
         }
     }
 
+    // matches meta_seq = ( COMMASEP(meta_item) )
     fn parse_meta_seq(&self) -> ~[@ast::meta_item] {
         copy self.parse_seq(
             &token::LPAREN,
@@ -172,13 +179,3 @@ impl parser_attr for Parser {
         }
     }
 }
-
-//
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
-//

@@ -8,10 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use middle::resolve::Impl;
-use middle::ty::{param_ty};
+use middle::ty::param_ty;
 use middle::ty;
 use middle::typeck::check::{FnCtxt, impl_self_ty};
 use middle::typeck::check::{structurally_resolved_type};
@@ -25,9 +23,6 @@ use util::common::indenter;
 use util::ppaux::tys_to_str;
 use util::ppaux;
 
-use core::result::{Ok, Err};
-use core::result;
-use core::uint;
 use core::hashmap::HashSet;
 use syntax::ast;
 use syntax::ast_util;
@@ -36,7 +31,7 @@ use syntax::print::pprust::expr_to_str;
 use syntax::visit;
 
 // vtable resolution looks for places where trait bounds are
-// subsituted in and figures out which vtable is used. There is some
+// substituted in and figures out which vtable is used. There is some
 // extra complication thrown in to support early "opportunistic"
 // vtable resolution. This is a hacky mechanism that is invoked while
 // typechecking function calls (after typechecking non-closure
@@ -72,8 +67,7 @@ pub impl VtableContext {
 
 fn has_trait_bounds(type_param_defs: &[ty::TypeParameterDef]) -> bool {
     type_param_defs.any(
-        |type_param_def| type_param_def.bounds.any(
-            |bound| match bound { &ty::bound_trait(*) => true, _ => false }))
+        |type_param_def| !type_param_def.bounds.trait_bounds.is_empty())
 }
 
 fn lookup_vtables(vcx: &VtableContext,
@@ -104,7 +98,7 @@ fn lookup_vtables(vcx: &VtableContext,
 
             // Substitute the values of the type parameters that may
             // appear in the bound.
-            let trait_ref = trait_ref.subst(tcx, substs);
+            let trait_ref = (*trait_ref).subst(tcx, substs);
 
             debug!("after subst: %s", trait_ref.repr(tcx));
 
@@ -135,16 +129,17 @@ fn lookup_vtables(vcx: &VtableContext,
 }
 
 fn fixup_substs(vcx: &VtableContext, location_info: &LocationInfo,
-                id: ast::def_id, +substs: ty::substs,
+                id: ast::def_id, substs: ty::substs,
                 is_early: bool) -> Option<ty::substs> {
     let tcx = vcx.tcx();
     // use a dummy type just to package up the substs that need fixing up
     let t = ty::mk_trait(tcx,
                          id, substs,
-                         ty::RegionTraitStore(ty::re_static));
+                         ty::RegionTraitStore(ty::re_static),
+                         ast::m_imm);
     do fixup_ty(vcx, location_info, t, is_early).map |t_f| {
         match ty::get(*t_f).sty {
-          ty::ty_trait(_, ref substs_f, _) => (/*bad*/copy *substs_f),
+          ty::ty_trait(_, ref substs_f, _, _) => (/*bad*/copy *substs_f),
           _ => fail!(~"t_f should be a trait")
         }
     }
@@ -248,11 +243,14 @@ fn lookup_vtable(vcx: &VtableContext,
                     // Nothing found. Continue.
                 }
                 Some(implementations) => {
-                    let implementations: &mut ~[@Impl] = *implementations;
+                    let len = { // FIXME(#5074): stage0 requires it
+                        let implementations: &mut ~[@Impl] = *implementations;
+                        implementations.len()
+                    };
 
                     // implementations is the list of all impls in scope for
                     // trait_ref. (Usually, there's just one.)
-                    for uint::range(0, implementations.len()) |i| {
+                    for uint::range(0, len) |i| {
                         let im = implementations[i];
 
                         // im is one specific impl of trait_ref.
@@ -340,7 +338,8 @@ fn lookup_vtable(vcx: &VtableContext,
                                    vcx.infcx.trait_ref_to_str(trait_ref),
                                    vcx.infcx.trait_ref_to_str(of_trait_ref));
 
-                            let of_trait_ref = of_trait_ref.subst(tcx, &substs);
+                            let of_trait_ref =
+                                (*of_trait_ref).subst(tcx, &substs);
                             relate_trait_refs(
                                 vcx, location_info,
                                 &of_trait_ref, trait_ref);
@@ -418,7 +417,7 @@ fn lookup_vtable(vcx: &VtableContext,
                     if !is_early {
                         vcx.tcx().sess.span_err(
                             location_info.span,
-                            ~"multiple applicable methods in scope");
+                            "multiple applicable methods in scope");
                     }
                     return Some(/*bad*/copy found[0]);
                 }
@@ -459,7 +458,7 @@ fn connect_trait_tps(vcx: &VtableContext,
 
     // XXX: This should work for multiple traits.
     let impl_trait_ref = ty::impl_trait_refs(tcx, impl_did)[0];
-    let impl_trait_ref = impl_trait_ref.subst(tcx, impl_substs);
+    let impl_trait_ref = (*impl_trait_ref).subst(tcx, impl_substs);
     relate_trait_refs(vcx, location_info, &impl_trait_ref, trait_ref);
 }
 
@@ -479,7 +478,7 @@ pub fn location_info_for_expr(expr: @ast::expr) -> LocationInfo {
 }
 
 pub fn early_resolve_expr(ex: @ast::expr,
-                          &&fcx: @mut FnCtxt,
+                          fcx: @mut FnCtxt,
                           is_early: bool) {
     debug!("vtable: early_resolve_expr() ex with id %? (early: %b): %s",
            ex.id, is_early, expr_to_str(ex, fcx.tcx().sess.intr()));
@@ -491,7 +490,7 @@ pub fn early_resolve_expr(ex: @ast::expr,
         for fcx.opt_node_ty_substs(ex.id) |substs| {
             debug!("vtable resolution on parameter bounds for expr %s",
                    ex.repr(fcx.tcx()));
-            let def = *cx.tcx.def_map.get(&ex.id);
+            let def = cx.tcx.def_map.get_copy(&ex.id);
             let did = ast_util::def_id_of_def(def);
             let item_ty = ty::lookup_item_type(cx.tcx, did);
             debug!("early resolve expr: def %? %?, %?, %s", ex.id, did, def,
@@ -544,7 +543,12 @@ pub fn early_resolve_expr(ex: @ast::expr,
           debug!("vtable resolution on expr %s", ex.repr(fcx.tcx()));
           let target_ty = fcx.expr_ty(ex);
           match ty::get(target_ty).sty {
-              ty::ty_trait(target_def_id, ref target_substs, store) => {
+              ty::ty_trait(target_def_id, ref target_substs, store, target_mutbl) => {
+                  fn mutability_allowed(a_mutbl: ast::mutability,
+                                        b_mutbl: ast::mutability) -> bool {
+                      a_mutbl == b_mutbl ||
+                      (a_mutbl == ast::m_mutbl && b_mutbl == ast::m_imm)
+                  }
                   // Look up vtables for the type we're casting to,
                   // passing in the source and target type.  The source
                   // must be a pointer type suitable to the object sigil,
@@ -552,6 +556,14 @@ pub fn early_resolve_expr(ex: @ast::expr,
                   let ty = structurally_resolved_type(fcx, ex.span,
                                                       fcx.expr_ty(src));
                   match (&ty::get(ty).sty, store) {
+                      (&ty::ty_box(mt), ty::BoxTraitStore) |
+                      (&ty::ty_uniq(mt), ty::UniqTraitStore) |
+                      (&ty::ty_rptr(_, mt), ty::RegionTraitStore(*))
+                        if !mutability_allowed(mt.mutbl, target_mutbl) => {
+                          fcx.tcx().sess.span_err(ex.span,
+                                                  fmt!("types differ in mutability"));
+                      }
+
                       (&ty::ty_box(mt), ty::BoxTraitStore) |
                       (&ty::ty_uniq(mt), ty::UniqTraitStore) |
                       (&ty::ty_rptr(_, mt), ty::RegionTraitStore(*)) => {
@@ -642,7 +654,7 @@ pub fn early_resolve_expr(ex: @ast::expr,
 }
 
 fn resolve_expr(ex: @ast::expr,
-                &&fcx: @mut FnCtxt,
+                fcx: @mut FnCtxt,
                 v: visit::vt<@mut FnCtxt>) {
     early_resolve_expr(ex, fcx, false);
     visit::visit_expr(ex, fcx, v);
@@ -657,5 +669,3 @@ pub fn resolve_in_block(fcx: @mut FnCtxt, bl: &ast::blk) {
         .. *visit::default_visitor()
     }));
 }
-
-

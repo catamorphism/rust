@@ -43,11 +43,11 @@ pub unsafe fn weaken_task(f: &fn(Port<ShutdownMsg>)) {
     let task = get_task_id();
     // Expect the weak task service to be alive
     assert!(service.try_send(RegisterWeakTask(task, shutdown_chan)));
-    unsafe { rust_dec_kernel_live_count(); }
+    rust_dec_kernel_live_count();
     do (|| {
         f(shutdown_port.take())
     }).finally || {
-        unsafe { rust_inc_kernel_live_count(); }
+        rust_inc_kernel_live_count();
         // Service my have already exited
         service.send(UnregisterWeakTask(task));
     }
@@ -69,10 +69,12 @@ fn create_global_service() -> ~WeakTaskService {
     debug!("creating global weak task service");
     let (port, chan) = stream::<ServiceMsg>();
     let port = Cell(port);
-    let chan = SharedChan(chan);
+    let chan = SharedChan::new(chan);
     let chan_clone = chan.clone();
 
-    do task().unlinked().spawn {
+    let mut task = task();
+    task.unlinked();
+    do task.spawn {
         debug!("running global weak task service");
         let port = Cell(port.take());
         do (|| {
@@ -189,12 +191,14 @@ fn test_select_stream_and_oneshot() {
     use comm::select2i;
     use either::{Left, Right};
 
-    let (port, chan) = stream();
+    let mut (port, chan) = stream();
+    let port = Cell(port);
     let (waitport, waitchan) = stream();
     do spawn {
         unsafe {
-            do weaken_task |signal| {
-                match select2i(&port, &signal) {
+            do weaken_task |mut signal| {
+                let mut port = port.take();
+                match select2i(&mut port, &mut signal) {
                     Left(*) => (),
                     Right(*) => fail!()
                 }
@@ -205,4 +209,3 @@ fn test_select_stream_and_oneshot() {
     chan.send(());
     waitport.recv();
 }
-

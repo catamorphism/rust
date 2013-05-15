@@ -8,11 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-
 // A pass that checks to make sure private fields and methods aren't used
 // outside their scopes.
-
-use core::prelude::*;
 
 use metadata::csearch;
 use middle::ty::{ty_struct, ty_enum};
@@ -102,8 +99,8 @@ pub fn check_crate(tcx: ty::ctxt,
                                          parental_privacy == Public)
                                          == Private {
             tcx.sess.span_err(span,
-                ~"can only dereference enums \
-                  with a single, public variant");
+                "can only dereference enums \
+                 with a single, public variant");
         }
     };
 
@@ -124,8 +121,8 @@ pub fn check_crate(tcx: ty::ctxt,
                                             tcx.sess.parse_sess.interner)));
             }
             None => {
-                tcx.sess.span_bug(span, ~"method not found in \
-                                          AST map?!");
+                tcx.sess.span_bug(span, "method not found in \
+                                         AST map?!");
             }
         }
     };
@@ -143,8 +140,8 @@ pub fn check_crate(tcx: ty::ctxt,
                 // Look up the enclosing impl.
                 if container_id.crate != local_crate {
                     tcx.sess.span_bug(span,
-                                      ~"local method isn't in local \
-                                        impl?!");
+                                      "local method isn't in local \
+                                       impl?!");
                 }
 
                 match tcx.items.find(&container_id.node) {
@@ -158,10 +155,10 @@ pub fn check_crate(tcx: ty::ctxt,
                         }
                     }
                     Some(_) => {
-                        tcx.sess.span_bug(span, ~"impl wasn't an item?!");
+                        tcx.sess.span_bug(span, "impl wasn't an item?!");
                     }
                     None => {
-                        tcx.sess.span_bug(span, ~"impl wasn't in AST map?!");
+                        tcx.sess.span_bug(span, "impl wasn't in AST map?!");
                     }
                 }
             }
@@ -188,8 +185,8 @@ pub fn check_crate(tcx: ty::ctxt,
                                             tcx.sess.parse_sess.interner)));
             }
             None => {
-                tcx.sess.span_bug(span, ~"method not found in \
-                                          AST map?!");
+                tcx.sess.span_bug(span, "method not found in \
+                                         AST map?!");
             }
         }
     };
@@ -222,7 +219,7 @@ pub fn check_crate(tcx: ty::ctxt,
                                                    .interner)));
                 }
                 None => {
-                    tcx.sess.span_bug(span, ~"item not found in AST map?!");
+                    tcx.sess.span_bug(span, "item not found in AST map?!");
                 }
             }
         };
@@ -336,10 +333,10 @@ pub fn check_crate(tcx: ty::ctxt,
                             match item.node {
                                 item_trait(_, _, ref methods) => {
                                     if method_num >= (*methods).len() {
-                                        tcx.sess.span_bug(span, ~"method \
-                                                                  number \
-                                                                  out of \
-                                                                  range?!");
+                                        tcx.sess.span_bug(span, "method \
+                                                                 number \
+                                                                 out of \
+                                                                 range?!");
                                     }
                                     match (*methods)[method_num] {
                                         provided(method)
@@ -366,20 +363,20 @@ pub fn check_crate(tcx: ty::ctxt,
                                     }
                                 }
                                 _ => {
-                                    tcx.sess.span_bug(span, ~"trait wasn't \
-                                                              actually a \
-                                                              trait?!");
+                                    tcx.sess.span_bug(span, "trait wasn't \
+                                                             actually a \
+                                                             trait?!");
                                 }
                             }
                         }
                         Some(_) => {
-                            tcx.sess.span_bug(span, ~"trait wasn't an \
-                                                      item?!");
+                            tcx.sess.span_bug(span, "trait wasn't an \
+                                                     item?!");
                         }
                         None => {
-                            tcx.sess.span_bug(span, ~"trait item wasn't \
-                                                      found in the AST \
-                                                      map?!");
+                            tcx.sess.span_bug(span, "trait item wasn't \
+                                                     found in the AST \
+                                                     map?!");
                         }
                     }
                 } else {
@@ -468,8 +465,8 @@ pub fn check_crate(tcx: ty::ctxt,
                             match method_map.find(&expr.id) {
                                 None => {
                                     tcx.sess.span_bug(expr.span,
-                                                      ~"method call not in \
-                                                        method map");
+                                                      "method call not in \
+                                                       method map");
                                 }
                                 Some(ref entry) => {
                                     debug!("(privacy checking) checking \
@@ -484,7 +481,7 @@ pub fn check_crate(tcx: ty::ctxt,
                     }
                 }
                 expr_path(path) => {
-                    check_path(expr.span, *tcx.def_map.get(&expr.id), path);
+                    check_path(expr.span, tcx.def_map.get_copy(&expr.id), path);
                 }
                 expr_struct(_, ref fields, _) => {
                     match ty::get(ty::expr_ty(tcx, expr)).sty {
@@ -502,7 +499,7 @@ pub fn check_crate(tcx: ty::ctxt,
                         ty_enum(id, _) => {
                             if id.crate != local_crate ||
                                     !privileged_items.contains(&(id.node)) {
-                                match *tcx.def_map.get(&expr.id) {
+                                match tcx.def_map.get_copy(&expr.id) {
                                     def_variant(_, variant_id) => {
                                         for (*fields).each |field| {
                                                 debug!("(privacy checking) \
@@ -515,18 +512,18 @@ pub fn check_crate(tcx: ty::ctxt,
                                     }
                                     _ => {
                                         tcx.sess.span_bug(expr.span,
-                                                          ~"resolve didn't \
-                                                            map enum struct \
-                                                            constructor to a \
-                                                            variant def");
+                                                          "resolve didn't \
+                                                           map enum struct \
+                                                           constructor to a \
+                                                           variant def");
                                     }
                                 }
                             }
                         }
                         _ => {
-                            tcx.sess.span_bug(expr.span, ~"struct expr \
-                                                           didn't have \
-                                                           struct type?!");
+                            tcx.sess.span_bug(expr.span, "struct expr \
+                                                          didn't have \
+                                                          struct type?!");
                         }
                     }
                 }
@@ -582,18 +579,18 @@ pub fn check_crate(tcx: ty::ctxt,
                                     }
                                     _ => {
                                         tcx.sess.span_bug(pattern.span,
-                                                          ~"resolve didn't \
-                                                            map enum struct \
-                                                            pattern to a \
-                                                            variant def");
+                                                          "resolve didn't \
+                                                           map enum struct \
+                                                           pattern to a \
+                                                           variant def");
                                     }
                                 }
                             }
                         }
                         _ => {
                             tcx.sess.span_bug(pattern.span,
-                                              ~"struct pattern didn't have \
-                                                struct type?!");
+                                              "struct pattern didn't have \
+                                               struct type?!");
                         }
                     }
                 }
@@ -604,6 +601,5 @@ pub fn check_crate(tcx: ty::ctxt,
         },
         .. *visit::default_visitor()
     });
-    visit::visit_crate(*crate, method_map, visitor);
+    visit::visit_crate(crate, method_map, visitor);
 }
-

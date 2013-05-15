@@ -8,12 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
-use core::io::WriterUtil;
-use core::io;
-use core::vec;
-
 /*
  * This pretty-printer is a direct reimplementation of Philip Karlton's
  * Mesa pretty-printer, as described in appendix A of
@@ -104,7 +98,7 @@ pub impl token {
     }
 }
 
-pub fn tok_str(++t: token) -> ~str {
+pub fn tok_str(t: token) -> ~str {
     match t {
         STRING(s, len) => return fmt!("STR(%s,%d)", *s, len),
         BREAK(_) => return ~"BREAK",
@@ -146,9 +140,9 @@ pub fn mk_printer(out: @io::Writer, linewidth: uint) -> @mut Printer {
     // fall behind.
     let n: uint = 3 * linewidth;
     debug!("mk_printer %u", linewidth);
-    let mut token: ~[token] = vec::from_elem(n, EOF);
-    let mut size: ~[int] = vec::from_elem(n, 0);
-    let mut scan_stack: ~[uint] = vec::from_elem(n, 0u);
+    let token: ~[token] = vec::from_elem(n, EOF);
+    let size: ~[int] = vec::from_elem(n, 0);
+    let scan_stack: ~[uint] = vec::from_elem(n, 0u);
     @mut Printer {
         out: @out,
         buf_len: n,
@@ -398,7 +392,7 @@ pub impl Printer {
         self.right %= self.buf_len;
         assert!((self.right != self.left));
     }
-    fn advance_left(&mut self, ++x: token, L: int) {
+    fn advance_left(&mut self, x: token, L: int) {
         debug!("advnce_left ~[%u,%u], sizeof(%u)=%d", self.left, self.right,
                self.left, L);
         if L >= 0 {
@@ -497,9 +491,9 @@ pub impl Printer {
           }
           END => {
             debug!("print END -> pop END");
-            let print_stack = &*self.print_stack;
+            let print_stack = &mut *self.print_stack;
             assert!((print_stack.len() != 0u));
-            self.print_stack.pop();
+            print_stack.pop();
           }
           BREAK(b) => {
             let top = self.get_top();
@@ -593,14 +587,3 @@ pub fn hardbreak_tok_offset(off: int) -> token {
 }
 
 pub fn hardbreak_tok() -> token { return hardbreak_tok_offset(0); }
-
-
-//
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
-//

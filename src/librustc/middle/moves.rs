@@ -206,8 +206,6 @@ and so on.
 
 */
 
-use core::prelude::*;
-
 use middle::pat_util::{pat_bindings};
 use middle::freevars;
 use middle::ty;
@@ -216,7 +214,6 @@ use util::ppaux;
 use util::common::indenter;
 
 use core::hashmap::{HashSet, HashMap};
-use core::vec;
 use syntax::ast::*;
 use syntax::ast_util;
 use syntax::visit;
@@ -249,10 +246,19 @@ pub type MovesMap = @mut HashSet<node_id>;
  * expression */
 pub type VariableMovesMap = @mut HashMap<node_id, @expr>;
 
+/**
+ * Set of variable node-ids that are moved.
+ *
+ * Note: The `VariableMovesMap` stores expression ids that
+ * are moves, whereas this set stores the ids of the variables
+ * that are moved at some point */
+pub type MovedVariablesSet = @mut HashSet<node_id>;
+
 /** See the section Output on the module comment for explanation. */
 pub struct MoveMaps {
     moves_map: MovesMap,
     variable_moves_map: VariableMovesMap,
+    moved_variables_set: MovedVariablesSet,
     capture_map: CaptureMap
 }
 
@@ -282,18 +288,30 @@ pub fn compute_moves(tcx: ty::ctxt,
         move_maps: MoveMaps {
             moves_map: @mut HashSet::new(),
             variable_moves_map: @mut HashMap::new(),
-            capture_map: @mut HashMap::new()
+            capture_map: @mut HashMap::new(),
+            moved_variables_set: @mut HashSet::new()
         }
     };
-    visit::visit_crate(*crate, visit_cx, visitor);
+    visit::visit_crate(crate, visit_cx, visitor);
     return visit_cx.move_maps;
+}
+
+pub fn moved_variable_node_id_from_def(def: def) -> Option<node_id> {
+    match def {
+      def_binding(nid, _) |
+      def_arg(nid, _) |
+      def_local(nid, _) |
+      def_self(nid, _) => Some(nid),
+
+      _ => None
+    }
 }
 
 // ______________________________________________________________________
 // Expressions
 
 fn compute_modes_for_expr(expr: @expr,
-                          &&cx: VisitContext,
+                          cx: VisitContext,
                           v: vt<VisitContext>)
 {
     cx.consume_expr(expr, v);
@@ -422,12 +440,17 @@ pub impl VisitContext {
                     MoveInPart(entire_expr) => {
                         self.move_maps.variable_moves_map.insert(
                             expr.id, entire_expr);
+
+                        let def = self.tcx.def_map.get_copy(&expr.id);
+                        for moved_variable_node_id_from_def(def).each |&id| {
+                            self.move_maps.moved_variables_set.insert(id);
+                        }
                     }
                     Read => {}
                     MoveInWhole => {
                         self.tcx.sess.span_bug(
                             expr.span,
-                            fmt!("Component mode can never be MoveInWhole"));
+                            "Component mode can never be MoveInWhole");
                     }
                 }
             }
@@ -627,11 +650,6 @@ pub impl VisitContext {
                 self.consume_expr(count, visitor);
             }
 
-            expr_swap(lhs, rhs) => {
-                self.use_expr(lhs, Read, visitor);
-                self.use_expr(rhs, Read, visitor);
-            }
-
             expr_loop_body(base) |
             expr_do_body(base) => {
                 self.use_expr(base, comp_mode, visitor);
@@ -650,7 +668,7 @@ pub impl VisitContext {
             expr_mac(*) => {
                 self.tcx.sess.span_bug(
                     expr.span,
-                    ~"macro expression remains after expansion");
+                    "macro expression remains after expansion");
             }
         }
     }
@@ -721,46 +739,27 @@ pub impl VisitContext {
                     receiver_expr: @expr,
                     visitor: vt<VisitContext>)
     {
-        self.use_fn_arg(by_copy, receiver_expr, visitor);
+        self.use_fn_arg(receiver_expr, visitor);
     }
 
     fn use_fn_args(&self,
-                   callee_id: node_id,
+                   _: node_id,
                    arg_exprs: &[@expr],
-                   visitor: vt<VisitContext>)
-    {
-        /*!
-         *
-         * Uses the argument expressions according to the function modes.
-         */
-
-        let arg_tys =
-            ty::ty_fn_args(ty::node_id_to_type(self.tcx, callee_id));
-        for vec::each2(arg_exprs, arg_tys) |arg_expr, arg_ty| {
-            let arg_mode = ty::resolved_mode(self.tcx, arg_ty.mode);
-            self.use_fn_arg(arg_mode, *arg_expr, visitor);
+                   visitor: vt<VisitContext>) {
+        //! Uses the argument expressions.
+        for arg_exprs.each |arg_expr| {
+            self.use_fn_arg(*arg_expr, visitor);
         }
     }
 
-    fn use_fn_arg(&self,
-                  arg_mode: rmode,
-                  arg_expr: @expr,
-                  visitor: vt<VisitContext>)
-    {
-        /*!
-         *
-         * Uses the argument according to the given argument mode.
-         */
-
-        match arg_mode {
-            by_ref => self.use_expr(arg_expr, Read, visitor),
-            by_copy => self.consume_expr(arg_expr, visitor)
-        }
+    fn use_fn_arg(&self, arg_expr: @expr, visitor: vt<VisitContext>) {
+        //! Uses the argument.
+        self.consume_expr(arg_expr, visitor)
     }
 
     fn arms_have_by_move_bindings(&self,
                                   moves_map: MovesMap,
-                                  +arms: &[arm]) -> bool
+                                  arms: &[arm]) -> bool
     {
         for arms.each |arm| {
             for arm.pats.each |pat| {

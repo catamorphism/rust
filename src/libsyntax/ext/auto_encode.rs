@@ -88,8 +88,6 @@ node twice.
 
 */
 
-use core::prelude::*;
-
 use ast;
 use ast_util;
 use attr;
@@ -100,8 +98,6 @@ use parse;
 use opt_vec;
 use opt_vec::OptVec;
 use ext::build;
-
-use core::vec;
 
 // Transitional reexports so qquote can find the paths it is looking for
 mod syntax {
@@ -219,7 +215,58 @@ pub fn expand_auto_decode(
     }
 }
 
-priv impl @ext_ctxt {
+trait ExtCtxtMethods {
+    fn bind_path(&self,
+                 span: span,
+                 ident: ast::ident,
+                 path: @ast::Path,
+                 bounds: @OptVec<ast::TyParamBound>)
+                 -> ast::TyParam;
+    fn expr(&self, span: span, node: ast::expr_) -> @ast::expr;
+    fn path(&self, span: span, strs: ~[ast::ident]) -> @ast::Path;
+    fn path_global(&self, span: span, strs: ~[ast::ident]) -> @ast::Path;
+    fn path_tps(&self, span: span, strs: ~[ast::ident], tps: ~[@ast::Ty])
+                -> @ast::Path;
+    fn path_tps_global(&self,
+                       span: span,
+                       strs: ~[ast::ident],
+                       tps: ~[@ast::Ty])
+                       -> @ast::Path;
+    fn ty_path(&self, span: span, strs: ~[ast::ident], tps: ~[@ast::Ty])
+               -> @ast::Ty;
+    fn binder_pat(&self, span: span, nm: ast::ident) -> @ast::pat;
+    fn stmt(&self, expr: @ast::expr) -> @ast::stmt;
+    fn lit_str(&self, span: span, s: @~str) -> @ast::expr;
+    fn lit_uint(&self, span: span, i: uint) -> @ast::expr;
+    fn lambda0(&self, blk: ast::blk) -> @ast::expr;
+    fn lambda1(&self, blk: ast::blk, ident: ast::ident) -> @ast::expr;
+    fn blk(&self, span: span, stmts: ~[@ast::stmt]) -> ast::blk;
+    fn expr_blk(&self, expr: @ast::expr) -> ast::blk;
+    fn expr_path(&self, span: span, strs: ~[ast::ident]) -> @ast::expr;
+    fn expr_path_global(&self, span: span, strs: ~[ast::ident]) -> @ast::expr;
+    fn expr_var(&self, span: span, var: &str) -> @ast::expr;
+    fn expr_field(&self, span: span, expr: @ast::expr, ident: ast::ident)
+                  -> @ast::expr;
+    fn expr_call(&self, span: span, expr: @ast::expr, args: ~[@ast::expr])
+                 -> @ast::expr;
+    fn expr_method_call(&self,
+                        span: span,
+                        expr: @ast::expr,
+                        ident: ast::ident,
+                        args: ~[@ast::expr])
+                        -> @ast::expr;
+    fn lambda_expr_0(&self, expr: @ast::expr) -> @ast::expr;
+    fn lambda_expr_1(&self, expr: @ast::expr, ident: ast::ident)
+                    -> @ast::expr;
+    fn lambda_stmts_0(&self, span: span, stmts: ~[@ast::stmt]) -> @ast::expr;
+    fn lambda_stmts_1(&self,
+                      span: span,
+                      stmts: ~[@ast::stmt],
+                      ident: ast::ident)
+                      -> @ast::expr;
+}
+
+impl ExtCtxtMethods for @ext_ctxt {
     fn bind_path(
         &self,
         _span: span,
@@ -239,7 +286,7 @@ priv impl @ext_ctxt {
         }
     }
 
-    fn expr(&self, span: span, +node: ast::expr_) -> @ast::expr {
+    fn expr(&self, span: span, node: ast::expr_) -> @ast::expr {
         @ast::expr {
             id: self.next_id(),
             callee_id: self.next_id(),
@@ -248,7 +295,7 @@ priv impl @ext_ctxt {
         }
     }
 
-    fn path(&self, span: span, +strs: ~[ast::ident]) -> @ast::Path {
+    fn path(&self, span: span, strs: ~[ast::ident]) -> @ast::Path {
         @ast::Path {
             span: span,
             global: false,
@@ -258,7 +305,7 @@ priv impl @ext_ctxt {
         }
     }
 
-    fn path_global(&self, span: span, +strs: ~[ast::ident]) -> @ast::Path {
+    fn path_global(&self, span: span, strs: ~[ast::ident]) -> @ast::Path {
         @ast::Path {
             span: span,
             global: true,
@@ -271,8 +318,8 @@ priv impl @ext_ctxt {
     fn path_tps(
         &self,
         span: span,
-        +strs: ~[ast::ident],
-        +tps: ~[@ast::Ty]
+        strs: ~[ast::ident],
+        tps: ~[@ast::Ty]
     ) -> @ast::Path {
         @ast::Path {
             span: span,
@@ -286,8 +333,8 @@ priv impl @ext_ctxt {
     fn path_tps_global(
         &self,
         span: span,
-        +strs: ~[ast::ident],
-        +tps: ~[@ast::Ty]
+        strs: ~[ast::ident],
+        tps: ~[@ast::Ty]
     ) -> @ast::Path {
         @ast::Path {
             span: span,
@@ -301,8 +348,8 @@ priv impl @ext_ctxt {
     fn ty_path(
         &self,
         span: span,
-        +strs: ~[ast::ident],
-        +tps: ~[@ast::Ty]
+        strs: ~[ast::ident],
+        tps: ~[@ast::Ty]
     ) -> @ast::Ty {
         @ast::Ty {
             id: self.next_id(),
@@ -349,13 +396,19 @@ priv impl @ext_ctxt {
                                 span: span}))
     }
 
-    fn lambda(&self, +blk: ast::blk) -> @ast::expr {
+    fn lambda0(&self, blk: ast::blk) -> @ast::expr {
         let ext_cx = *self;
         let blk_e = self.expr(copy blk.span, ast::expr_block(copy blk));
         quote_expr!( || $blk_e )
     }
 
-    fn blk(&self, span: span, +stmts: ~[@ast::stmt]) -> ast::blk {
+    fn lambda1(&self, blk: ast::blk, ident: ast::ident) -> @ast::expr {
+        let ext_cx = *self;
+        let blk_e = self.expr(copy blk.span, ast::expr_block(copy blk));
+        quote_expr!( |$ident| $blk_e )
+    }
+
+    fn blk(&self, span: span, stmts: ~[@ast::stmt]) -> ast::blk {
         codemap::spanned {
             node: ast::blk_ {
                 view_items: ~[],
@@ -381,19 +434,19 @@ priv impl @ext_ctxt {
         }
     }
 
-    fn expr_path(&self, span: span, +strs: ~[ast::ident]) -> @ast::expr {
+    fn expr_path(&self, span: span, strs: ~[ast::ident]) -> @ast::expr {
         self.expr(span, ast::expr_path(self.path(span, strs)))
     }
 
     fn expr_path_global(
         &self,
         span: span,
-        +strs: ~[ast::ident]
+        strs: ~[ast::ident]
     ) -> @ast::expr {
         self.expr(span, ast::expr_path(self.path_global(span, strs)))
     }
 
-    fn expr_var(&self, span: span, +var: ~str) -> @ast::expr {
+    fn expr_var(&self, span: span, var: &str) -> @ast::expr {
         self.expr_path(span, ~[self.ident_of(var)])
     }
 
@@ -410,7 +463,7 @@ priv impl @ext_ctxt {
         &self,
         span: span,
         expr: @ast::expr,
-        +args: ~[@ast::expr]
+        args: ~[@ast::expr]
     ) -> @ast::expr {
         self.expr(span, ast::expr_call(expr, args, ast::NoSugar))
     }
@@ -420,17 +473,31 @@ priv impl @ext_ctxt {
         span: span,
         expr: @ast::expr,
         ident: ast::ident,
-        +args: ~[@ast::expr]
+        args: ~[@ast::expr]
     ) -> @ast::expr {
-        self.expr(span, ast::expr_method_call(expr, ident, ~[], args, ast::NoSugar))
+        self.expr(span,
+                  ast::expr_method_call(expr, ident, ~[], args, ast::NoSugar))
     }
 
-    fn lambda_expr(&self, expr: @ast::expr) -> @ast::expr {
-        self.lambda(self.expr_blk(expr))
+    fn lambda_expr_0(&self, expr: @ast::expr) -> @ast::expr {
+        self.lambda0(self.expr_blk(expr))
     }
 
-    fn lambda_stmts(&self, span: span, +stmts: ~[@ast::stmt]) -> @ast::expr {
-        self.lambda(self.blk(span, stmts))
+    fn lambda_expr_1(&self, expr: @ast::expr, ident: ast::ident)
+                    -> @ast::expr {
+        self.lambda1(self.expr_blk(expr), ident)
+    }
+
+    fn lambda_stmts_0(&self, span: span, stmts: ~[@ast::stmt]) -> @ast::expr {
+        self.lambda0(self.blk(span, stmts))
+    }
+
+    fn lambda_stmts_1(&self,
+                      span: span,
+                      stmts: ~[@ast::stmt],
+                      ident: ast::ident)
+                      -> @ast::expr {
+        self.lambda1(self.blk(span, stmts), ident)
     }
 }
 
@@ -516,13 +583,13 @@ fn mk_ser_impl(
     // Make a path to the std::serialize::Encodable typaram.
     let ty_param = cx.bind_path(
         span,
-        cx.ident_of(~"__S"),
+        cx.ident_of("__S"),
         cx.path_global(
             span,
             ~[
-                cx.ident_of(~"std"),
-                cx.ident_of(~"serialize"),
-                cx.ident_of(~"Encoder"),
+                cx.ident_of("std"),
+                cx.ident_of("serialize"),
+                cx.ident_of("Encoder"),
             ]
         ),
         @opt_vec::Empty
@@ -532,11 +599,11 @@ fn mk_ser_impl(
     let path = cx.path_tps_global(
         span,
         ~[
-            cx.ident_of(~"std"),
-            cx.ident_of(~"serialize"),
-            cx.ident_of(~"Encodable"),
+            cx.ident_of("std"),
+            cx.ident_of("serialize"),
+            cx.ident_of("Encodable"),
         ],
-        ~[cx.ty_path(span, ~[cx.ident_of(~"__S")], ~[])]
+        ~[cx.ty_path(span, ~[cx.ident_of("__S")], ~[])]
     );
 
     mk_impl(
@@ -560,13 +627,13 @@ fn mk_deser_impl(
     // Make a path to the std::serialize::Decodable typaram.
     let ty_param = cx.bind_path(
         span,
-        cx.ident_of(~"__D"),
+        cx.ident_of("__D"),
         cx.path_global(
             span,
             ~[
-                cx.ident_of(~"std"),
-                cx.ident_of(~"serialize"),
-                cx.ident_of(~"Decoder"),
+                cx.ident_of("std"),
+                cx.ident_of("serialize"),
+                cx.ident_of("Decoder"),
             ]
         ),
         @opt_vec::Empty
@@ -576,11 +643,11 @@ fn mk_deser_impl(
     let path = cx.path_tps_global(
         span,
         ~[
-            cx.ident_of(~"std"),
-            cx.ident_of(~"serialize"),
-            cx.ident_of(~"Decodable"),
+            cx.ident_of("std"),
+            cx.ident_of("serialize"),
+            cx.ident_of("Decodable"),
         ],
-        ~[cx.ty_path(span, ~[cx.ident_of(~"__D")], ~[])]
+        ~[cx.ty_path(span, ~[cx.ident_of("__D")], ~[])]
     );
 
     mk_impl(
@@ -597,29 +664,28 @@ fn mk_deser_impl(
 fn mk_ser_method(
     cx: @ext_ctxt,
     span: span,
-    +ser_body: ast::blk
+    ser_body: ast::blk
 ) -> @ast::method {
     let ty_s = @ast::Ty {
         id: cx.next_id(),
         node: ast::ty_rptr(
             None,
             ast::mt {
-                ty: cx.ty_path(span, ~[cx.ident_of(~"__S")], ~[]),
-                mutbl: ast::m_imm
+                ty: cx.ty_path(span, ~[cx.ident_of("__S")], ~[]),
+                mutbl: ast::m_mutbl
             }
         ),
         span: span,
     };
 
     let ser_inputs = ~[ast::arg {
-        mode: ast::infer(cx.next_id()),
         is_mutbl: false,
         ty: ty_s,
         pat: @ast::pat {
             id: cx.next_id(),
             node: ast::pat_ident(
                 ast::bind_by_copy,
-                ast_util::ident_to_path(span, cx.ident_of(~"__s")),
+                ast_util::ident_to_path(span, cx.ident_of("__s")),
                 None),
             span: span,
         },
@@ -639,7 +705,7 @@ fn mk_ser_method(
     };
 
     @ast::method {
-        ident: cx.ident_of(~"encode"),
+        ident: cx.ident_of("encode"),
         attrs: ~[],
         generics: ast_util::empty_generics(),
         self_ty: codemap::spanned {
@@ -660,34 +726,36 @@ fn mk_deser_method(
     cx: @ext_ctxt,
     span: span,
     ty: @ast::Ty,
-    +deser_body: ast::blk
+    deser_body: ast::blk
 ) -> @ast::method {
     let ty_d = @ast::Ty {
         id: cx.next_id(),
         node: ast::ty_rptr(
             None,
             ast::mt {
-                ty: cx.ty_path(span, ~[cx.ident_of(~"__D")], ~[]),
-                mutbl: ast::m_imm
+                ty: cx.ty_path(span, ~[cx.ident_of("__D")], ~[]),
+                mutbl: ast::m_mutbl
             }
         ),
         span: span,
     };
 
-    let deser_inputs = ~[ast::arg {
-        mode: ast::infer(cx.next_id()),
-        is_mutbl: false,
-        ty: ty_d,
-        pat: @ast::pat {
+    let deser_inputs = ~[
+        ast::arg {
+            is_mutbl: false,
+            ty: ty_d,
+            pat: @ast::pat {
+                id: cx.next_id(),
+                node: ast::pat_ident(ast::bind_by_copy,
+                                     ast_util::ident_to_path(span,
+                                                             cx.ident_of(
+                                                                "__d")),
+                                     None),
+                span: span,
+            },
             id: cx.next_id(),
-            node: ast::pat_ident(
-                ast::bind_by_copy,
-                ast_util::ident_to_path(span, cx.ident_of(~"__d")),
-                None),
-            span: span,
-        },
-        id: cx.next_id(),
-    }];
+        }
+    ];
 
     let deser_decl = ast::fn_decl {
         inputs: deser_inputs,
@@ -696,7 +764,7 @@ fn mk_deser_method(
     };
 
     @ast::method {
-        ident: cx.ident_of(~"decode"),
+        ident: cx.ident_of("decode"),
         attrs: ~[],
         generics: ast_util::empty_generics(),
         self_ty: codemap::spanned { node: ast::sty_static, span: span },
@@ -718,26 +786,27 @@ fn mk_struct_ser_impl(
     generics: &ast::Generics
 ) -> @ast::item {
     let fields = do mk_struct_fields(fields).mapi |idx, field| {
-        // ast for `|| self.$(name).encode(__s)`
-        let expr_lambda = cx.lambda_expr(
+        // ast for `|__s| self.$(name).encode(__s)`
+        let expr_lambda = cx.lambda_expr_1(
             cx.expr_method_call(
                 span,
                 cx.expr_field(
                     span,
-                    cx.expr_var(span, ~"self"),
+                    cx.expr_var(span, "self"),
                     field.ident
                 ),
-                cx.ident_of(~"encode"),
-                ~[cx.expr_var(span, ~"__s")]
-            )
+                cx.ident_of("encode"),
+                ~[cx.expr_var(span, "__s")]
+            ),
+            cx.ident_of("__s")
         );
 
         // ast for `__s.emit_struct_field($(name), $(idx), $(expr_lambda))`
         cx.stmt(
             cx.expr_method_call(
                 span,
-                cx.expr_var(span, ~"__s"),
-                cx.ident_of(~"emit_struct_field"),
+                cx.expr_var(span, "__s"),
+                cx.ident_of("emit_struct_field"),
                 ~[
                     cx.lit_str(span, @cx.str_of(field.ident)),
                     cx.lit_uint(span, idx),
@@ -747,15 +816,15 @@ fn mk_struct_ser_impl(
         )
     };
 
-    // ast for `__s.emit_struct($(name), || $(fields))`
+    // ast for `__s.emit_struct($(name), |__s| $(fields))`
     let ser_body = cx.expr_method_call(
         span,
-        cx.expr_var(span, ~"__s"),
-        cx.ident_of(~"emit_struct"),
+        cx.expr_var(span, "__s"),
+        cx.ident_of("emit_struct"),
         ~[
             cx.lit_str(span, @cx.str_of(ident)),
             cx.lit_uint(span, vec::len(fields)),
-            cx.lambda_stmts(span, fields),
+            cx.lambda_stmts_1(span, fields, cx.ident_of("__s")),
         ]
     );
 
@@ -770,27 +839,28 @@ fn mk_struct_deser_impl(
     generics: &ast::Generics
 ) -> @ast::item {
     let fields = do mk_struct_fields(fields).mapi |idx, field| {
-        // ast for `|| std::serialize::decode(__d)`
-        let expr_lambda = cx.lambda(
+        // ast for `|__d| std::serialize::decode(__d)`
+        let expr_lambda = cx.lambda1(
             cx.expr_blk(
                 cx.expr_call(
                     span,
                     cx.expr_path_global(span, ~[
-                        cx.ident_of(~"std"),
-                        cx.ident_of(~"serialize"),
-                        cx.ident_of(~"Decodable"),
-                        cx.ident_of(~"decode"),
+                        cx.ident_of("std"),
+                        cx.ident_of("serialize"),
+                        cx.ident_of("Decodable"),
+                        cx.ident_of("decode"),
                     ]),
-                    ~[cx.expr_var(span, ~"__d")]
+                    ~[cx.expr_var(span, "__d")]
                 )
-            )
+            ),
+            cx.ident_of("__d")
         );
 
         // ast for `__d.read_struct_field($(name), $(idx), $(expr_lambda))`
         let expr: @ast::expr = cx.expr_method_call(
             span,
-            cx.expr_var(span, ~"__d"),
-            cx.ident_of(~"read_struct_field"),
+            cx.expr_var(span, "__d"),
+            cx.ident_of("read_struct_field"),
             ~[
                 cx.lit_str(span, @cx.str_of(field.ident)),
                 cx.lit_uint(span, idx),
@@ -808,15 +878,15 @@ fn mk_struct_deser_impl(
         }
     };
 
-    // ast for `read_struct($(name), || $(fields))`
+    // ast for `read_struct($(name), |__d| $(fields))`
     let body = cx.expr_method_call(
         span,
-        cx.expr_var(span, ~"__d"),
-        cx.ident_of(~"read_struct"),
+        cx.expr_var(span, "__d"),
+        cx.ident_of("read_struct"),
         ~[
             cx.lit_str(span, @cx.str_of(ident)),
             cx.lit_uint(span, vec::len(fields)),
-            cx.lambda_expr(
+            cx.lambda_expr_1(
                 cx.expr(
                     span,
                     ast::expr_struct(
@@ -824,7 +894,8 @@ fn mk_struct_deser_impl(
                         fields,
                         None
                     )
-                )
+                ),
+                cx.ident_of("__d")
             ),
         ]
     );
@@ -843,19 +914,15 @@ struct field {
 
 fn mk_struct_fields(fields: &[@ast::struct_field]) -> ~[field] {
     do fields.map |field| {
-        let (ident, mutbl) = match field.node.kind {
-            ast::named_field(ident, mutbl, _) => (ident, mutbl),
-            _ => fail!(~"[auto_encode] does not support \
-                        unnamed fields")
+        let ident = match field.node.kind {
+            ast::named_field(ident, _) => ident,
+            _ => fail!(~"[auto_encode] does not support unnamed fields")
         };
 
         field {
             span: field.span,
             ident: ident,
-            mutbl: match mutbl {
-                ast::struct_mutable => ast::m_mutbl,
-                ast::struct_immutable => ast::m_imm,
-            },
+            mutbl: ast::m_imm,
         }
     }
 }
@@ -864,7 +931,7 @@ fn mk_enum_ser_impl(
     cx: @ext_ctxt,
     span: span,
     ident: ast::ident,
-    +enum_def: ast::enum_def,
+    enum_def: ast::enum_def,
     generics: &ast::Generics
 ) -> @ast::item {
     let body = mk_enum_ser_body(
@@ -881,7 +948,7 @@ fn mk_enum_deser_impl(
     cx: @ext_ctxt,
     span: span,
     ident: ast::ident,
-    +enum_def: ast::enum_def,
+    enum_def: ast::enum_def,
     generics: &ast::Generics
 ) -> @ast::item {
     let body = mk_enum_deser_body(
@@ -930,18 +997,19 @@ fn ser_variant(
         // ast for `__s.emit_enum_variant_arg`
         let expr_emit = cx.expr_field(
             span,
-            cx.expr_var(span, ~"__s"),
-            cx.ident_of(~"emit_enum_variant_arg")
+            cx.expr_var(span, "__s"),
+            cx.ident_of("emit_enum_variant_arg")
         );
 
-        // ast for `|| $(v).encode(__s)`
-        let expr_encode = cx.lambda_expr(
-             cx.expr_method_call(
+        // ast for `|__s| $(v).encode(__s)`
+        let expr_encode = cx.lambda_expr_1(
+            cx.expr_method_call(
                 span,
                  cx.expr_path(span, ~[names[a_idx]]),
-                 cx.ident_of(~"encode"),
-                ~[cx.expr_var(span, ~"__s")]
-            )
+                 cx.ident_of("encode"),
+                ~[cx.expr_var(span, "__s")]
+            ),
+            cx.ident_of("__s")
         );
 
         // ast for `$(expr_emit)($(a_idx), $(expr_encode))`
@@ -957,13 +1025,13 @@ fn ser_variant(
     // ast for `__s.emit_enum_variant($(name), $(idx), $(sz), $(lambda))`
     let body = cx.expr_method_call(
         span,
-        cx.expr_var(span, ~"__s"),
-        cx.ident_of(~"emit_enum_variant"),
+        cx.expr_var(span, "__s"),
+        cx.ident_of("emit_enum_variant"),
         ~[
             cx.lit_str(span, @cx.str_of(v_name)),
             cx.lit_uint(span, v_idx),
             cx.lit_uint(span, stmts.len()),
-            cx.lambda_stmts(span, stmts),
+            cx.lambda_stmts_1(span, stmts, cx.ident_of("__s")),
         ]
     );
 
@@ -974,7 +1042,7 @@ fn mk_enum_ser_body(
     cx: @ext_ctxt,
     span: span,
     name: ast::ident,
-    +variants: ~[ast::variant]
+    variants: ~[ast::variant]
 ) -> @ast::expr {
     let arms = do variants.mapi |v_idx, variant| {
         match variant.node.kind {
@@ -997,7 +1065,7 @@ fn mk_enum_ser_body(
         ast::expr_match(
             cx.expr(
                 span,
-                ast::expr_unary(ast::deref, cx.expr_var(span, ~"self"))
+                ast::expr_unary(ast::deref, cx.expr_var(span, "self"))
             ),
             arms
         )
@@ -1006,11 +1074,11 @@ fn mk_enum_ser_body(
     // ast for `__s.emit_enum($(name), || $(match_expr))`
     cx.expr_method_call(
         span,
-        cx.expr_var(span, ~"__s"),
-        cx.ident_of(~"emit_enum"),
+        cx.expr_var(span, "__s"),
+        cx.ident_of("emit_enum"),
         ~[
             cx.lit_str(span, @cx.str_of(name)),
-            cx.lambda_expr(match_expr),
+            cx.lambda_expr_1(match_expr, cx.ident_of("__s")),
         ]
     )
 }
@@ -1022,25 +1090,26 @@ fn mk_enum_deser_variant_nary(
     args: ~[ast::variant_arg]
 ) -> @ast::expr {
     let args = do args.mapi |idx, _arg| {
-        // ast for `|| std::serialize::decode(__d)`
-        let expr_lambda = cx.lambda_expr(
+        // ast for `|__s| std::serialize::decode(__d)`
+        let expr_lambda = cx.lambda_expr_1(
             cx.expr_call(
                 span,
                 cx.expr_path_global(span, ~[
-                    cx.ident_of(~"std"),
-                    cx.ident_of(~"serialize"),
-                    cx.ident_of(~"Decodable"),
-                    cx.ident_of(~"decode"),
+                    cx.ident_of("std"),
+                    cx.ident_of("serialize"),
+                    cx.ident_of("Decodable"),
+                    cx.ident_of("decode"),
                 ]),
-                ~[cx.expr_var(span, ~"__d")]
-            )
+                ~[cx.expr_var(span, "__d")]
+            ),
+            cx.ident_of("__d")
         );
 
         // ast for `__d.read_enum_variant_arg($(a_idx), $(expr_lambda))`
         cx.expr_method_call(
             span,
-            cx.expr_var(span, ~"__d"),
-            cx.ident_of(~"read_enum_variant_arg"),
+            cx.expr_var(span, "__d"),
+            cx.ident_of("read_enum_variant_arg"),
             ~[cx.lit_uint(span, idx), expr_lambda]
         )
     };
@@ -1101,7 +1170,7 @@ fn mk_enum_deser_body(
     };
 
     let quoted_expr = copy quote_expr!(
-      ::core::sys::begin_unwind(~"explicit failure", ~"empty", 1);
+      ::core::sys::FailWithCause::fail_with("explicit failure", "empty", 1);
     ).node;
 
     let impossible_case = ast::arm {
@@ -1123,25 +1192,44 @@ fn mk_enum_deser_body(
         span,
         ast::expr_fn_block(
             ast::fn_decl {
-                inputs: ~[ast::arg {
-                    mode: ast::infer(ext_cx.next_id()),
-                    is_mutbl: false,
-                    ty: @ast::Ty {
+                inputs: ~[
+                    ast::arg {
+                        is_mutbl: false,
+                        ty: @ast::Ty {
+                            id: ext_cx.next_id(),
+                            node: ast::ty_infer,
+                            span: span
+                        },
+                        pat: @ast::pat {
+                            id: ext_cx.next_id(),
+                            node: ast::pat_ident(
+                                ast::bind_by_copy,
+                                ast_util::ident_to_path(span,
+                                    ext_cx.ident_of("__d")),
+                                None),
+                            span: span,
+                        },
                         id: ext_cx.next_id(),
-                        node: ast::ty_infer,
-                        span: span
                     },
-                    pat: @ast::pat {
+                    ast::arg {
+                        is_mutbl: false,
+                        ty: @ast::Ty {
+                            id: ext_cx.next_id(),
+                            node: ast::ty_infer,
+                            span: span
+                        },
+                        pat: @ast::pat {
+                            id: ext_cx.next_id(),
+                            node: ast::pat_ident(
+                                ast::bind_by_copy,
+                                ast_util::ident_to_path(span,
+                                    ext_cx.ident_of("i")),
+                                None),
+                            span: span,
+                        },
                         id: ext_cx.next_id(),
-                        node: ast::pat_ident(
-                            ast::bind_by_copy,
-                            ast_util::ident_to_path(span,
-                                ext_cx.ident_of(~"i")),
-                            None),
-                        span: span,
-                    },
-                    id: ext_cx.next_id(),
-                }],
+                    }
+                ],
                 output: @ast::Ty {
                     id: ext_cx.next_id(),
                     node: ast::ty_infer,
@@ -1152,27 +1240,28 @@ fn mk_enum_deser_body(
             ext_cx.expr_blk(
                 ext_cx.expr(
                     span,
-                    ast::expr_match(ext_cx.expr_var(span, ~"i"), arms)
+                    ast::expr_match(ext_cx.expr_var(span, "i"), arms)
                 )
             )
         )
     );
 
     // ast for `__d.read_enum_variant($expr_arm_names, $(expr_lambda))`
-    let expr_lambda = ext_cx.lambda_expr(
+    let expr_lambda = ext_cx.lambda_expr_1(
         ext_cx.expr_method_call(
             span,
-            ext_cx.expr_var(span, ~"__d"),
-            ext_cx.ident_of(~"read_enum_variant"),
+            ext_cx.expr_var(span, "__d"),
+            ext_cx.ident_of("read_enum_variant"),
             ~[expr_arm_names, expr_lambda]
-        )
+        ),
+        ext_cx.ident_of("__d")
     );
 
     // ast for `__d.read_enum($(e_name), $(expr_lambda))`
     ext_cx.expr_method_call(
         span,
-        ext_cx.expr_var(span, ~"__d"),
-        ext_cx.ident_of(~"read_enum"),
+        ext_cx.expr_var(span, "__d"),
+        ext_cx.ident_of("read_enum"),
         ~[
             ext_cx.lit_str(span, @ext_cx.str_of(name)),
             expr_lambda
@@ -1217,105 +1306,147 @@ mod test {
     }
 
     impl Encoder for TestEncoder {
-        fn emit_nil(&self) { self.add_to_log(CallToEmitNil) }
+        fn emit_nil(&mut self) { self.add_to_log(CallToEmitNil) }
 
-        fn emit_uint(&self, +v: uint) {self.add_to_log(CallToEmitUint(v)); }
-        fn emit_u64(&self, +_v: u64) { self.add_unknown_to_log(); }
-        fn emit_u32(&self, +_v: u32) { self.add_unknown_to_log(); }
-        fn emit_u16(&self, +_v: u16) { self.add_unknown_to_log(); }
-        fn emit_u8(&self, +_v: u8)   { self.add_unknown_to_log(); }
+        fn emit_uint(&mut self, v: uint) {
+            self.add_to_log(CallToEmitUint(v));
+        }
+        fn emit_u64(&mut self, _v: u64) { self.add_unknown_to_log(); }
+        fn emit_u32(&mut self, _v: u32) { self.add_unknown_to_log(); }
+        fn emit_u16(&mut self, _v: u16) { self.add_unknown_to_log(); }
+        fn emit_u8(&mut self, _v: u8)   { self.add_unknown_to_log(); }
 
-        fn emit_int(&self, +_v: int) { self.add_unknown_to_log(); }
-        fn emit_i64(&self, +_v: i64) { self.add_unknown_to_log(); }
-        fn emit_i32(&self, +_v: i32) { self.add_unknown_to_log(); }
-        fn emit_i16(&self, +_v: i16) { self.add_unknown_to_log(); }
-        fn emit_i8(&self, +_v: i8)   { self.add_unknown_to_log(); }
+        fn emit_int(&mut self, _v: int) { self.add_unknown_to_log(); }
+        fn emit_i64(&mut self, _v: i64) { self.add_unknown_to_log(); }
+        fn emit_i32(&mut self, _v: i32) { self.add_unknown_to_log(); }
+        fn emit_i16(&mut self, _v: i16) { self.add_unknown_to_log(); }
+        fn emit_i8(&mut self, _v: i8)   { self.add_unknown_to_log(); }
 
-        fn emit_bool(&self, +_v: bool) { self.add_unknown_to_log(); }
+        fn emit_bool(&mut self, _v: bool) { self.add_unknown_to_log(); }
 
-        fn emit_f64(&self, +_v: f64) { self.add_unknown_to_log(); }
-        fn emit_f32(&self, +_v: f32) { self.add_unknown_to_log(); }
-        fn emit_float(&self, +_v: float) { self.add_unknown_to_log(); }
+        fn emit_f64(&mut self, _v: f64) { self.add_unknown_to_log(); }
+        fn emit_f32(&mut self, _v: f32) { self.add_unknown_to_log(); }
+        fn emit_float(&mut self, _v: float) { self.add_unknown_to_log(); }
 
-        fn emit_char(&self, +_v: char) { self.add_unknown_to_log(); }
-        fn emit_str(&self, +_v: &str) { self.add_unknown_to_log(); }
+        fn emit_char(&mut self, _v: char) { self.add_unknown_to_log(); }
+        fn emit_str(&mut self, _v: &str) { self.add_unknown_to_log(); }
 
-        fn emit_enum(&self, name: &str, f: &fn()) {
-            self.add_to_log(CallToEmitEnum(name.to_str())); f(); }
-
-        fn emit_enum_variant(&self, name: &str, +id: uint,
-                             +cnt: uint, f: &fn()) {
-            self.add_to_log(CallToEmitEnumVariant (name.to_str(),id,cnt));
-            f();
+        fn emit_enum(&mut self, name: &str, f: &fn(&mut TestEncoder)) {
+            self.add_to_log(CallToEmitEnum(name.to_str()));
+            f(self);
         }
 
-        fn emit_enum_variant_arg(&self, +idx: uint, f: &fn()) {
-            self.add_to_log(CallToEmitEnumVariantArg (idx)); f();
+        fn emit_enum_variant(&mut self,
+                             name: &str,
+                             id: uint,
+                             cnt: uint,
+                             f: &fn(&mut TestEncoder)) {
+            self.add_to_log(CallToEmitEnumVariant(name.to_str(), id, cnt));
+            f(self);
         }
 
-        fn emit_enum_struct_variant(&self, name: &str, id: uint, cnt: uint, f: &fn()) {
+        fn emit_enum_variant_arg(&mut self,
+                                 idx: uint,
+                                 f: &fn(&mut TestEncoder)) {
+            self.add_to_log(CallToEmitEnumVariantArg(idx));
+            f(self);
+        }
+
+        fn emit_enum_struct_variant(&mut self,
+                                    name: &str,
+                                    id: uint,
+                                    cnt: uint,
+                                    f: &fn(&mut TestEncoder)) {
             self.emit_enum_variant(name, id, cnt, f)
         }
 
-        fn emit_enum_struct_variant_field(&self, _name: &str, idx: uint, f: &fn()) {
+        fn emit_enum_struct_variant_field(&mut self,
+                                          _name: &str,
+                                          idx: uint,
+                                          f: &fn(&mut TestEncoder)) {
             self.emit_enum_variant_arg(idx, f)
         }
 
-        fn emit_struct(&self, name: &str, +len: uint, f: &fn()) {
-            self.add_to_log(CallToEmitStruct (name.to_str(),len)); f();
+        fn emit_struct(&mut self,
+                       name: &str,
+                       len: uint,
+                       f: &fn(&mut TestEncoder)) {
+            self.add_to_log(CallToEmitStruct (name.to_str(),len));
+            f(self);
         }
-        fn emit_struct_field(&self, name: &str, +idx: uint, f: &fn()) {
-            self.add_to_log(CallToEmitField (name.to_str(),idx)); f();
-        }
-
-        fn emit_tuple(&self, _len: uint, f: &fn()) {
-            self.add_unknown_to_log(); f();
-        }
-        fn emit_tuple_arg(&self, _idx: uint, f: &fn()) {
-            self.add_unknown_to_log(); f();
-        }
-
-        fn emit_tuple_struct(&self, _name: &str, _len: uint, f: &fn()) {
-            self.add_unknown_to_log(); f();
-        }
-        fn emit_tuple_struct_arg(&self, _idx: uint, f: &fn()) {
-            self.add_unknown_to_log(); f();
+        fn emit_struct_field(&mut self,
+                             name: &str,
+                             idx: uint,
+                             f: &fn(&mut TestEncoder)) {
+            self.add_to_log(CallToEmitField (name.to_str(),idx));
+            f(self);
         }
 
-        fn emit_option(&self, f: &fn()) {
+        fn emit_tuple(&mut self, _len: uint, f: &fn(&mut TestEncoder)) {
+            self.add_unknown_to_log();
+            f(self);
+        }
+        fn emit_tuple_arg(&mut self, _idx: uint, f: &fn(&mut TestEncoder)) {
+            self.add_unknown_to_log();
+            f(self);
+        }
+
+        fn emit_tuple_struct(&mut self,
+                             _name: &str,
+                             _len: uint,
+                             f: &fn(&mut TestEncoder)) {
+            self.add_unknown_to_log();
+            f(self);
+        }
+
+        fn emit_tuple_struct_arg(&mut self,
+                                 _idx: uint,
+                                 f: &fn(&mut TestEncoder)) {
+            self.add_unknown_to_log();
+            f(self);
+        }
+
+        fn emit_option(&mut self, f: &fn(&mut TestEncoder)) {
             self.add_to_log(CallToEmitOption);
-            f();
+            f(self);
         }
-        fn emit_option_none(&self) {
+        fn emit_option_none(&mut self) {
             self.add_to_log(CallToEmitOptionNone);
         }
-        fn emit_option_some(&self, f: &fn()) {
+        fn emit_option_some(&mut self, f: &fn(&mut TestEncoder)) {
             self.add_to_log(CallToEmitOptionSome);
-            f();
+            f(self);
         }
 
-        fn emit_seq(&self, +_len: uint, f: &fn()) {
-            self.add_unknown_to_log(); f();
+        fn emit_seq(&mut self, _len: uint, f: &fn(&mut TestEncoder)) {
+            self.add_unknown_to_log();
+            f(self);
         }
-        fn emit_seq_elt(&self, +_idx: uint, f: &fn()) {
-            self.add_unknown_to_log(); f();
+        fn emit_seq_elt(&mut self, _idx: uint, f: &fn(&mut TestEncoder)) {
+            self.add_unknown_to_log();
+            f(self);
         }
 
-        fn emit_map(&self, _len: uint, f: &fn()) {
-            self.add_unknown_to_log(); f();
+        fn emit_map(&mut self, _len: uint, f: &fn(&mut TestEncoder)) {
+            self.add_unknown_to_log();
+            f(self);
         }
-        fn emit_map_elt_key(&self, _idx: uint, f: &fn()) {
-            self.add_unknown_to_log(); f();
+        fn emit_map_elt_key(&mut self, _idx: uint, f: &fn(&mut TestEncoder)) {
+            self.add_unknown_to_log();
+            f(self);
         }
-        fn emit_map_elt_val(&self, _idx: uint, f: &fn()) {
-            self.add_unknown_to_log(); f();
+        fn emit_map_elt_val(&mut self, _idx: uint, f: &fn(&mut TestEncoder)) {
+            self.add_unknown_to_log();
+            f(self);
         }
     }
 
 
     fn to_call_log<E:Encodable<TestEncoder>>(val: E) -> ~[call] {
-        let mut te = TestEncoder {call_log: @mut ~[]};
-        val.encode(&te);
+        let mut te = TestEncoder {
+            call_log: @mut ~[]
+        };
+        val.encode(&mut te);
         copy *te.call_log
     }
 

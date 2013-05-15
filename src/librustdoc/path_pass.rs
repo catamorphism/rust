@@ -10,8 +10,6 @@
 
 //! Records the full path to items
 
-use core::prelude::*;
-
 use astsrv;
 use doc::ItemUtils;
 use doc;
@@ -114,4 +112,3 @@ fn should_record_fn_paths() {
         assert!(doc.cratemod().mods()[0].fns()[0].path() == ~[~"a"]);
     }
 }
-

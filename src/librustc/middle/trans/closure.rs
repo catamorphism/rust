@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use back::abi;
 use back::link::{mangle_internal_name_by_path_and_seq};
 use lib::llvm::{llvm, ValueRef};
@@ -210,7 +208,6 @@ pub fn store_environment(bcx: block,
 
     // allocate closure in the heap
     let Result {bcx: bcx, val: llbox} = allocate_cbox(bcx, sigil, cdata_ty);
-    let mut temp_cleanups = ~[];
 
     // cbox_ty has the form of a tuple: (a, b, c) we want a ptr to a
     // tuple.  This could be a ptr in uniq or a box or on stack,
@@ -226,7 +223,7 @@ pub fn store_environment(bcx: block,
     for vec::eachi(bound_values) |i, bv| {
         debug!("Copy %s into closure", bv.to_str(ccx));
 
-        if !ccx.sess.no_asm_comments() {
+        if ccx.sess.asm_comments() {
             add_comment(bcx, fmt!("Copy %s into closure",
                                   bv.to_str(ccx)));
         }
@@ -246,9 +243,6 @@ pub fn store_environment(bcx: block,
         }
 
     }
-    for vec::each(temp_cleanups) |cleanup| {
-        revoke_clean(bcx, *cleanup);
-    }
 
     ClosureResult { llbox: llbox, cdata_ty: cdata_ty, bcx: bcx }
 }
@@ -261,8 +255,7 @@ pub fn build_closure(bcx0: block,
                      include_ret_handle: Option<ValueRef>) -> ClosureResult {
     let _icx = bcx0.insn_ctxt("closure::build_closure");
     // If we need to, package up the iterator body to call
-    let mut bcx = bcx0;;
-    let ccx = bcx.ccx(), tcx = ccx.tcx;
+    let bcx = bcx0;
 
     // Package up the captured upvars
     let mut env_vals = ~[];
@@ -290,7 +283,7 @@ pub fn build_closure(bcx0: block,
     // variables:
     for include_ret_handle.each |flagptr| {
         // Flag indicating we have returned (a by-ref bool):
-        let flag_datum = Datum {val: *flagptr, ty: ty::mk_bool(tcx),
+        let flag_datum = Datum {val: *flagptr, ty: ty::mk_bool(),
                                 mode: ByRef, source: ZeroMem};
         env_vals.push(EnvValue {action: EnvRef,
                                 datum: flag_datum});
@@ -299,10 +292,10 @@ pub fn build_closure(bcx0: block,
         // the right thing):
         let ret_true = match bcx.fcx.loop_ret {
             Some((_, retptr)) => retptr,
-            None => bcx.fcx.llretptr
+            None => bcx.fcx.llretptr.get()
         };
         let ret_casted = PointerCast(bcx, ret_true, T_ptr(T_nil()));
-        let ret_datum = Datum {val: ret_casted, ty: ty::mk_nil(tcx),
+        let ret_datum = Datum {val: ret_casted, ty: ty::mk_nil(),
                                mode: ByRef, source: ZeroMem};
         env_vals.push(EnvValue {action: EnvRef,
                                 datum: ret_datum});
@@ -367,8 +360,7 @@ pub fn trans_expr_fn(bcx: block,
                      outer_id: ast::node_id,
                      user_id: ast::node_id,
                      is_loop_body: Option<Option<ValueRef>>,
-                     dest: expr::Dest) -> block
-{
+                     dest: expr::Dest) -> block {
     /*!
      *
      * Translates the body of a closure expression.
@@ -400,30 +392,57 @@ pub fn trans_expr_fn(bcx: block,
 
     let ccx = bcx.ccx();
     let fty = node_id_type(bcx, outer_id);
+
     let llfnty = type_of_fn_from_ty(ccx, fty);
+
     let sub_path = vec::append_one(/*bad*/copy bcx.fcx.path,
                                    path_name(special_idents::anon));
     // XXX: Bad copy.
     let s = mangle_internal_name_by_path_and_seq(ccx,
                                                  copy sub_path,
-                                                 ~"expr_fn");
+                                                 "expr_fn");
     let llfn = decl_internal_cdecl_fn(ccx.llmod, s, llfnty);
+
+    // Always mark inline if this is a loop body. This is important for
+    // performance on many programs with tight loops.
+    if is_loop_body.is_some() {
+        set_always_inline(llfn);
+    } else {
+        // Can't hurt.
+        set_inline_hint(llfn);
+    }
+
+    let real_return_type = if is_loop_body.is_some() {
+        ty::mk_bool()
+    } else {
+        ty::ty_fn_ret(fty)
+    };
 
     let Result {bcx: bcx, val: closure} = match sigil {
         ast::BorrowedSigil | ast::ManagedSigil | ast::OwnedSigil => {
-            let cap_vars = *ccx.maps.capture_map.get(&user_id);
+            let cap_vars = ccx.maps.capture_map.get_copy(&user_id);
             let ret_handle = match is_loop_body {Some(x) => x,
                                                  None => None};
             let ClosureResult {llbox, cdata_ty, bcx}
                 = build_closure(bcx, cap_vars, sigil, ret_handle);
-            trans_closure(ccx, sub_path, decl,
-                          body, llfn, no_self,
-                          /*bad*/ copy bcx.fcx.param_substs, user_id, None,
+            trans_closure(ccx,
+                          sub_path,
+                          decl,
+                          body,
+                          llfn,
+                          no_self,
+                          /*bad*/ copy bcx.fcx.param_substs,
+                          user_id,
+                          None,
+                          [],
+                          real_return_type,
                           |fcx| load_environment(fcx, cdata_ty, cap_vars,
                                                  ret_handle.is_some(), sigil),
                           |bcx| {
                               if is_loop_body.is_some() {
-                                  Store(bcx, C_bool(true), bcx.fcx.llretptr);
+                                  Store(bcx,
+                                        C_bool(true),
+                                        bcx.fcx.llretptr.get());
                               }
                           });
             rslt(bcx, llbox)
@@ -576,4 +595,3 @@ pub fn make_opaque_cbox_free_glue(
         }
     }
 }
-

@@ -98,7 +98,7 @@ pub enum uv_req_type {
 
 pub unsafe fn malloc_handle(handle: uv_handle_type) -> *c_void {
     assert!(handle != UV_UNKNOWN_HANDLE && handle != UV_HANDLE_TYPE_MAX);
-    let size = unsafe { rust_uv_handle_size(handle as uint) };
+    let size = rust_uv_handle_size(handle as uint);
     let p = malloc(size);
     assert!(p.is_not_null());
     return p;
@@ -110,7 +110,7 @@ pub unsafe fn free_handle(v: *c_void) {
 
 pub unsafe fn malloc_req(req: uv_req_type) -> *c_void {
     assert!(req != UV_UNKNOWN_REQ && req != UV_REQ_TYPE_MAX);
-    let size = unsafe { rust_uv_req_size(req as uint) };
+    let size = rust_uv_req_size(req as uint);
     let p = malloc(size);
     assert!(p.is_not_null());
     return p;
@@ -219,9 +219,9 @@ pub unsafe fn accept(server: *c_void, client: *c_void) -> c_int {
     return rust_uv_accept(server as *c_void, client as *c_void);
 }
 
-pub unsafe fn write<T>(req: *uv_write_t, stream: *T, buf_in: *~[uv_buf_t], cb: *u8) -> c_int {
-    let buf_ptr = vec::raw::to_ptr(*buf_in);
-    let buf_cnt = vec::len(*buf_in) as i32;
+pub unsafe fn write<T>(req: *uv_write_t, stream: *T, buf_in: &[uv_buf_t], cb: *u8) -> c_int {
+    let buf_ptr = vec::raw::to_ptr(buf_in);
+    let buf_cnt = vec::len(buf_in) as i32;
     return rust_uv_write(req as *c_void, stream as *c_void, buf_ptr, buf_cnt, cb);
 }
 pub unsafe fn read_start(stream: *uv_stream_t, on_alloc: *u8, on_read: *u8) -> c_int {
@@ -252,7 +252,7 @@ pub unsafe fn async_send(async_handle: *uv_async_t) {
 }
 pub unsafe fn buf_init(input: *u8, len: uint) -> uv_buf_t {
     let out_buf = uv_buf_t { base: ptr::null(), len: 0 as size_t };
-    let out_buf_ptr = ptr::addr_of(&out_buf);
+    let out_buf_ptr = ptr::to_unsafe_ptr(&out_buf);
     rust_uv_buf_init(out_buf_ptr, input, len as size_t);
     return out_buf;
 }
@@ -330,7 +330,7 @@ pub unsafe fn free_base_of_buf(buf: uv_buf_t) {
 
 pub unsafe fn get_last_err_info(uv_loop: *c_void) -> ~str {
     let err = last_error(uv_loop);
-    let err_ptr = ptr::addr_of(&err);
+    let err_ptr = ptr::to_unsafe_ptr(&err);
     let err_name = str::raw::from_c_str(err_name(err_ptr));
     let err_msg = str::raw::from_c_str(strerror(err_ptr));
     return fmt!("LIBUV ERROR: name: %s msg: %s",
@@ -339,7 +339,7 @@ pub unsafe fn get_last_err_info(uv_loop: *c_void) -> ~str {
 
 pub unsafe fn get_last_err_data(uv_loop: *c_void) -> uv_err_data {
     let err = last_error(uv_loop);
-    let err_ptr = ptr::addr_of(&err);
+    let err_ptr = ptr::to_unsafe_ptr(&err);
     let err_name = str::raw::from_c_str(err_name(err_ptr));
     let err_msg = str::raw::from_c_str(strerror(err_ptr));
     uv_err_data { err_name: err_name, err_msg: err_msg }
@@ -393,24 +393,26 @@ extern {
     // FIXME ref #2064
     fn rust_uv_tcp_connect(connect_ptr: *uv_connect_t,
                            tcp_handle_ptr: *uv_tcp_t,
-                           ++after_cb: *u8,
-                           ++addr: *sockaddr_in) -> c_int;
+                           after_cb: *u8,
+                           addr: *sockaddr_in) -> c_int;
     // FIXME ref #2064
-    fn rust_uv_tcp_bind(tcp_server: *uv_tcp_t, ++addr: *sockaddr_in) -> c_int;
+    fn rust_uv_tcp_bind(tcp_server: *uv_tcp_t, addr: *sockaddr_in) -> c_int;
     // FIXME ref #2064
     fn rust_uv_tcp_connect6(connect_ptr: *uv_connect_t,
                             tcp_handle_ptr: *uv_tcp_t,
-                            ++after_cb: *u8,
-                            ++addr: *sockaddr_in6) -> c_int;
+                            after_cb: *u8,
+                            addr: *sockaddr_in6) -> c_int;
     // FIXME ref #2064
-    fn rust_uv_tcp_bind6(tcp_server: *uv_tcp_t, ++addr: *sockaddr_in6) -> c_int;
-    fn rust_uv_tcp_getpeername(tcp_handle_ptr: *uv_tcp_t, ++name: *sockaddr_in) -> c_int;
-    fn rust_uv_tcp_getpeername6(tcp_handle_ptr: *uv_tcp_t, ++name: *sockaddr_in6) ->c_int;
+    fn rust_uv_tcp_bind6(tcp_server: *uv_tcp_t, addr: *sockaddr_in6) -> c_int;
+    fn rust_uv_tcp_getpeername(tcp_handle_ptr: *uv_tcp_t,
+                               name: *sockaddr_in) -> c_int;
+    fn rust_uv_tcp_getpeername6(tcp_handle_ptr: *uv_tcp_t,
+                                name: *sockaddr_in6) ->c_int;
     fn rust_uv_listen(stream: *c_void, backlog: c_int, cb: *u8) -> c_int;
     fn rust_uv_accept(server: *c_void, client: *c_void) -> c_int;
     fn rust_uv_write(req: *c_void,
                      stream: *c_void,
-                     ++buf_in: *uv_buf_t,
+                     buf_in: *uv_buf_t,
                      buf_cnt: c_int,
                      cb: *u8) -> c_int;
     fn rust_uv_read_start(stream: *c_void,
@@ -426,7 +428,7 @@ extern {
     fn rust_uv_timer_stop(handle: *uv_timer_t) -> c_int;
 
     fn rust_uv_malloc_buf_base_of(sug_size: size_t) -> *u8;
-    fn rust_uv_free_base_of_buf(++buf: uv_buf_t);
+    fn rust_uv_free_base_of_buf(buf: uv_buf_t);
     fn rust_uv_get_stream_handle_from_connect_req(connect_req: *uv_connect_t) -> *uv_stream_t;
     fn rust_uv_get_stream_handle_from_write_req(write_req: *uv_write_t) -> *uv_stream_t;
     fn rust_uv_get_loop_for_uv_handle(handle: *c_void) -> *c_void;
@@ -436,6 +438,6 @@ extern {
     fn rust_uv_set_data_for_uv_handle(handle: *c_void, data: *c_void);
     fn rust_uv_get_data_for_req(req: *c_void) -> *c_void;
     fn rust_uv_set_data_for_req(req: *c_void, data: *c_void);
-    fn rust_uv_get_base_from_buf(++buf: uv_buf_t) -> *u8;
-    fn rust_uv_get_len_from_buf(++buf: uv_buf_t) -> size_t;
+    fn rust_uv_get_base_from_buf(buf: uv_buf_t) -> *u8;
+    fn rust_uv_get_len_from_buf(buf: uv_buf_t) -> size_t;
 }

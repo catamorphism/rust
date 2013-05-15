@@ -11,14 +11,13 @@
 // xfail-pretty (extra blank line is inserted in vec::mapi call)
 // multi tasking k-nucleotide
 
-#[legacy_modes];
-
 extern mod std;
 use std::sort;
 use core::hashmap::HashMap;
 use core::io::ReaderUtil;
 use core::comm::{stream, Port, Chan};
 use core::cmp::Ord;
+use core::util;
 
 // given a map, print a sorted version of it
 fn sort_and_fmt(mm: &HashMap<~[u8], uint>, total: uint) -> ~str {
@@ -59,7 +58,10 @@ fn sort_and_fmt(mm: &HashMap<~[u8], uint>, total: uint) -> ~str {
    for pairs_sorted.each |kv| {
        let (k,v) = copy *kv;
        unsafe {
-           buffer += (fmt!("%s %0.3f\n", str::to_upper(str::raw::from_bytes(k)), v));
+           let b = str::raw::from_bytes(k);
+           // FIXME: #4318 Instead of to_ascii and to_str_ascii, could use
+           // to_ascii_consume and to_str_consume to not do a unnecessary copy.
+           buffer += (fmt!("%s %0.3f\n", b.to_ascii().to_upper().to_str_ascii(), v));
        }
    }
 
@@ -68,7 +70,9 @@ fn sort_and_fmt(mm: &HashMap<~[u8], uint>, total: uint) -> ~str {
 
 // given a map, search for the frequency of a pattern
 fn find(mm: &HashMap<~[u8], uint>, key: ~str) -> uint {
-   match mm.find(&str::to_bytes(str::to_lower(key))) {
+   // FIXME: #4318 Instead of to_ascii and to_str_ascii, could use
+   // to_ascii_consume and to_str_consume to not do a unnecessary copy.
+   match mm.find(&str::to_bytes(key.to_ascii().to_lower().to_str_ascii())) {
       option::None      => { return 0u; }
       option::Some(&num) => { return num; }
    }
@@ -100,9 +104,9 @@ fn windows_with_carry(bb: &[u8], nn: uint,
    return vec::slice(bb, len - (nn - 1u), len).to_vec();
 }
 
-fn make_sequence_processor(sz: uint, from_parent: comm::Port<~[u8]>,
-                           to_parent: comm::Chan<~str>) {
-
+fn make_sequence_processor(sz: uint,
+                           from_parent: &comm::Port<~[u8]>,
+                           to_parent: &comm::Chan<~str>) {
    let mut freqs: HashMap<~[u8], uint> = HashMap::new();
    let mut carry: ~[u8] = ~[];
    let mut total: uint = 0u;
@@ -137,7 +141,7 @@ fn make_sequence_processor(sz: uint, from_parent: comm::Port<~[u8]>,
 // given a FASTA file on stdin, process sequence THREE
 fn main() {
     let args = os::args();
-   let rdr = if os::getenv(~"RUST_BENCH").is_some() {
+    let rdr = if os::getenv(~"RUST_BENCH").is_some() {
        // FIXME: Using this compile-time env variable is a crummy way to
        // get to this massive data set, but include_bin! chokes on it (#2598)
        let path = Path(env!("CFG_SRC_DIR"))
@@ -156,8 +160,7 @@ fn main() {
     let mut from_child = ~[];
     let to_child   = vec::mapi(sizes, |ii, sz| {
         let sz = *sz;
-        let mut stream = None;
-        stream <-> streams[ii];
+        let stream = util::replace(&mut streams[ii], None);
         let (from_child_, to_parent_) = stream.unwrap();
 
         from_child.push(from_child_);
@@ -165,7 +168,7 @@ fn main() {
         let (from_parent, to_child) = comm::stream();
 
         do task::spawn_with(from_parent) |from_parent| {
-            make_sequence_processor(sz, from_parent, to_parent_);
+            make_sequence_processor(sz, &from_parent, &to_parent_);
         };
 
         to_child
@@ -219,4 +222,3 @@ fn main() {
       io::println(from_child[ii].recv());
    }
 }
-

@@ -8,15 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use metadata::csearch;
 use middle::astencode;
 use middle::ty;
 use middle;
 
-use core::float;
-use core::vec;
 use syntax::{ast, ast_map, ast_util, visit};
 use syntax::ast::*;
 
@@ -189,9 +185,7 @@ pub fn lookup_const_by_id(tcx: ty::ctxt,
         }
     } else {
         let maps = astencode::Maps {
-            mutbl_map: @mut HashSet::new(),
             root_map: @mut HashMap::new(),
-            last_use_map: @mut HashMap::new(),
             method_map: @mut HashMap::new(),
             vtable_map: @mut HashMap::new(),
             write_guard_map: @mut HashSet::new(),
@@ -229,7 +223,7 @@ pub fn process_crate(crate: @ast::crate,
         visit_expr_post: |e| { classify(e, tcx); },
         .. *visit::default_simple_visitor()
     });
-    visit::visit_crate(*crate, (), v);
+    visit::visit_crate(crate, (), v);
     tcx.sess.abort_if_errors();
 }
 
@@ -299,9 +293,9 @@ pub fn eval_const_expr_partial(tcx: middle::ty::ctxt, e: @expr)
               add => Ok(const_int(a + b)),
               subtract => Ok(const_int(a - b)),
               mul => Ok(const_int(a * b)),
-              div if b == 0 => Err(~"divide by zero"),
+              div if b == 0 => Err(~"attempted to divide by zero"),
               div => Ok(const_int(a / b)),
-              rem if b == 0 => Err(~"modulo zero"),
+              rem if b == 0 => Err(~"attempted remainder with a divisor of zero"),
               rem => Ok(const_int(a % b)),
               and | bitand => Ok(const_int(a & b)),
               or | bitor => Ok(const_int(a | b)),
@@ -321,9 +315,9 @@ pub fn eval_const_expr_partial(tcx: middle::ty::ctxt, e: @expr)
               add => Ok(const_uint(a + b)),
               subtract => Ok(const_uint(a - b)),
               mul => Ok(const_uint(a * b)),
-              div if b == 0 => Err(~"divide by zero"),
+              div if b == 0 => Err(~"attempted to divide by zero"),
               div => Ok(const_uint(a / b)),
-              rem if b == 0 => Err(~"modulo zero"),
+              rem if b == 0 => Err(~"attempted remainder with a divisor of zero"),
               rem => Ok(const_uint(a % b)),
               and | bitand => Ok(const_uint(a & b)),
               or | bitor => Ok(const_uint(a | b)),
@@ -426,8 +420,8 @@ pub fn lit_to_const(lit: @lit) -> const_val {
     }
 }
 
-pub fn compare_const_vals(a: const_val, b: const_val) -> int {
-  match (&a, &b) {
+pub fn compare_const_vals(a: &const_val, b: &const_val) -> int {
+  match (a, b) {
     (&const_int(a), &const_int(b)) => {
         if a == b {
             0
@@ -478,7 +472,7 @@ pub fn compare_const_vals(a: const_val, b: const_val) -> int {
 }
 
 pub fn compare_lit_exprs(tcx: middle::ty::ctxt, a: @expr, b: @expr) -> int {
-  compare_const_vals(eval_const_expr(tcx, a), eval_const_expr(tcx, b))
+  compare_const_vals(&eval_const_expr(tcx, a), &eval_const_expr(tcx, b))
 }
 
 pub fn lit_expr_eq(tcx: middle::ty::ctxt, a: @expr, b: @expr) -> bool {
@@ -486,14 +480,5 @@ pub fn lit_expr_eq(tcx: middle::ty::ctxt, a: @expr, b: @expr) -> bool {
 }
 
 pub fn lit_eq(a: @lit, b: @lit) -> bool {
-    compare_const_vals(lit_to_const(a), lit_to_const(b)) == 0
+    compare_const_vals(&lit_to_const(a), &lit_to_const(b)) == 0
 }
-
-
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:

@@ -8,21 +8,15 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::prelude::*;
-
 use ast::*;
 use ast;
 use ast_util;
-use codemap::{span, dummy_sp, spanned};
+use codemap::{span, spanned};
 use parse::token;
 use visit;
 use opt_vec;
 
-use core::int;
-use core::option;
-use core::str;
 use core::to_bytes;
-use core::vec;
 
 pub fn path_name_i(idents: &[ident], intr: @token::ident_interner) -> ~str {
     // FIXME: Bad copies (#2543 -- same for everything else that says "bad")
@@ -38,7 +32,7 @@ pub fn local_def(id: node_id) -> def_id {
 
 pub fn is_local(did: ast::def_id) -> bool { did.crate == local_crate }
 
-pub fn stmt_id(s: stmt) -> node_id {
+pub fn stmt_id(s: &stmt) -> node_id {
     match s.node {
       stmt_decl(_, id) => id,
       stmt_expr(_, id) => id,
@@ -47,12 +41,12 @@ pub fn stmt_id(s: stmt) -> node_id {
     }
 }
 
-pub fn variant_def_ids(d: def) -> (def_id, def_id) {
+pub fn variant_def_ids(d: def) -> Option<(def_id, def_id)> {
     match d {
       def_variant(enum_id, var_id) => {
-        return (enum_id, var_id);
+          Some((enum_id, var_id))
       }
-      _ => fail!(~"non-variant in variant_def_ids")
+      _ => None
     }
 }
 
@@ -64,7 +58,7 @@ pub fn def_id_of_def(d: def) -> def_id {
       def_use(id) | def_struct(id) | def_trait(id) => {
         id
       }
-      def_arg(id, _, _) | def_local(id, _) | def_self(id, _) | def_self_ty(id)
+      def_arg(id, _) | def_local(id, _) | def_self(id, _) | def_self_ty(id)
       | def_upvar(id, _, _, _) | def_binding(id, _) | def_region(id)
       | def_typaram_binder(id) | def_label(id) => {
         local_def(id)
@@ -103,7 +97,7 @@ pub fn binop_to_method_name(op: binop) -> Option<~str> {
       subtract => return Some(~"sub"),
       mul => return Some(~"mul"),
       div => return Some(~"div"),
-      rem => return Some(~"modulo"),
+      rem => return Some(~"rem"),
       bitxor => return Some(~"bitxor"),
       bitand => return Some(~"bitand"),
       bitor => return Some(~"bitor"),
@@ -197,10 +191,19 @@ pub fn is_call_expr(e: @expr) -> bool {
 }
 
 // This makes def_id hashable
+#[cfg(stage0)]
 impl to_bytes::IterBytes for def_id {
     #[inline(always)]
-    fn iter_bytes(&self, +lsb0: bool, f: to_bytes::Cb) {
+    fn iter_bytes(&self, lsb0: bool, f: to_bytes::Cb) {
         to_bytes::iter_bytes_2(&self.crate, &self.node, lsb0, f);
+    }
+}
+// This makes def_id hashable
+#[cfg(not(stage0))]
+impl to_bytes::IterBytes for def_id {
+    #[inline(always)]
+    fn iter_bytes(&self, lsb0: bool, f: to_bytes::Cb) -> bool {
+        to_bytes::iter_bytes_2(&self.crate, &self.node, lsb0, f)
     }
 }
 
@@ -210,7 +213,7 @@ pub fn block_from_expr(e: @expr) -> blk {
 }
 
 pub fn default_block(
-    +stmts1: ~[@stmt],
+    stmts1: ~[@stmt],
     expr1: Option<@expr>,
     id1: node_id
 ) -> blk_ {
@@ -223,7 +226,7 @@ pub fn default_block(
     }
 }
 
-pub fn ident_to_path(s: span, +i: ident) -> @Path {
+pub fn ident_to_path(s: span, i: ident) -> @Path {
     @ast::Path { span: s,
                  global: false,
                  idents: ~[i],
@@ -231,7 +234,7 @@ pub fn ident_to_path(s: span, +i: ident) -> @Path {
                  types: ~[] }
 }
 
-pub fn ident_to_pat(id: node_id, s: span, +i: ident) -> @pat {
+pub fn ident_to_pat(id: node_id, s: span, i: ident) -> @pat {
     @ast::pat { id: id,
                 node: pat_ident(bind_by_copy, ident_to_path(s, i), None),
                 span: s }
@@ -291,7 +294,7 @@ pub fn split_trait_methods(trait_methods: &[trait_method])
 
 pub fn struct_field_visibility(field: ast::struct_field) -> visibility {
     match field.node.kind {
-        ast::named_field(_, _, visibility) => visibility,
+        ast::named_field(_, visibility) => visibility,
         ast::unnamed_field => ast::public
     }
 }
@@ -299,7 +302,7 @@ pub fn struct_field_visibility(field: ast::struct_field) -> visibility {
 pub trait inlined_item_utils {
     fn ident(&self) -> ident;
     fn id(&self) -> ast::node_id;
-    fn accept<E>(&self, e: E, v: visit::vt<E>);
+    fn accept<E: Copy>(&self, e: E, v: visit::vt<E>);
 }
 
 impl inlined_item_utils for inlined_item {
@@ -308,7 +311,6 @@ impl inlined_item_utils for inlined_item {
             ii_item(i) => /* FIXME (#2543) */ copy i.ident,
             ii_foreign(i) => /* FIXME (#2543) */ copy i.ident,
             ii_method(_, m) => /* FIXME (#2543) */ copy m.ident,
-            ii_dtor(_, nm, _, _) => /* FIXME (#2543) */ copy nm
         }
     }
 
@@ -317,19 +319,14 @@ impl inlined_item_utils for inlined_item {
             ii_item(i) => i.id,
             ii_foreign(i) => i.id,
             ii_method(_, m) => m.id,
-            ii_dtor(ref dtor, _, _, _) => (*dtor).node.id
         }
     }
 
-    fn accept<E>(&self, e: E, v: visit::vt<E>) {
+    fn accept<E: Copy>(&self, e: E, v: visit::vt<E>) {
         match *self {
             ii_item(i) => (v.visit_item)(i, e, v),
             ii_foreign(i) => (v.visit_foreign_item)(i, e, v),
             ii_method(_, m) => visit::visit_method_helper(m, e, v),
-            ii_dtor(/*bad*/ copy dtor, _, ref generics, parent_id) => {
-                visit::visit_struct_dtor_helper(dtor, generics,
-                                                parent_id, e, v);
-            }
         }
     }
 }
@@ -361,19 +358,9 @@ pub fn operator_prec(op: ast::binop) -> uint {
   }
 }
 
-pub fn dtor_ty() -> @ast::Ty {
-    @ast::Ty {id: 0, node: ty_nil, span: dummy_sp()}
-}
-
-pub fn dtor_dec() -> fn_decl {
-    let nil_t = dtor_ty();
-    // dtor has no args
-    ast::fn_decl {
-        inputs: ~[],
-        output: nil_t,
-        cf: return_val,
-    }
-}
+/// Precedence of the `as` operator, which is a binary operator
+/// not appearing in the prior table.
+pub static as_prec: uint = 11u;
 
 pub fn empty_generics() -> Generics {
     Generics {lifetimes: opt_vec::Empty,
@@ -390,8 +377,20 @@ pub struct id_range {
     max: node_id,
 }
 
-pub fn empty(range: id_range) -> bool {
-    range.min >= range.max
+pub impl id_range {
+    fn max() -> id_range {
+        id_range {min: int::max_value,
+                  max: int::min_value}
+    }
+
+    fn empty(&self) -> bool {
+        self.min >= self.max
+    }
+
+    fn add(&mut self, id: node_id) {
+        self.min = int::min(self.min, id);
+        self.max = int::max(self.max, id + 1);
+    }
 }
 
 pub fn id_visitor(vfn: @fn(node_id)) -> visit::vt<()> {
@@ -412,7 +411,7 @@ pub fn id_visitor(vfn: @fn(node_id)) -> visit::vt<()> {
               view_item_use(ref vps) => {
                   for vps.each |vp| {
                       match vp.node {
-                          view_path_simple(_, _, _, id) => vfn(id),
+                          view_path_simple(_, _, id) => vfn(id),
                           view_path_glob(_, id) => vfn(id),
                           view_path_list(_, _, id) => vfn(id)
                       }
@@ -434,7 +433,7 @@ pub fn id_visitor(vfn: @fn(node_id)) -> visit::vt<()> {
 
         visit_local: |l| vfn(l.node.id),
         visit_block: |b| vfn(b.node.id),
-        visit_stmt: |s| vfn(ast_util::stmt_id(*s)),
+        visit_stmt: |s| vfn(ast_util::stmt_id(s)),
         visit_arm: |_| {},
         visit_pat: |p| vfn(p.id),
         visit_decl: |_| {},
@@ -459,12 +458,6 @@ pub fn id_visitor(vfn: @fn(node_id)) -> visit::vt<()> {
             vfn(id);
 
             match *fk {
-                visit::fk_dtor(generics, _, self_id, parent_id) => {
-                    visit_generics(generics);
-                    vfn(id);
-                    vfn(self_id);
-                    vfn(parent_id.node);
-                }
                 visit::fk_item_fn(_, generics, _, _) => {
                     visit_generics(generics);
                 }
@@ -477,7 +470,7 @@ pub fn id_visitor(vfn: @fn(node_id)) -> visit::vt<()> {
                 }
             }
 
-            for vec::each(d.inputs) |arg| {
+            for d.inputs.each |arg| {
                 vfn(arg.id)
             }
         },
@@ -490,21 +483,19 @@ pub fn id_visitor(vfn: @fn(node_id)) -> visit::vt<()> {
     })
 }
 
-pub fn visit_ids_for_inlined_item(item: inlined_item, vfn: @fn(node_id)) {
+pub fn visit_ids_for_inlined_item(item: &inlined_item, vfn: @fn(node_id)) {
     item.accept((), id_visitor(vfn));
 }
 
 pub fn compute_id_range(visit_ids_fn: &fn(@fn(node_id))) -> id_range {
-    let min = @mut int::max_value;
-    let max = @mut int::min_value;
+    let result = @mut id_range::max();
     do visit_ids_fn |id| {
-        *min = int::min(*min, id);
-        *max = int::max(*max, id + 1);
+        result.add(id);
     }
-    id_range { min: *min, max: *max }
+    *result
 }
 
-pub fn compute_id_range_for_inlined_item(item: inlined_item) -> id_range {
+pub fn compute_id_range_for_inlined_item(item: &inlined_item) -> id_range {
     compute_id_range(|f| visit_ids_for_inlined_item(item, f))
 }
 
@@ -550,7 +541,8 @@ pub fn walk_pat(pat: @pat, it: &fn(@pat)) {
 
 pub fn view_path_id(p: @view_path) -> node_id {
     match p.node {
-      view_path_simple(_, _, _, id) | view_path_glob(_, id) |
+      view_path_simple(_, _, id) |
+      view_path_glob(_, id) |
       view_path_list(_, _, id) => id
     }
 }
@@ -587,10 +579,275 @@ pub enum Privacy {
     Public
 }
 
-// Local Variables:
-// mode: rust
-// fill-column: 78;
-// indent-tabs-mode: nil
-// c-basic-offset: 4
-// buffer-file-coding-system: utf-8-unix
-// End:
+// HYGIENE FUNCTIONS
+
+/// Construct an identifier with the given repr and an empty context:
+pub fn mk_ident(repr: uint) -> ident { ident {repr: repr, ctxt: 0}}
+
+/// Extend a syntax context with a given mark
+pub fn mk_mark (m:Mrk,ctxt:SyntaxContext,table:&mut SCTable)
+    -> SyntaxContext {
+    idx_push(table,Mark(m,ctxt))
+}
+
+/// Extend a syntax context with a given rename
+pub fn mk_rename (id:ident, to:Name, tail:SyntaxContext, table: &mut SCTable)
+    -> SyntaxContext {
+    idx_push(table,Rename(id,to,tail))
+}
+
+/// Make a fresh syntax context table with EmptyCtxt in slot zero
+pub fn mk_sctable() -> SCTable { ~[EmptyCtxt] }
+
+/// Add a value to the end of a vec, return its index
+fn idx_push<T>(vec: &mut ~[T], val: T) -> uint {
+    vec.push(val);
+    vec.len() - 1
+}
+
+/// Resolve a syntax object to a name, per MTWT.
+pub fn resolve (id : ident, table : &SCTable) -> Name {
+    match table[id.ctxt] {
+        EmptyCtxt => id.repr,
+        // ignore marks here:
+        Mark(_,subctxt) => resolve (ident{repr:id.repr, ctxt: subctxt},table),
+        // do the rename if necessary:
+        Rename(ident{repr,ctxt},toname,subctxt) => {
+            // this could be cached or computed eagerly:
+            let resolvedfrom = resolve(ident{repr:repr,ctxt:ctxt},table);
+            let resolvedthis = resolve(ident{repr:id.repr,ctxt:subctxt},table);
+            if ((resolvedthis == resolvedfrom)
+                && (marksof (ctxt,resolvedthis,table)
+                    == marksof (subctxt,resolvedthis,table))) {
+                toname
+            } else {
+                resolvedthis
+            }
+        }
+    }
+}
+
+/// Compute the marks associated with a syntax context.
+// it's not clear to me whether it's better to use a [] mutable
+// vector or a cons-list for this.
+pub fn marksof(ctxt: SyntaxContext, stopname: Name, table: &SCTable) -> ~[Mrk] {
+    let mut result = ~[];
+    let mut loopvar = ctxt;
+    loop {
+        match table[loopvar] {
+            EmptyCtxt => {return result;},
+            Mark(mark,tl) => {
+                xorPush(&mut result,mark);
+                loopvar = tl;
+            },
+            Rename(_,name,tl) => {
+                // see MTWT for details on the purpose of the stopname.
+                // short version: it prevents duplication of effort.
+                if (name == stopname) {
+                    return result;
+                } else {
+                    loopvar = tl;
+                }
+            }
+        }
+    }
+}
+
+/// Push a name... unless it matches the one on top, in which
+/// case pop and discard (so two of the same marks cancel)
+pub fn xorPush(marks: &mut ~[uint], mark: uint) {
+    if ((marks.len() > 0) && (getLast(marks) == mark)) {
+        marks.pop();
+    } else {
+        marks.push(mark);
+    }
+}
+
+// get the last element of a mutable array.
+// FIXME #4903: , must be a separate procedure for now.
+pub fn getLast(arr: &~[Mrk]) -> uint {
+    *arr.last()
+}
+
+
+#[cfg(test)]
+mod test {
+    use ast::*;
+    use super::*;
+    use core::io;
+
+    #[test] fn xorpush_test () {
+        let mut s = ~[];
+        xorPush(&mut s,14);
+        assert_eq!(s,~[14]);
+        xorPush(&mut s,14);
+        assert_eq!(s,~[]);
+        xorPush(&mut s,14);
+        assert_eq!(s,~[14]);
+        xorPush(&mut s,15);
+        assert_eq!(s,~[14,15]);
+        xorPush (&mut s,16);
+        assert_eq! (s,~[14,15,16]);
+        xorPush (&mut s,16);
+        assert_eq! (s,~[14,15]);
+        xorPush (&mut s,15);
+        assert_eq! (s,~[14]);
+    }
+
+    // convert a list of uints to an @~[ident]
+    // (ignores the interner completely)
+    fn uints_to_idents (uints: &~[uint]) -> @~[ident] {
+        @uints.map(|u|{ ident {repr:*u, ctxt: empty_ctxt} })
+    }
+
+    fn id (u : uint, s: SyntaxContext) -> ident {
+        ident{repr:u, ctxt: s}
+    }
+
+    // because of the SCTable, I now need a tidy way of
+    // creating syntax objects. Sigh.
+    #[deriving(Eq)]
+    enum TestSC {
+        M(Mrk),
+        R(ident,Name)
+    }
+
+    // unfold a vector of TestSC values into a SCTable,
+    // returning the resulting index
+    fn unfold_test_sc(tscs : ~[TestSC], tail: SyntaxContext, table : &mut SCTable)
+        -> SyntaxContext {
+        tscs.foldr(tail, |tsc : &TestSC,tail : SyntaxContext|
+                  {match *tsc {
+                      M(mrk) => mk_mark(mrk,tail,table),
+                      R(ident,name) => mk_rename(ident,name,tail,table)}})
+    }
+
+    // gather a SyntaxContext back into a vector of TestSCs
+    fn refold_test_sc(mut sc: SyntaxContext, table : &SCTable) -> ~[TestSC] {
+        let mut result = ~[];
+        loop {
+            match table[sc] {
+                EmptyCtxt => {return result;},
+                Mark(mrk,tail) => {
+                    result.push(M(mrk));
+                    sc = tail;
+                    loop;
+                },
+                Rename(id,name,tail) => {
+                    result.push(R(id,name));
+                    sc = tail;
+                    loop;
+                }
+            }
+        }
+    }
+
+    #[test] fn test_unfold_refold(){
+        let mut t = mk_sctable();
+
+        let test_sc = ~[M(3),R(id(101,0),14),M(9)];
+        assert_eq!(unfold_test_sc(test_sc,empty_ctxt,&mut t),3);
+        assert_eq!(t[1],Mark(9,0));
+        assert_eq!(t[2],Rename(id(101,0),14,1));
+        assert_eq!(t[3],Mark(3,2));
+        assert_eq!(refold_test_sc(3,&t),test_sc);
+    }
+
+    // extend a syntax context with a sequence of marks given
+    // in a vector. v[0] will be the outermost mark.
+    fn unfold_marks(mrks:~[Mrk],tail:SyntaxContext,table: &mut SCTable) -> SyntaxContext {
+        mrks.foldr(tail, |mrk:&Mrk,tail:SyntaxContext|
+                   {mk_mark(*mrk,tail,table)})
+    }
+
+    #[test] fn unfold_marks_test() {
+        let mut t = ~[EmptyCtxt];
+
+        assert_eq!(unfold_marks(~[3,7],empty_ctxt,&mut t),2);
+        assert_eq!(t[1],Mark(7,0));
+        assert_eq!(t[2],Mark(3,1));
+    }
+
+    #[test] fn test_marksof () {
+        let stopname = 242;
+        let name1 = 243;
+        let mut t = mk_sctable();
+        assert_eq!(marksof (empty_ctxt,stopname,&t),~[]);
+        // FIXME #5074: ANF'd to dodge nested calls
+        { let ans = unfold_marks(~[4,98],empty_ctxt,&mut t);
+         assert_eq! (marksof (ans,stopname,&t),~[4,98]);}
+        // does xoring work?
+        { let ans = unfold_marks(~[5,5,16],empty_ctxt,&mut t);
+         assert_eq! (marksof (ans,stopname,&t), ~[16]);}
+        // does nested xoring work?
+        { let ans = unfold_marks(~[5,10,10,5,16],empty_ctxt,&mut t);
+         assert_eq! (marksof (ans, stopname,&t), ~[16]);}
+        // rename where stop doesn't match:
+        { let chain = ~[M(9),
+                        R(id(name1,
+                             mk_mark (4, empty_ctxt,&mut t)),
+                          100101102),
+                        M(14)];
+         let ans = unfold_test_sc(chain,empty_ctxt,&mut t);
+         assert_eq! (marksof (ans, stopname, &t), ~[9,14]);}
+        // rename where stop does match
+        { let name1sc = mk_mark(4, empty_ctxt, &mut t);
+         let chain = ~[M(9),
+                       R(id(name1, name1sc),
+                         stopname),
+                       M(14)];
+         let ans = unfold_test_sc(chain,empty_ctxt,&mut t);
+         assert_eq! (marksof (ans, stopname, &t), ~[9]); }
+    }
+
+
+    #[test] fn resolve_tests () {
+        let a = 40;
+        let mut t = mk_sctable();
+        // - ctxt is MT
+        assert_eq!(resolve(id(a,empty_ctxt),&t),a);
+        // - simple ignored marks
+        { let sc = unfold_marks(~[1,2,3],empty_ctxt,&mut t);
+         assert_eq!(resolve(id(a,sc),&t),a);}
+        // - orthogonal rename where names don't match
+        { let sc = unfold_test_sc(~[R(id(50,empty_ctxt),51),M(12)],empty_ctxt,&mut t);
+         assert_eq!(resolve(id(a,sc),&t),a);}
+        // - rename where names do match, but marks don't
+        { let sc1 = mk_mark(1,empty_ctxt,&mut t);
+         let sc = unfold_test_sc(~[R(id(a,sc1),50),
+                                   M(1),
+                                   M(2)],
+                                 empty_ctxt,&mut t);
+        assert_eq!(resolve(id(a,sc),&t), a);}
+        // - rename where names and marks match
+        { let sc1 = unfold_test_sc(~[M(1),M(2)],empty_ctxt,&mut t);
+         let sc = unfold_test_sc(~[R(id(a,sc1),50),M(1),M(2)],empty_ctxt,&mut t);
+         assert_eq!(resolve(id(a,sc),&t), 50); }
+        // - rename where names and marks match by literal sharing
+        { let sc1 = unfold_test_sc(~[M(1),M(2)],empty_ctxt,&mut t);
+         let sc = unfold_test_sc(~[R(id(a,sc1),50)],sc1,&mut t);
+         assert_eq!(resolve(id(a,sc),&t), 50); }
+        // - two renames of the same var.. can only happen if you use
+        // local-expand to prevent the inner binding from being renamed
+        // during the rename-pass caused by the first:
+        io::println("about to run bad test");
+        { let sc = unfold_test_sc(~[R(id(a,empty_ctxt),50),
+                                    R(id(a,empty_ctxt),51)],
+                                  empty_ctxt,&mut t);
+         assert_eq!(resolve(id(a,sc),&t), 51); }
+        // the simplest double-rename:
+        { let a_to_a50 = mk_rename(id(a,empty_ctxt),50,empty_ctxt,&mut t);
+         let a50_to_a51 = mk_rename(id(a,a_to_a50),51,a_to_a50,&mut t);
+         assert_eq!(resolve(id(a,a50_to_a51),&t),51);
+         // mark on the outside doesn't stop rename:
+         let sc = mk_mark(9,a50_to_a51,&mut t);
+         assert_eq!(resolve(id(a,sc),&t),51);
+         // but mark on the inside does:
+         let a50_to_a51_b = unfold_test_sc(~[R(id(a,a_to_a50),51),
+                                              M(9)],
+                                           a_to_a50,
+                                           &mut t);
+         assert_eq!(resolve(id(a,a50_to_a51_b),&t),50);}
+    }
+
+}
