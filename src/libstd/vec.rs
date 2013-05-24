@@ -3022,9 +3022,9 @@ mod tests {
 
     #[test]
     fn test_tailn() {
-        let mut a = ~[11, 12, 13];
+        let mut a = [11, 12, 13];
         assert_eq!(a.tailn(0), &[11, 12, 13]);
-        a = ~[11, 12, 13];
+        a = [11, 12, 13];
         assert_eq!(a.tailn(2), &[13]);
     }
 
@@ -3120,7 +3120,7 @@ mod tests {
         assert_eq!(v_c[2], 3);
 
         // Test on exchange heap.
-        let vec_unique = ~[1, 2, 3, 4, 5, 6];
+        let vec_unique = [1, 2, 3, 4, 5, 6];
         let v_d = slice(vec_unique, 1u, 6u).to_vec();
         assert_eq!(v_d.len(), 5u);
         assert_eq!(v_d[0], 2);
@@ -3264,11 +3264,11 @@ mod tests {
 
     #[test]
     fn test_dedup_unique() {
-        let mut v0 = ~[~1, ~1, ~2, ~3];
+        let mut v0 = ~[1, 1, 2, 3];
         v0.dedup();
-        let mut v1 = ~[~1, ~2, ~2, ~3];
+        let mut v1 = ~[1, 2, 2, 3];
         v1.dedup();
-        let mut v2 = ~[~1, ~2, ~3, ~3];
+        let mut v2 = ~[1, 2, 3, 3];
         v2.dedup();
         /*
          * If the ~pointers were leaked or otherwise misused, valgrind and/or
@@ -3315,8 +3315,8 @@ mod tests {
     fn test_map_zip() {
         fn times(x: &int, y: &int) -> int { *x * *y }
         let f = times;
-        let v0 = ~[1, 2, 3, 4, 5];
-        let v1 = ~[5, 4, 3, 2, 1];
+        let v0 = [1, 2, 3, 4, 5];
+        let v1 = [5, 4, 3, 2, 1];
         let u = map_zip::<int, int, int>(v0, v1, f);
         let mut i = 0;
         while i < 5 { assert!(v0[i] * v1[i] == u[i]); i += 1; }
@@ -3428,7 +3428,7 @@ mod tests {
         fn sub(a: int, b: &int) -> int {
             a - *b
         }
-        let v = ~[1, 2, 3, 4];
+        let v = [1, 2, 3, 4];
         let sum = foldl(0, v, sub);
         assert_eq!(sum, -10);
     }
@@ -3438,7 +3438,7 @@ mod tests {
         fn sub(a: &int, b: int) -> int {
             *a - b
         }
-        let v = ~[1, 2, 3, 4];
+        let v = [1, 2, 3, 4];
         let sum = foldr(v, 0, sub);
         assert_eq!(sum, -2);
     }
@@ -3578,7 +3578,7 @@ mod tests {
     fn test_position_elem() {
         assert!(position_elem([], &1).is_none());
 
-        let v1 = ~[1, 2, 3, 3, 2, 5];
+        let v1 = [1, 2, 3, 3, 2, 5];
         assert_eq!(position_elem(v1, &1), Some(0u));
         assert_eq!(position_elem(v1, &2), Some(1u));
         assert_eq!(position_elem(v1, &5), Some(5u));
@@ -3592,7 +3592,7 @@ mod tests {
 
         assert!(position([], less_than_three).is_none());
 
-        let v1 = ~[5, 4, 3, 2, 1];
+        let v1 = [5, 4, 3, 2, 1];
         assert_eq!(position(v1, less_than_three), Some(3u));
         assert!(position(v1, is_eighteen).is_none());
     }
@@ -3602,7 +3602,7 @@ mod tests {
         assert!(position_between([], 0u, 0u, f).is_none());
 
         fn f(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'b' }
-        let v = ~[(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
+        let v = [(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
 
         assert!(position_between(v, 0u, 0u, f).is_none());
         assert!(position_between(v, 0u, 1u, f).is_none());
@@ -3631,7 +3631,7 @@ mod tests {
 
         fn f(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'b' }
         fn g(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'd' }
-        let v = ~[(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
+        let v = [(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
 
         assert_eq!(find(v, f), Some((1, 'b')));
         assert!(find(v, g).is_none());
@@ -3642,7 +3642,7 @@ mod tests {
         assert!(find_between([], 0u, 0u, f).is_none());
 
         fn f(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'b' }
-        let v = ~[(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
+        let v = [(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
 
         assert!(find_between(v, 0u, 0u, f).is_none());
         assert!(find_between(v, 0u, 1u, f).is_none());
@@ -3671,7 +3671,7 @@ mod tests {
 
         fn f(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'b' }
         fn g(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'd' }
-        let v = ~[(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
+        let v = [(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
 
         assert_eq!(position(v, f), Some(1u));
         assert!(position(v, g).is_none());
@@ -3682,7 +3682,7 @@ mod tests {
         assert!(rposition_between([], 0u, 0u, f).is_none());
 
         fn f(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'b' }
-        let v = ~[(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
+        let v = [(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
 
         assert!(rposition_between(v, 0u, 0u, f).is_none());
         assert!(rposition_between(v, 0u, 1u, f).is_none());
@@ -3711,7 +3711,7 @@ mod tests {
 
         fn f(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'b' }
         fn g(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'd' }
-        let v = ~[(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
+        let v = [(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
 
         assert_eq!(rfind(v, f), Some((3, 'b')));
         assert!(rfind(v, g).is_none());
@@ -3722,7 +3722,7 @@ mod tests {
         assert!(rfind_between([], 0u, 0u, f).is_none());
 
         fn f(xy: &(int, char)) -> bool { let (_x, y) = *xy; y == 'b' }
-        let v = ~[(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
+        let v = [(0, 'a'), (1, 'b'), (2, 'c'), (3, 'b')];
 
         assert!(rfind_between(v, 0u, 0u, f).is_none());
         assert!(rfind_between(v, 0u, 1u, f).is_none());
@@ -3985,7 +3985,7 @@ mod tests {
 
     #[test]
     fn test_slice_2() {
-        let v = ~[1, 2, 3, 4, 5];
+        let v = [1, 2, 3, 4, 5];
         let v = v.slice(1u, 3u);
         assert_eq!(v.len(), 2u);
         assert_eq!(v[0], 2);
@@ -3999,7 +3999,7 @@ mod tests {
     fn test_from_fn_fail() {
         do from_fn(100) |v| {
             if v == 50 { fail!() }
-            (~0, @0)
+            (0, @0)
         };
     }
 
@@ -4008,10 +4008,10 @@ mod tests {
     #[should_fail]
     fn test_build_fail() {
         do build |push| {
-            push((~0, @0));
-            push((~0, @0));
-            push((~0, @0));
-            push((~0, @0));
+            push((0, @0));
+            push((0, @0));
+            push((0, @0));
+            push((0, @0));
             fail!();
         };
     }
@@ -4021,7 +4021,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_split_fail_ret_true() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do split(v) |_elt| {
             if i == 2 {
@@ -4038,7 +4038,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_split_fail_ret_false() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do split(v) |_elt| {
             if i == 2 {
@@ -4055,7 +4055,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_splitn_fail_ret_true() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do splitn(v, 100) |_elt| {
             if i == 2 {
@@ -4072,7 +4072,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_splitn_fail_ret_false() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do split(v) |_elt| {
             if i == 2 {
@@ -4089,7 +4089,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_rsplit_fail_ret_true() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do rsplit(v) |_elt| {
             if i == 2 {
@@ -4106,7 +4106,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_rsplit_fail_ret_false() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do rsplit(v) |_elt| {
             if i == 2 {
@@ -4123,7 +4123,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_rsplitn_fail_ret_true() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do rsplitn(v, 100) |_elt| {
             if i == 2 {
@@ -4140,7 +4140,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_rsplitn_fail_ret_false() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do rsplitn(v, 100) |_elt| {
             if i == 2 {
@@ -4156,7 +4156,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_consume_fail() {
-        let v = ~[(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = ~[(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do consume(v) |_i, _elt| {
             if i == 2 {
@@ -4176,7 +4176,7 @@ mod tests {
             if i == 50 {
                 fail!()
             }
-            (~0, @0)
+            (0, @0)
         }
     }
 
@@ -4184,14 +4184,14 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_map_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do map(v) |_elt| {
             if i == 2 {
                 fail!()
             }
             i += 0;
-            ~[(~0, @0)]
+            [(0, @0)]
         };
     }
 
@@ -4199,14 +4199,14 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_map_consume_fail() {
-        let v = ~[(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = ~[(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do map_consume(v) |_elt| {
             if i == 2 {
                 fail!()
             }
             i += 0;
-            ~[(~0, @0)]
+            [(0, @0)]
         };
     }
 
@@ -4214,14 +4214,14 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_mapi_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do mapi(v) |_i, _elt| {
             if i == 2 {
                 fail!()
             }
             i += 0;
-            ~[(~0, @0)]
+            [(0, @0)]
         };
     }
 
@@ -4229,14 +4229,14 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_flat_map_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do map(v) |_elt| {
             if i == 2 {
                 fail!()
             }
             i += 0;
-            ~[(~0, @0)]
+            [(0, @0)]
         };
     }
 
@@ -4245,14 +4245,14 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_map_zip_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do map_zip(v, v) |_elt1, _elt2| {
             if i == 2 {
                 fail!()
             }
             i += 0;
-            ~[(~0, @0)]
+            [(0, @0)]
         };
     }
 
@@ -4261,14 +4261,14 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_filter_mapped_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do filter_mapped(v) |_elt| {
             if i == 2 {
                 fail!()
             }
             i += 0;
-            Some((~0, @0))
+            Some((0, @0))
         };
     }
 
@@ -4277,7 +4277,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_filter_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do v.filtered |_elt| {
             if i == 2 {
@@ -4293,14 +4293,14 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_foldl_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
-        do foldl((~0, @0), v) |_a, _b| {
+        do foldl((0, @0), v) |_a, _b| {
             if i == 2 {
                 fail!()
             }
             i += 0;
-            (~0, @0)
+            (0, @0)
         };
     }
 
@@ -4309,14 +4309,14 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_foldr_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
-        do foldr(v, (~0, @0)) |_a, _b| {
+        do foldr(v, (0, @0)) |_a, _b| {
             if i == 2 {
                 fail!()
             }
             i += 0;
-            (~0, @0)
+            (0, @0)
         };
     }
 
@@ -4324,7 +4324,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_any_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do any(v) |_elt| {
             if i == 2 {
@@ -4339,7 +4339,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_any2_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do any(v) |_elt| {
             if i == 2 {
@@ -4354,7 +4354,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_all_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do all(v) |_elt| {
             if i == 2 {
@@ -4369,7 +4369,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_alli_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do alli(v) |_i, _elt| {
             if i == 2 {
@@ -4384,7 +4384,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_all2_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do all2(v, v) |_elt1, _elt2| {
             if i == 2 {
@@ -4400,7 +4400,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_find_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do find(v) |_elt| {
             if i == 2 {
@@ -4415,7 +4415,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_position_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do position(v) |_elt| {
             if i == 2 {
@@ -4430,7 +4430,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_rposition_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do rposition(v) |_elt| {
             if i == 2 {
@@ -4445,7 +4445,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_each_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do each(v) |_elt| {
             if i == 2 {
@@ -4460,7 +4460,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_eachi_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         do eachi(v) |_i, _elt| {
             if i == 2 {
@@ -4476,7 +4476,7 @@ mod tests {
     #[should_fail]
     #[allow(non_implicitly_copyable_typarams)]
     fn test_permute_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         let mut i = 0;
         for each_permutation(v) |_elt| {
             if i == 2 {
@@ -4490,7 +4490,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_as_imm_buf_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         do as_imm_buf(v) |_buf, _i| {
             fail!()
         }
@@ -4500,7 +4500,7 @@ mod tests {
     #[ignore(windows)]
     #[should_fail]
     fn test_as_const_buf_fail() {
-        let v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         do as_const_buf(v) |_buf, _i| {
             fail!()
         }
@@ -4510,7 +4510,7 @@ mod tests {
     #[ignore(cfg(windows))]
     #[should_fail]
     fn test_as_mut_buf_fail() {
-        let mut v = [(~0, @0), (~0, @0), (~0, @0), (~0, @0)];
+        let mut v = [(0, @0), (0, @0), (0, @0), (0, @0)];
         do as_mut_buf(v) |_buf, _i| {
             fail!()
         }

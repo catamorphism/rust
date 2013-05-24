@@ -12,9 +12,12 @@
 
 use option::*;
 use either::*;
-use rt;
 use rt::logging::{Logger, StdErrLogger};
+#[cfg(not(test))]
 use cast;
+#[cfg(not(test))]
+use rt;
+#[cfg(not(test))]
 use str;
 
 /// Turns on logging to stdout globally

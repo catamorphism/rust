@@ -1259,7 +1259,6 @@ pub mod node {
 #[cfg(test)]
 mod tests {
     use rope::*;
-    use core::prelude::*;
 
     //Utility function, used for sanity check
     fn rope_to_string(r: Rope) -> ~str {

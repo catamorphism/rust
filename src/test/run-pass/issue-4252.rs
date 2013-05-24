@@ -25,6 +25,7 @@ impl X for Y {
     }
 }
 
+#[unsafe_destructor]
 impl<T: X> Drop for Z<T> {
     fn finalize(&self) {
         self.x.call(); // Adding this statement causes an ICE.

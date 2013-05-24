@@ -2866,7 +2866,7 @@ mod tests {
     #[test]
     fn test_split_char_2() {
         fn t(s: &str, c: char, u: &[~str]) {
-            debug!("split_byte: %?", s);
+            debug!("split_byte: %s", s);
             let mut v = ~[];
             for each_split_char(s, c) |s| { v.push(s.to_owned()) }
             debug!("split_byte to: %?", v);
@@ -2880,7 +2880,7 @@ mod tests {
     #[test]
     fn test_splitn_char() {
         fn t(s: &str, c: char, n: uint, u: &[~str]) {
-            debug!("splitn_byte: %?", s);
+            debug!("splitn_byte: %s", s);
             let mut v = ~[];
             for each_splitn_char(s, c, n) |s| { v.push(s.to_owned()) }
             debug!("split_byte to: %?", v);
@@ -2907,7 +2907,7 @@ mod tests {
     #[test]
     fn test_splitn_char_2() {
         fn t(s: &str, c: char, n: uint, u: &[~str]) {
-            debug!("splitn_byte: %?", s);
+            debug!("splitn_byte: %s", s);
             let mut v = ~[];
             for each_splitn_char(s, c, n) |s| { v.push(s.to_owned()) }
             debug!("split_byte to: %?", v);
@@ -2925,7 +2925,7 @@ mod tests {
     #[test]
     fn test_splitn_char_3() {
         fn t(s: &str, c: char, n: uint, u: &[~str]) {
-            debug!("splitn_byte: %?", s);
+            debug!("splitn_byte: %s", s);
             let mut v = ~[];
             for each_splitn_char(s, c, n) |s| { v.push(s.to_owned()) }
             debug!("split_byte to: %?", v);
@@ -2940,7 +2940,7 @@ mod tests {
     #[test]
     fn test_split_char_no_trailing() {
         fn t(s: &str, c: char, u: &[~str]) {
-            debug!("split_byte: %?", s);
+            debug!("split_byte: %s", s);
             let mut v = ~[];
             for each_split_char_no_trailing(s, c) |s| { v.push(s.to_owned()) }
             debug!("split_byte to: %?", v);
@@ -2959,7 +2959,7 @@ mod tests {
     #[test]
     fn test_split_char_no_trailing_2() {
         fn t(s: &str, c: char, u: &[~str]) {
-            debug!("split_byte: %?", s);
+            debug!("split_byte: %s", s);
             let mut v = ~[];
             for each_split_char_no_trailing(s, c) |s| { v.push(s.to_owned()) }
             debug!("split_byte to: %?", v);
@@ -3037,7 +3037,7 @@ mod tests {
             assert!(vec::all2(v, u, |a,b| a == b));
         }
 
-        t(lf, each_line, [~"", ~"Mary had a little lamb", ~"Little lamb"]);
+        t(lf, each_line ,[~"", ~"Mary had a little lamb", ~"Little lamb"]);
         t(lf, each_line_any, [~"", ~"Mary had a little lamb", ~"Little lamb"]);
         t(crlf, each_line, [~"\r", ~"Mary had a little lamb\r", ~"Little lamb\r"]);
         t(crlf, each_line_any, [~"", ~"Mary had a little lamb", ~"Little lamb"]);
@@ -3232,30 +3232,30 @@ mod tests {
 
     #[test]
     fn test_replace_2a() {
-        let data = ~"ประเทศไทย中华";
-        let repl = ~"دولة الكويت";
+        let data = "ประเทศไทย中华";
+        let repl = "دولة الكويت";
 
-        let a = ~"ประเ";
+        let a = "ประเ";
         let A = ~"دولة الكويتทศไทย中华";
         assert_eq!(replace(data, a, repl), A);
     }
 
     #[test]
     fn test_replace_2b() {
-        let data = ~"ประเทศไทย中华";
-        let repl = ~"دولة الكويت";
+        let data = "ประเทศไทย中华";
+        let repl = "دولة الكويت";
 
-        let b = ~"ะเ";
+        let b = "ะเ";
         let B = ~"ปรدولة الكويتทศไทย中华";
         assert_eq!(replace(data, b,   repl), B);
     }
 
     #[test]
     fn test_replace_2c() {
-        let data = ~"ประเทศไทย中华";
-        let repl = ~"دولة الكويت";
+        let data = "ประเทศไทย中华";
+        let repl = "دولة الكويت";
 
-        let c = ~"中华";
+        let c = "中华";
         let C = ~"ประเทศไทยدولة الكويت";
         assert_eq!(replace(data, c, repl), C);
     }
@@ -3263,7 +3263,7 @@ mod tests {
     #[test]
     fn test_replace_2d() {
         let data = ~"ประเทศไทย中华";
-        let repl = ~"دولة الكويت";
+        let repl = "دولة الكويت";
 
         let d = ~"ไท华";
         assert_eq!(replace(data, d, repl), data);
@@ -3416,7 +3416,7 @@ mod tests {
 
     #[test]
     fn test_unsafe_from_bytes() {
-        let a = ~[65u8, 65u8, 65u8, 65u8, 65u8, 65u8, 65u8];
+        let a = [65u8, 65u8, 65u8, 65u8, 65u8, 65u8, 65u8];
         let b = unsafe { raw::from_bytes(a) };
         assert_eq!(b, ~"AAAAAAA");
     }
@@ -3424,7 +3424,7 @@ mod tests {
     #[test]
     fn test_from_bytes() {
         let ss = ~"ศไทย中华Việt Nam";
-        let bb = ~[0xe0_u8, 0xb8_u8, 0xa8_u8,
+        let bb = [0xe0_u8, 0xb8_u8, 0xa8_u8,
                   0xe0_u8, 0xb9_u8, 0x84_u8,
                   0xe0_u8, 0xb8_u8, 0x97_u8,
                   0xe0_u8, 0xb8_u8, 0xa2_u8,
@@ -3442,7 +3442,7 @@ mod tests {
     #[should_fail]
     #[ignore(cfg(windows))]
     fn test_from_bytes_fail() {
-        let bb = ~[0xff_u8, 0xb8_u8, 0xa8_u8,
+        let bb = [0xff_u8, 0xb8_u8, 0xa8_u8,
                   0xe0_u8, 0xb9_u8, 0x84_u8,
                   0xe0_u8, 0xb8_u8, 0x97_u8,
                   0xe0_u8, 0xb8_u8, 0xa2_u8,
@@ -3519,7 +3519,7 @@ mod tests {
     #[test]
     fn test_from_buf() {
         unsafe {
-            let a = ~[65u8, 65u8, 65u8, 65u8, 65u8, 65u8, 65u8, 0u8];
+            let a = [65u8, 65u8, 65u8, 65u8, 65u8, 65u8, 65u8, 0u8];
             let b = vec::raw::to_ptr(a);
             let c = raw::from_buf(b);
             assert_eq!(c, ~"AAAAAAA");
@@ -3566,7 +3566,7 @@ mod tests {
 
     #[test]
     fn test_as_buf_3() {
-        let a = ~"hello";
+        let a = "hello";
         do as_buf(a) |buf, len| {
             unsafe {
                 assert_eq!(a[0], 'h' as u8);
@@ -3632,7 +3632,7 @@ mod tests {
         assert!(!contains("abcde", "def"));
         assert!(!contains("", "a"));
 
-        let data = ~"ประเทศไทย中华Việt Nam";
+        let data = "ประเทศไทย中华Việt Nam";
         assert!(contains(data, "ประเ"));
         assert!(contains(data, "ะเ"));
         assert!(contains(data, "中华"));
@@ -3745,8 +3745,8 @@ mod tests {
 
     #[test]
     fn test_chars() {
-        let ss = ~"ศไทย中华Việt Nam";
-        assert!(~['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a',
+        let ss = "ศไทย中华Việt Nam";
+        assert!(['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a',
                        'm']
             == to_chars(ss));
     }
@@ -3801,8 +3801,8 @@ mod tests {
 
     #[test]
     fn test_char_at() {
-        let s = ~"ศไทย中华Việt Nam";
-        let v = ~['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
+        let s = "ศไทย中华Việt Nam";
+        let v = ['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
         let mut pos = 0;
         for v.each |ch| {
             assert!(s.char_at(pos) == *ch);
@@ -3812,8 +3812,8 @@ mod tests {
 
     #[test]
     fn test_char_at_reverse() {
-        let s = ~"ศไทย中华Việt Nam";
-        let v = ~['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
+        let s = "ศไทย中华Việt Nam";
+        let v = ['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
         let mut pos = s.len();
         for v.each_reverse |ch| {
             assert!(s.char_at_reverse(pos) == *ch);
@@ -3823,7 +3823,7 @@ mod tests {
 
     #[test]
     fn test_each() {
-        let s = ~"ศไทย中华Việt Nam";
+        let s = "ศไทย中华Việt Nam";
         let v = [
             224, 184, 168, 224, 185, 132, 224, 184, 151, 224, 184, 162, 228,
             184, 173, 229, 141, 142, 86, 105, 225, 187, 135, 116, 32, 78, 97,
@@ -3846,7 +3846,7 @@ mod tests {
 
     #[test]
     fn test_eachi() {
-        let s = ~"ศไทย中华Việt Nam";
+        let s = "ศไทย中华Việt Nam";
         let v = [
             224, 184, 168, 224, 185, 132, 224, 184, 151, 224, 184, 162, 228,
             184, 173, 229, 141, 142, 86, 105, 225, 187, 135, 116, 32, 78, 97,
@@ -3871,7 +3871,7 @@ mod tests {
 
     #[test]
     fn test_each_reverse() {
-        let s = ~"ศไทย中华Việt Nam";
+        let s = "ศไทย中华Việt Nam";
         let v = [
             224, 184, 168, 224, 185, 132, 224, 184, 151, 224, 184, 162, 228,
             184, 173, 229, 141, 142, 86, 105, 225, 187, 135, 116, 32, 78, 97,
@@ -3894,7 +3894,7 @@ mod tests {
 
     #[test]
     fn test_eachi_reverse() {
-        let s = ~"ศไทย中华Việt Nam";
+        let s = "ศไทย中华Việt Nam";
         let v = [
             224, 184, 168, 224, 185, 132, 224, 184, 151, 224, 184, 162, 228,
             184, 173, 229, 141, 142, 86, 105, 225, 187, 135, 116, 32, 78, 97,
@@ -3919,8 +3919,8 @@ mod tests {
 
     #[test]
     fn test_each_char() {
-        let s = ~"ศไทย中华Việt Nam";
-        let v = ~['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
+        let s = "ศไทย中华Việt Nam";
+        let v = ['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
         let mut pos = 0;
         for s.each_char |ch| {
             assert_eq!(ch, v[pos]);
@@ -3930,8 +3930,8 @@ mod tests {
 
     #[test]
     fn test_each_chari() {
-        let s = ~"ศไทย中华Việt Nam";
-        let v = ~['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
+        let s = "ศไทย中华Việt Nam";
+        let v = ['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
         let mut pos = 0;
         for s.each_chari |i, ch| {
             assert_eq!(pos, i);
@@ -3942,8 +3942,8 @@ mod tests {
 
     #[test]
     fn test_each_char_reverse() {
-        let s = ~"ศไทย中华Việt Nam";
-        let v = ~['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
+        let s = "ศไทย中华Việt Nam";
+        let v = ['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
         let mut pos = v.len();
         for s.each_char_reverse |ch| {
             pos -= 1;
@@ -3953,8 +3953,8 @@ mod tests {
 
     #[test]
     fn test_each_chari_reverse() {
-        let s = ~"ศไทย中华Việt Nam";
-        let v = ~['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
+        let s = "ศไทย中华Việt Nam";
+        let v = ['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
         let mut pos = v.len();
         for s.each_chari_reverse |i, ch| {
             pos -= 1;
@@ -4014,8 +4014,8 @@ mod tests {
     #[test]
     fn test_iterator() {
         use iterator::*;
-        let s = ~"ศไทย中华Việt Nam";
-        let v = ~['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
+        let s = "ศไทย中华Việt Nam";
+        let v = ['ศ','ไ','ท','ย','中','华','V','i','ệ','t',' ','N','a','m'];
 
         let mut pos = 0;
         let mut it = s.char_iter();

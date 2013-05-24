@@ -375,7 +375,6 @@ mod test {
     use uv;
 
     use core::result;
-    use core::vec;
 
     #[test]
     fn test_ip_ipv4_parse_and_format_ip() {
@@ -419,7 +418,7 @@ mod test {
     #[test]
     #[ignore(reason = "valgrind says it's leaky")]
     fn test_ip_get_addr() {
-        let localhost_name = ~"localhost";
+        let localhost_name = "localhost";
         let iotask = &uv::global_loop::get();
         let ga_result = get_addr(localhost_name, iotask);
         if result::is_err(&ga_result) {

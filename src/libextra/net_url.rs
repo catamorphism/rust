@@ -821,7 +821,7 @@ mod tests {
 
     #[test]
     fn test_url_parse_host_slash() {
-        let urlstr = ~"http://0.42.42.42/";
+        let urlstr = "http://0.42.42.42/";
         let url = from_str(urlstr).unwrap();
         assert!(url.host == ~"0.42.42.42");
         assert!(url.path == ~"/");
@@ -829,14 +829,14 @@ mod tests {
 
     #[test]
     fn test_url_with_underscores() {
-        let urlstr = ~"http://dotcom.com/file_name.html";
+        let urlstr = "http://dotcom.com/file_name.html";
         let url = from_str(urlstr).unwrap();
         assert!(url.path == ~"/file_name.html");
     }
 
     #[test]
     fn test_url_with_dashes() {
-        let urlstr = ~"http://dotcom.com/file-name.html";
+        let urlstr = "http://dotcom.com/file-name.html";
         let url = from_str(urlstr).unwrap();
         assert!(url.path == ~"/file-name.html");
     }
@@ -1049,8 +1049,7 @@ mod tests {
 
         let mut m = HashMap::new();
         m.insert(~"foo bar", ~[~"abc", ~"12 = 34"]);
-        assert!(encode_form_urlencoded(&m) ==
-            ~"foo+bar=abc&foo+bar=12+%3D+34");
+        assert_eq!(encode_form_urlencoded(&m), ~"foo+bar=abc&foo+bar=12+%3D+34");
     }
 
     #[test]
@@ -1063,8 +1062,8 @@ mod tests {
         let s = str::to_bytes("a=1&foo+bar=abc&foo+bar=12+%3D+34");
         let form = decode_form_urlencoded(s);
         assert_eq!(form.len(), 2);
-        assert_eq!(form.get_ref(&~"a"), &~[~"1"]);
-        assert_eq!(form.get_ref(&~"foo bar"), &~[~"abc", ~"12 = 34"]);
+        assert_eq!(form.get_ref(&"a"), &["1"]);
+        assert_eq!(form.get_ref(&"foo bar"), &["abc", "12 = 34"]);
         */
     }
 }

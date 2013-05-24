@@ -1881,7 +1881,7 @@ mod tests {
 
     #[test]
     fn test_readchars_wide() {
-        let wide_test = ~"生锈的汤匙切肉汤hello生锈的汤匙切肉汤";
+        let wide_test = "生锈的汤匙切肉汤hello生锈的汤匙切肉汤";
         let ivals : ~[int] = ~[
             29983, 38152, 30340, 27748,
             21273, 20999, 32905, 27748,
@@ -2071,7 +2071,7 @@ mod tests {
     fn test_read_f32() {
         let path = Path("tmp/lib-io-test-read-f32.tmp");
         //big-endian floating-point 8.1250
-        let buf = ~[0x41, 0x02, 0x00, 0x00];
+        let buf = [0x41, 0x02, 0x00, 0x00];
 
         {
             let file = io::file_writer(&path, [io::Create]).get();

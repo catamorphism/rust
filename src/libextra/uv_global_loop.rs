@@ -126,9 +126,7 @@ mod test {
     use uv::ll;
     use uv_iotask::IoTask;
 
-    use core::old_iter;
     use core::libc;
-    use core::ptr;
     use core::task;
     use core::cast::transmute;
     use core::libc::c_void;

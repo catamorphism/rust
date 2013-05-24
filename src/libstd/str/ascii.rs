@@ -238,8 +238,8 @@ mod tests {
         assert_eq!("( ;".to_ascii(),                 v2ascii!([40, 32, 59]));
         // FIXME: #5475 borrowchk error, owned vectors do not live long enough
         // if chained-from directly
-        let v = ~[40u8, 32u8, 59u8]; assert_eq!(v.to_ascii(), v2ascii!([40, 32, 59]));
-        let v = ~"( ;";              assert_eq!(v.to_ascii(), v2ascii!([40, 32, 59]));
+        let v = [40u8, 32u8, 59u8]; assert_eq!(v.to_ascii(), v2ascii!([40, 32, 59]));
+        let v = "( ;";              assert_eq!(v.to_ascii(), v2ascii!([40, 32, 59]));
 
         assert_eq!("abCDef&?#".to_ascii().to_lower().to_str_ascii(), ~"abcdef&?#");
         assert_eq!("abCDef&?#".to_ascii().to_upper().to_str_ascii(), ~"ABCDEF&?#");
@@ -257,11 +257,11 @@ mod tests {
     #[test]
     fn test_owned_ascii_vec() {
         // FIXME: #4318 Compiler crashes on moving self
-        //assert_eq!(~"( ;".to_ascii_consume(), v2ascii!(~[40, 32, 59]));
-        //assert_eq!(~[40u8, 32u8, 59u8].to_ascii_consume(), v2ascii!(~[40, 32, 59]));
-        //assert_eq!(~"( ;".to_ascii_consume_with_null(), v2ascii!(~[40, 32, 59, 0]));
-        //assert_eq!(~[40u8, 32u8, 59u8].to_ascii_consume_with_null(),
-        //           v2ascii!(~[40, 32, 59, 0]));
+        //assert_eq!("( ;".to_ascii_consume(), v2ascii!([40, 32, 59]));
+        //assert_eq!([40u8, 32u8, 59u8].to_ascii_consume(), v2ascii!([40, 32, 59]));
+        //assert_eq!("( ;".to_ascii_consume_with_null(), v2ascii!([40, 32, 59, 0]));
+        //assert_eq!([40u8, 32u8, 59u8].to_ascii_consume_with_null(),
+        //           v2ascii!([40, 32, 59, 0]));
     }
 
     #[test]
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn test_ascii_to_str_consume() {
         // FIXME: #4318 Compiler crashes on moving self
-        //assert_eq!(v2ascii!(~[40, 32, 59]).to_str_consume(), ~"( ;");
+        //assert_eq!(v2ascii!([40, 32, 59]).to_str_consume(), "( ;");
     }
 
     #[test] #[should_fail]
