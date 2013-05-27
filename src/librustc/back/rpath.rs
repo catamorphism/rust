@@ -211,7 +211,6 @@ pub fn minimize_rpaths(rpaths: &[Path]) -> ~[Path] {
 
 #[cfg(unix, test)]
 mod test {
-    use core::prelude::*;
 
     use core::os;
     use core::str;
