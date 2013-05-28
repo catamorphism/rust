@@ -12,6 +12,9 @@ pub use package_path::{RemotePath, LocalPath, normalize, hash};
 use core::prelude::*;
 use version::{try_getting_version, Version, NoVersion, split_version};
 
+/// Placeholder
+pub fn default_version() -> Version { ExactRevision(0.1) }
+
 /// Path-fragment identifier of a package such as
 /// 'github.com/graydon/test'; path must be a relative
 /// path with >=1 component.
@@ -77,7 +80,7 @@ impl PkgId {
         }
     }
 
-    pub fn hash(&self) -> ~str {
+    fn hash(&self) -> ~str {
         fmt!("%s-%s-%s", self.remote_path.to_str(),
              hash(self.remote_path.to_str() + self.version.to_str()),
              self.version.to_str())

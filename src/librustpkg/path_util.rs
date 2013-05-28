@@ -12,7 +12,7 @@
 
 use core::prelude::*;
 pub use package_path::{RemotePath, LocalPath};
-pub use package_id::PkgId;
+pub use package_id::{PkgId, Version{;
 pub use target::{OutputType, Main, Lib, Test, Bench, Target, Build, Install};
 use core::libc::consts::os::posix88::{S_IRUSR, S_IWUSR, S_IXUSR};
 use core::os::mkdir_recursive;
@@ -116,12 +116,12 @@ fn output_in_workspace(pkgid: &PkgId, workspace: &Path, what: OutputType) -> Opt
 pub fn built_library_in_workspace(pkgid: &PkgId, workspace: &Path) -> Option<Path> {
                         // passing in local_path here sounds fishy
     library_in_workspace(pkgid.local_path.to_str(), pkgid.short_name, Build,
-                         workspace, "build")
+                         Some(@copy pkgid.version), workspace, "build")
 }
 
 /// Does the actual searching stuff
 pub fn installed_library_in_workspace(short_name: &str, workspace: &Path) -> Option<Path> {
-    library_in_workspace(short_name, short_name, Install, workspace, "lib")
+    library_in_workspace(short_name, short_name, Install, None, workspace, "lib")
 }
 
 
@@ -129,7 +129,7 @@ pub fn installed_library_in_workspace(short_name: &str, workspace: &Path) -> Opt
 /// don't know the entire package ID.
 /// `full_name` is used to figure out the directory to search.
 /// `short_name` is taken as the link name of the library.
-fn library_in_workspace(full_name: &str, short_name: &str, where: Target,
+fn library_in_workspace(full_name: &str, short_name: &str, where: Target, version: Option<@Version>,
                         workspace: &Path, prefix: &str) -> Option<Path> {
     debug!("library_in_workspace: checking whether a library named %s exists",
            short_name);
@@ -210,17 +210,11 @@ pub fn target_executable_in_workspace(pkgid: &PkgId, workspace: &Path) -> Path {
 }
 
 
-/// Returns the installed path for <built_library> in <workspace>
+/// Returns the executable that would be installed for <pkgid>
+/// in <workspace>
 /// As a side effect, creates the lib-dir if it doesn't exist
-pub fn target_library_in_workspace(workspace: &Path,
-                                   built_library: &Path) -> Path {
-    use conditions::bad_path::cond;
-    let result = workspace.push("lib");
-    if !os::path_exists(&result) && !mkdir_recursive(&result, u_rwx) {
-        cond.raise((copy result, ~"I couldn't create the library directory"));
-    }
-    result.push(built_library.filename().expect(fmt!("I don't know how to treat %s as a library",
-                                                   built_library.to_str())))
+pub fn target_library_in_workspace(pkgid: &PkgId, workspace: &Path) -> Path {
+    target_file_in_workspace(pkgid, workspace, Lib, Install)
 }
 
 /// Returns the test executable that would be installed for <pkgid>

@@ -186,7 +186,6 @@ pub fn warn(msg: &str) {
 pub fn error(msg: &str) {
     pretty_message(msg, "error: ", term::color_red, io::stdout())
 }
-
 // FIXME (#4432): Use workcache to only compile when needed
 pub fn compile_input(ctxt: &Ctx,
                      pkg_id: &PkgId,
@@ -318,7 +317,7 @@ pub fn compile_crate_from_input(input: &driver::input,
 }
 
 #[cfg(windows)]
-pub fn exe_suffix() -> ~str { ~".exe" }
+pub fn exe_suffix() -> ~str { ".exe" }
 
 #[cfg(target_os = "linux")]
 #[cfg(target_os = "android")]

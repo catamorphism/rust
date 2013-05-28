@@ -149,6 +149,7 @@ impl<'self> PkgScript<'self> {
                                                &self.build_dir,
                                                sess,
                                                crate,
+                                               util::Main,
                                                driver::build_configuration(sess,
                                                                            binary, &self.input));
                 debug!("Running program: %s %s %s", exe.to_str(), root.to_str(), what);

@@ -18,7 +18,7 @@ use core::prelude::*;
 use core::result;
 use extra::tempfile::mkdtemp;
 use package_path::*;
-use package_id::PkgId;
+use package_id::{PkgId, default_version};
 use package_source::*;
 use version::{ExactRevision, NoVersion, Version};
 use path_util::{target_executable_in_workspace, target_library_in_workspace,
@@ -82,6 +82,12 @@ fn mk_temp_workspace(short_name: &LocalPath, version: &Version) -> Path {
     debug!("Created %s and does it exist? %?", package_dir.to_str(),
           os::path_is_dir(&package_dir));
     // Create main, lib, test, and bench files
+    let package_dir = workspace.push("src").push(fmt!("%s-0.1", short_name.to_str()));
+    assert!(os::mkdir_recursive(&package_dir, u_rwx));
+    debug!("Created %s and does it exist? %?", package_dir.to_str(),
+          os::path_is_dir(&package_dir));
+    // Create main, lib, test, and bench files
+
     writeFile(&package_dir.push("main.rs"),
               "fn main() { let _x = (); }");
     writeFile(&package_dir.push("lib.rs"),
@@ -90,7 +96,7 @@ fn mk_temp_workspace(short_name: &LocalPath, version: &Version) -> Path {
               "#[test] pub fn f() { (); }");
     writeFile(&package_dir.push("bench.rs"),
               "#[bench] pub fn f() { (); }");
-    package_dir.pop().pop()
+    package_dir
 }
 
 fn is_rwx(p: &Path) -> bool {

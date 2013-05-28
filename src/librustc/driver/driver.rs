@@ -239,10 +239,10 @@ pub fn compile_rest(sess: Session,
     let middle::resolve::CrateMap {
         def_map: def_map,
         exp_map2: exp_map2,
-        trait_map: trait_map
-    } =
-        time(time_passes, ~"resolution", ||
-             middle::resolve::resolve_crate(sess, lang_items, crate));
+            trait_map: trait_map
+        } =
+            time(time_passes, ~"resolution", ||
+                 middle::resolve::resolve_crate(sess, lang_items, crate));
 
     time(time_passes, ~"looking for entry point",
          || middle::entry::find_entry_point(sess, crate, ast_map));
