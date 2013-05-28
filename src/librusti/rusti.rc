@@ -142,7 +142,7 @@ fn run(repl: Repl, input: ~str) -> Repl {
                                           binary,
                                           &wrapped);
 
-    let outputs = driver::build_output_filenames(&wrapped, &None, &None, sess);
+    let outputs = driver::build_output_filenames(&wrapped, &None, &None, [], sess);
     debug!("calling compile_upto");
     let (crate, _) = driver::compile_upto(sess, cfg, &wrapped,
                                           driver::cu_everything,
@@ -195,7 +195,7 @@ fn compile_crate(src_filename: ~str, binary: ~str) -> Option<bool> {
         *sess.building_library = true;
         let cfg = driver::build_configuration(sess, binary, &input);
         let outputs = driver::build_output_filenames(
-            &input, &None, &None, sess);
+            &input, &None, &None, [], sess);
         // If the library already exists and is newer than the source
         // file, skip compilation and return None.
         let mut should_compile = true;

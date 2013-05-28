@@ -11,7 +11,7 @@
 // Useful conditions
 
 pub use core::path::Path;
-pub use util::PkgId;
+pub use package_id::PkgId;
 
 condition! {
     bad_path: (super::Path, ~str) -> super::Path;
@@ -30,5 +30,5 @@ condition! {
 }
 
 condition! {
-    bad_pkg_id: (super::Path, ~str) -> ::util::PkgId;
+    bad_pkg_id: (super::Path, ~str) -> super::PkgId;
 }
