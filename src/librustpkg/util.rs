@@ -257,7 +257,12 @@ pub fn compile_input(ctxt: &Ctx,
     // Infer dependencies that rustpkg needs to build, by scanning for
     // `extern mod` directives.
     let cfg = driver::build_configuration(sess, binary, &input);
-    let mut (crate, _) = driver::compile_upto(sess, copy cfg, &input, driver::cu_expand, None);
+    let (crate_opt, _) = driver::compile_upto(sess, copy cfg, &input, driver::cu_expand, None);
+
+    let mut crate = match crate_opt {
+        Some(c) => c,
+        None => fail!("compile_input expected...")
+    };
 
     // Not really right. Should search other workspaces too, and the installed
     // database (which doesn't exist yet)
