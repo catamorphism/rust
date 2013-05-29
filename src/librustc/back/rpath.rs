@@ -199,6 +199,7 @@ mod test {
     // FIXME(#2119): the outer attribute should be #[cfg(unix, test)], then
     // these redundant #[cfg(test)] blocks can be removed
     #[cfg(test)]
+    use prelude::*;
     #[cfg(test)]
     use back::rpath::{get_absolute_rpath, get_install_prefix_rpath};
     #[cfg(test)]

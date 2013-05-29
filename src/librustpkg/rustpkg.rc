@@ -35,7 +35,8 @@ use rustc::metadata::filesearch;
 use std::{getopts};
 use syntax::{ast, diagnostic};
 use util::*;
-use path_util::{build_pkg_id_in_workspace, pkgid_src_in_workspace, u_rwx};
+use path_util::{build_pkg_id_in_workspace, pkgid_src_in_workspace, first_pkgid_src_in_workspace};
+use path_util::u_rwx;
 use path_util::{built_executable_in_workspace, built_library_in_workspace};
 use path_util::{target_executable_in_workspace, target_library_in_workspace};
 use workspace::pkg_parent_workspaces;
@@ -131,11 +132,9 @@ impl<'self> PkgScript<'self> {
                 let exe = self.build_dir.push(~"pkg" + util::exe_suffix());
                 let binary = @copy os::args()[0];
                 util::compile_crate_from_input(&self.input,
-                                               self.id,
                                                &self.build_dir,
                                                sess,
                                                crate,
-                                               util::Main,
                                                driver::build_configuration(sess,
                                                                            binary, &self.input));
                 debug!("Running program: %s %s %s", exe.to_str(), root.to_str(), what);
@@ -248,7 +247,8 @@ impl Ctx {
     }
 
     fn build(&self, workspace: &Path, pkgid: &PkgId) {
-        let src_dir   = pkgid_src_in_workspace(pkgid, workspace);
+        let src_dir   = first_pkgid_src_in_workspace(pkgid, workspace);
+// for some wack reason, this is returning no results on some of the unit tests
         let build_dir = build_pkg_id_in_workspace(pkgid, workspace);
         debug!("Destination dir = %s", build_dir.to_str());
 
@@ -259,8 +259,8 @@ impl Ctx {
         // Is there custom build logic? If so, use it
         let pkg_src_dir = src_dir;
         let mut custom = false;
-        debug!("Package source directory = %s", pkg_src_dir.to_str());
-        let cfgs = match src.package_script_option(&pkg_src_dir) {
+        debug!("Package source directory = %?", pkg_src_dir);
+        let cfgs = match pkg_src_dir.chain_ref(|p| src.package_script_option(p)) {
             Some(package_script_path) => {
                 let pscript = PkgScript::parse(package_script_path,
                                                workspace,
@@ -524,16 +524,18 @@ impl PkgSrc {
 
         debug!("Pushing onto root: %s | %s", self.id.remote_path.to_str(),
                self.root.to_str());
-        let dir = pkgid_src_in_workspace(&self.id, &self.root);
-        debug!("Checking dir: %s", dir.to_str());
-
-        if !os::path_exists(&dir) {
-            if !self.fetch_git() {
-                cond.raise((copy self.id, ~"supplied path for package dir does not \
-                    exist, and couldn't interpret it as a URL fragment"));
+        let dir;
+        let dirs = pkgid_src_in_workspace(&self.id, &self.root);
+        debug!("Checking dirs: %?", dirs);
+        let path = dirs.find(|d| os::path_exists(d));
+        match path {
+            Some(d) => dir = d,
+            None => dir = match self.fetch_git() {
+                None => cond.raise((copy self.id, ~"supplied path for package dir does not \
+                                      exist, and couldn't interpret it as a URL fragment")),
+                Some(d) => d
             }
         }
-
         if !os::path_is_dir(&dir) {
             cond.raise((copy self.id, ~"supplied path for package dir is a \
                                         non-directory"));
@@ -543,10 +545,10 @@ impl PkgSrc {
     }
 
     /// Try interpreting self's package id as a remote package, and try
-    /// fetching it and caching it in a local directory. If that didn't
-    /// work, return false.
+    /// fetching it and caching it in a local directory. Return the cached directory
+    /// if this was successful, None otherwise
     /// (right now we only support git)
-    fn fetch_git(&self) -> bool {
+    fn fetch_git(&self) -> Option<Path> {
 
         let mut local = self.root.push("src");
         local = local.push(self.id.to_str());
@@ -558,9 +560,11 @@ impl PkgSrc {
 
         if run::process_output("git", [~"clone", copy url, local.to_str()]).status != 0 {
             util::note(fmt!("fetching %s failed: can't clone repository", url));
-            return false;
+            None
         }
-        true
+        else {
+            Some(local)
+        }
     }
 
 

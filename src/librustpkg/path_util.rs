@@ -41,12 +41,28 @@ pub fn workspace_contains_package_id(pkgid: &PkgId, workspace: &Path) -> bool {
     os::path_is_dir(&pkgpath)
 }
 
-/// Return the directory for <pkgid>'s source files in <workspace>.
-/// Doesn't check that it exists.
-pub fn pkgid_src_in_workspace(pkgid: &PkgId, workspace: &Path) -> Path {
-    let result = workspace.push("src");
-    result.push(fmt!("%s-%s",
-                     pkgid.local_path.to_str(), pkgid.version.to_str()))
+/// Returns a list of possible directories
+/// for <pkgid>'s source files in <workspace>.
+/// Doesn't check that any of them exist.
+/// (for example, try both with and without the version)
+pub fn pkgid_src_in_workspace(pkgid: &PkgId, workspace: &Path) -> ~[Path] {
+    let mut results = ~[];
+    let result = workspace.push("src").push(fmt!("%s-%s",
+                     pkgid.local_path.to_str(), pkgid.version.to_str()));
+    results.push(result);
+    results.push(workspace.push("src").push_rel(&*pkgid.remote_path));
+    results
+}
+
+/// Returns a src for pkgid that does exist -- None if none of them do
+pub fn first_pkgid_src_in_workspace(pkgid: &PkgId, workspace: &Path) -> Option<Path> {
+    let rs = pkgid_src_in_workspace(pkgid, workspace);
+    for rs.each |p| {
+        if os::path_exists(p) {
+            return Some(copy *p);
+        }
+    }
+    None
 }
 
 /// Figure out what the executable name for <pkgid> in <workspace>'s build
@@ -99,12 +115,12 @@ fn output_in_workspace(pkgid: &PkgId, workspace: &Path, what: OutputType) -> Opt
 pub fn built_library_in_workspace(pkgid: &PkgId, workspace: &Path) -> Option<Path> {
                         // passing in local_path here sounds fishy
     library_in_workspace(pkgid.local_path.to_str(), pkgid.short_name, Build,
-                         Some(@copy pkgid.version), workspace, "build")
+                         workspace, "build")
 }
 
 /// Does the actual searching stuff
 pub fn installed_library_in_workspace(short_name: &str, workspace: &Path) -> Option<Path> {
-    library_in_workspace(short_name, short_name, Install, None, workspace, "lib")
+    library_in_workspace(short_name, short_name, Install, workspace, "lib")
 }
 
 
@@ -112,7 +128,7 @@ pub fn installed_library_in_workspace(short_name: &str, workspace: &Path) -> Opt
 /// don't know the entire package ID.
 /// `full_name` is used to figure out the directory to search.
 /// `short_name` is taken as the link name of the library.
-fn library_in_workspace(full_name: &str, short_name: &str, where: Target, version: Option<@Version>,
+fn library_in_workspace(full_name: &str, short_name: &str, where: Target,
                         workspace: &Path, prefix: &str) -> Option<Path> {
     debug!("library_in_workspace: checking whether a library named %s exists",
            short_name);
@@ -264,7 +280,7 @@ pub fn mk_output_path(what: OutputType, where: Target,
     debug!("[%?:%?] mk_output_path: short_name = %s, path = %s", what, where,
            if what == Lib { copy short_name_with_version } else { copy pkg_id.short_name },
            dir.to_str());
-    let output_path = match what {
+    let mut output_path = match what {
         // this code is duplicated from elsewhere; fix this
         Lib => dir.push(os::dll_filename(short_name_with_version)),
         // executable names *aren't* versioned
@@ -276,6 +292,9 @@ pub fn mk_output_path(what: OutputType, where: Target,
                            }
                            os::EXE_SUFFIX))
     };
+    if !output_path.is_absolute() {
+        output_path = os::getcwd().push_rel(&output_path).normalize();
+    }
     debug!("mk_output_path: returning %s", output_path.to_str());
     output_path
 }

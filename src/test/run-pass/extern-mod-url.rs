@@ -8,27 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Useful conditions
+// Just a test that new-style extern mods parse
+extern mod test = "github.com/catamorphism/test-pkg";
 
-pub use core::path::Path;
-pub use package_id::PkgId;
-
-condition! {
-    bad_path: (super::Path, ~str) -> super::Path;
-}
-
-condition! {
-    nonexistent_package: (super::PkgId, ~str) -> super::Path;
-}
-
-condition! {
-    copy_failed: (super::Path, super::Path) -> ();
-}
-
-condition! {
-    missing_pkg_files: (super::PkgId) -> ();
-}
-
-condition! {
-    bad_pkg_id: (super::Path, ~str) -> super::PkgId;
-}
+fn main() {}

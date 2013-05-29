@@ -158,6 +158,7 @@ fn test_install_invalid() {
     }).in {
         do cond.trap(|_| {
             error_occurred = true;
+            copy temp_workspace
         }).in {
             ctxt.install(&temp_workspace, &pkgid);
         }

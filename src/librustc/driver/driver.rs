@@ -699,7 +699,7 @@ pub fn build_session_options(binary: @~str,
         save_temps: save_temps,
         jit: jit,
         output_type: output_type,
-        addl_lib_search_paths: addl_lib_search_paths,
+        addl_lib_search_paths: @mut addl_lib_search_paths,
         linker: linker,
         linker_args: linker_args,
         maybe_sysroot: sysroot_opt,
@@ -738,7 +738,7 @@ pub fn build_session_(sopts: @session::options,
     let filesearch = filesearch::mk_filesearch(
         &sopts.maybe_sysroot,
         sopts.target_triple,
-        /*bad*/copy sopts.addl_lib_search_paths);
+        sopts.addl_lib_search_paths);
     @Session_ {
         targ_cfg: target_cfg,
         opts: sopts,

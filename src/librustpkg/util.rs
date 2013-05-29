@@ -9,10 +9,6 @@
 // except according to those terms.
 
 use core::prelude::*;
-use core::*;
-use core::cmp::Ord;
-use core::hash::Streaming;
-use core::rt::io::Writer;
 use rustc::driver::{driver, session};
 use rustc::metadata::filesearch;
 use std::getopts::groups::getopts;
@@ -242,34 +238,40 @@ pub fn compile_input(ctxt: &Ctx,
                           + flags
                           + cfgs.flat_map(|&c| { ~[~"--cfg", c] }),
                           driver::optgroups()).get();
-    let mut options = session::options {
+    let mut options = @session::options {
         crate_type: crate_type,
         optimize: if opt { session::Aggressive } else { session::No },
         test: what == Test || what == Bench,
         maybe_sysroot: ctxt.sysroot_opt,
-        addl_lib_search_paths: ~[copy *out_dir],
+        addl_lib_search_paths: @mut ~[copy *out_dir],
         // output_type should be conditional
         output_type: output_type_exe, // Use this to get a library? That's weird
         .. copy *driver::build_session_options(binary, &matches, diagnostic::emit)
     };
 
+/* seems un-needed
     for cfgs.each |&cfg| {
         options.cfg.push(attr::mk_word_item(@cfg));
     }
+*/
 
-    let sess = driver::build_session(@(copy options), diagnostic::emit);
+    let addl_lib_search_paths = @mut options.addl_lib_search_paths;
+
+    let sess = driver::build_session(options, diagnostic::emit);
 
     // Infer dependencies that rustpkg needs to build, by scanning for
     // `extern mod` directives.
     let cfg = driver::build_configuration(sess, binary, &input);
     let mut (crate, _) = driver::compile_upto(sess, copy cfg, &input, driver::cu_expand, None);
+
     // Not really right. Should search other workspaces too, and the installed
     // database (which doesn't exist yet)
-    let whatever = @mut ~[];
     find_and_install_dependencies(ctxt, sess, &workspace, crate,
                                   |p| {
                                       debug!("a dependency: %s", p.to_str());
-                                      whatever.push(p);
+                                      // Pass the directory containing a dependency
+                                      // as an additional lib search path
+                                      addl_lib_search_paths.push(p);
                                   });
 
     // Inject the link attributes so we get the right package name and version
@@ -289,33 +291,10 @@ pub fn compile_input(ctxt: &Ctx,
                                       mk_string_lit(@(copy pkg_id.version.to_str()))))])))],
             ..copy crate.node});
     }
-    debug!("Adding additional search paths");
-
-    // Now that we know the external dependencies, have to pass in their
-    // containing directories as link options
-    options.addl_lib_search_paths.push_all(*whatever);
 
     debug!("calling compile_crate_from_input, out_dir = %s,
            building_library = %?", out_dir.to_str(), sess.building_library);
-
-    // Copying the session manually because I couldn't figure out how to
-    // make the borrow check happy about pushing to options.addl_lib_search_paths
-    // through a reference. There must be a better way...
-    let new_sess = @session::Session_ {
-        targ_cfg: sess.targ_cfg,
-        opts: @options,
-        cstore: sess.cstore,
-        parse_sess: sess.parse_sess,
-        codemap: sess.codemap,
-        entry_fn: sess.entry_fn,
-        entry_type: sess.entry_type,
-        span_diagnostic: sess.span_diagnostic,
-        filesearch: sess.filesearch,
-        building_library: sess.building_library,
-        working_dir: copy sess.working_dir,
-        lints: sess.lints
-    };
-    compile_crate_from_input(&input, pkg_id, out_dir, new_sess, crate, what, copy cfg);
+    compile_crate_from_input(&input, out_dir, sess, crate, copy cfg);
     true
 }
 
@@ -325,19 +304,12 @@ pub fn compile_input(ctxt: &Ctx,
 // call compile_upto and return the crate
 // also, too many arguments
 pub fn compile_crate_from_input(input: &driver::input,
-                                pkg_id: &PkgId,
                                 build_dir: &Path,
                                 sess: session::Session,
                                 crate: @ast::crate,
-                                what: OutputType,
                                 cfg: ast::crate_cfg) {
     debug!("Calling build_output_filenames with %s, building library? %?",
            build_dir.to_str(), sess.building_library);
-
-    let out_file =
-        build_dir.push(pkg_id.short_name + match what {
-            Test => "test", Bench => "bench", Main | Lib => ""
-        } + os::EXE_SUFFIX);
 
     // bad copy
     let outputs = driver::build_output_filenames(input, &Some(copy *build_dir), &None,

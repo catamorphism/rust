@@ -10,10 +10,11 @@
 
 // rustpkg utilities having to do with local and remote paths
 
-use core::hash;
-use core::hash::Streaming;
+use core::path::Path;
+use core::option::Some;
+use core::{hash, str};
 use core::rt::io::Writer;
-use core::prelude::*;
+use core::hash::Streaming;
 
 /// Wrappers to prevent local and remote paths from getting confused
 /// (These will go away after #6407)
@@ -42,9 +43,13 @@ pub fn normalize(p_: RemotePath) -> LocalPath {
     }
 }
 
+pub fn write<W: Writer>(writer: &mut W, string: &str) {
+    let buffer = str::as_bytes_slice(string);
+    writer.write(buffer);
+}
+
 pub fn hash(data: ~str) -> ~str {
-    let mut hasher = hash::default_state();
-    let buffer = str::as_bytes_slice(data);
-    hasher.write(buffer);
+    let hasher = &mut hash::default_state();
+    write(hasher, data);
     hasher.result_str()
 }
