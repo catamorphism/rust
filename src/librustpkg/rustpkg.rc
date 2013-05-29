@@ -18,6 +18,7 @@
 #[license = "MIT/ASL2"];
 #[crate_type = "lib"];
 
+#[no_core];
 #[no_std];
 
 extern mod core(name = "std");

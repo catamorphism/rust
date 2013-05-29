@@ -50,11 +50,17 @@ pub impl PkgId {
         let remote_path = RemotePath(p);
         let local_path = normalize(copy remote_path);
         let short_name = (copy local_path).filestem().expect(fmt!("Strange path! %s", s));
+
+        let version = match try_getting_version(remote_path) {
+            Some(v) => v,
+            None => default_version()
+        };
+
         PkgId {
             local_path: local_path,
             remote_path: remote_path,
             short_name: short_name,
-            version: default_version()
+            version: version
         }
     }
 
