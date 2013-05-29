@@ -49,8 +49,7 @@ pub fn write<W: Writer>(writer: &mut W, string: &str) {
 }
 
 pub fn hash(data: ~str) -> ~str {
-    let mut hasher = hash::default_state();
-    let buffer = str::as_bytes_slice(data);
-    hasher.write(buffer);
+    let hasher = &mut hash::default_state();
+    write(hasher, data);
     hasher.result_str()
 }

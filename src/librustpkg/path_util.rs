@@ -116,12 +116,12 @@ fn output_in_workspace(pkgid: &PkgId, workspace: &Path, what: OutputType) -> Opt
 pub fn built_library_in_workspace(pkgid: &PkgId, workspace: &Path) -> Option<Path> {
                         // passing in local_path here sounds fishy
     library_in_workspace(pkgid.local_path.to_str(), pkgid.short_name, Build,
-                         Some(@copy pkgid.version), workspace, "build")
+                         workspace, "build")
 }
 
 /// Does the actual searching stuff
 pub fn installed_library_in_workspace(short_name: &str, workspace: &Path) -> Option<Path> {
-    library_in_workspace(short_name, short_name, Install, None, workspace, "lib")
+    library_in_workspace(short_name, short_name, Install, workspace, "lib")
 }
 
 
@@ -129,7 +129,7 @@ pub fn installed_library_in_workspace(short_name: &str, workspace: &Path) -> Opt
 /// don't know the entire package ID.
 /// `full_name` is used to figure out the directory to search.
 /// `short_name` is taken as the link name of the library.
-fn library_in_workspace(full_name: &str, short_name: &str, where: Target, version: Option<@Version>,
+fn library_in_workspace(full_name: &str, short_name: &str, where: Target,
                         workspace: &Path, prefix: &str) -> Option<Path> {
     debug!("library_in_workspace: checking whether a library named %s exists",
            short_name);

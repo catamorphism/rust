@@ -11,6 +11,7 @@
 // Just a test that new-style extern mods parse
 
 // xfail-test
+
 extern mod test = "github.com/catamorphism/test-pkg";
 
 fn main() {}
