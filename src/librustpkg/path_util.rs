@@ -16,7 +16,8 @@ use core::libc::consts::os::posix88::{S_IRUSR, S_IWUSR, S_IXUSR};
 use core::os::mkdir_recursive;
 use core::os;
 pub use package_path::{RemotePath, LocalPath};
-pub use package_id::{PkgId, Version};
+pub use package_id::PkgId;
+pub use version::Version;
 pub use target::{OutputType, Main, Lib, Test, Bench, Target, Build, Install};
 
 /// Returns the value of RUST_PATH, as a list

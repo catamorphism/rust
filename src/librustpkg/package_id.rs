@@ -11,11 +11,8 @@
 extern mod std;
 
 pub use package_path::{RemotePath, LocalPath, normalize, hash};
-use std::semver;
 use core::prelude::*;
-
-/// Placeholder
-pub fn default_version() -> Version { ExactRevision(0.1) }
+use version::{default_version, try_getting_version, Version};
 
 /// Path-fragment identifier of a package such as
 /// 'github.com/graydon/test'; path must be a relative
@@ -51,7 +48,7 @@ pub impl PkgId {
         let local_path = normalize(copy remote_path);
         let short_name = (copy local_path).filestem().expect(fmt!("Strange path! %s", s));
 
-        let version = match try_getting_version(remote_path) {
+        let version = match try_getting_version(&remote_path) {
             Some(v) => v,
             None => default_version()
         };
@@ -79,61 +76,5 @@ impl ToStr for PkgId {
     fn to_str(&self) -> ~str {
         // should probably use the filestem and not the whole path
         fmt!("%s-%s", self.local_path.to_str(), self.version.to_str())
-    }
-}
-
-/// A version is either an exact revision,
-/// or a semantic version
-pub enum Version {
-    ExactRevision(float),
-    SemVersion(semver::Version)
-}
-
-
-impl Ord for Version {
-    fn lt(&self, other: &Version) -> bool {
-        match (self, other) {
-            (&ExactRevision(f1), &ExactRevision(f2)) => f1 < f2,
-            (&SemVersion(ref v1), &SemVersion(ref v2)) => v1 < v2,
-            _ => false // incomparable, really
-        }
-    }
-    fn le(&self, other: &Version) -> bool {
-        match (self, other) {
-            (&ExactRevision(f1), &ExactRevision(f2)) => f1 <= f2,
-            (&SemVersion(ref v1), &SemVersion(ref v2)) => v1 <= v2,
-            _ => false // incomparable, really
-        }
-    }
-    fn ge(&self, other: &Version) -> bool {
-        match (self, other) {
-            (&ExactRevision(f1), &ExactRevision(f2)) => f1 > f2,
-            (&SemVersion(ref v1), &SemVersion(ref v2)) => v1 > v2,
-            _ => false // incomparable, really
-        }
-    }
-    fn gt(&self, other: &Version) -> bool {
-        match (self, other) {
-            (&ExactRevision(f1), &ExactRevision(f2)) => f1 >= f2,
-            (&SemVersion(ref v1), &SemVersion(ref v2)) => v1 >= v2,
-            _ => false // incomparable, really
-        }
-    }
-
-}
-
-impl ToStr for Version {
-    fn to_str(&self) -> ~str {
-        match *self {
-            ExactRevision(ref n) => n.to_str(),
-            SemVersion(ref v) => v.to_str()
-        }
-    }
-}
-
-pub fn parse_vers(vers: ~str) -> result::Result<semver::Version, ~str> {
-    match semver::parse(vers) {
-        Some(vers) => result::Ok(vers),
-        None => result::Err(~"could not parse version: invalid")
     }
 }

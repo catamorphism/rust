@@ -18,7 +18,8 @@ use core::prelude::*;
 use core::result;
 use extra::tempfile::mkdtemp;
 use package_path::*;
-use package_id::{PkgId, default_version, ExactRevision};
+use package_id::{PkgId};
+use version::{default_version, ExactRevision};
 use path_util::{target_executable_in_workspace, target_library_in_workspace,
                target_test_in_workspace, target_bench_in_workspace,
                make_dir_rwx, u_rwx,
@@ -255,10 +256,8 @@ fn test_package_ids_must_be_relative_path_like() {
 
 #[test]
 fn test_package_version() {
-    let workspace = mkdtemp(&os::tmpdir(), "test").expect("couldn't create temp dir");
     let sysroot = test_sysroot();
     debug!("sysroot = %s", sysroot.to_str());
-    let ctxt = fake_ctxt(Some(@sysroot));
     let temp_pkg_id = PkgId::new("github.com/catamorphism/test_pkg_version");
     match temp_pkg_id.version {
         ExactRevision(0.2) => (),

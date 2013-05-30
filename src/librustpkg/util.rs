@@ -239,7 +239,7 @@ pub fn compile_input(ctxt: &Ctx,
                           + flags
                           + cfgs.flat_map(|&c| { ~[~"--cfg", c] }),
                           driver::optgroups()).get();
-    let mut options = @session::options {
+    let options = @session::options {
         crate_type: crate_type,
         optimize: if opt { session::Aggressive } else { session::No },
         test: what == Test || what == Bench,

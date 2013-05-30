@@ -54,6 +54,7 @@ mod target;
 #[cfg(test)]
 mod tests;
 mod util;
+mod version;
 mod workspace;
 
 pub mod usage;
