@@ -317,7 +317,7 @@ pub fn compile_crate_from_input(input: &driver::input,
 }
 
 #[cfg(windows)]
-pub fn exe_suffix() -> ~str { ".exe" }
+pub fn exe_suffix() -> ~str { ~".exe" }
 
 #[cfg(target_os = "linux")]
 #[cfg(target_os = "android")]

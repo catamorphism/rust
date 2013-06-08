@@ -129,7 +129,7 @@ pub fn installed_library_in_workspace(short_name: &str, workspace: &Path) -> Opt
 /// don't know the entire package ID.
 /// `full_name` is used to figure out the directory to search.
 /// `short_name` is taken as the link name of the library.
-fn library_in_workspace(full_name: &str, short_name: &str, where: Target,
+pub fn library_in_workspace(full_name: &str, short_name: &str, where: Target,
                         workspace: &Path, prefix: &str) -> Option<Path> {
     debug!("library_in_workspace: checking whether a library named %s exists",
            short_name);
@@ -285,7 +285,7 @@ pub fn mk_output_path(what: OutputType, where: Target,
         // this code is duplicated from elsewhere; fix this
         Lib => dir.push(os::dll_filename(short_name_with_version)),
         // executable names *aren't* versioned
-        _ => dir.push(fmt!("%s%s%s", copy pkg_id.short_name,
+        _ => dir.push(fmt!("%s%s%s", pkg_id.short_name,
                            match what {
                                Test => "test",
                                Bench => "bench",

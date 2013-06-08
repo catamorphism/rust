@@ -17,6 +17,8 @@ use core::os;
 use core::prelude::*;
 use core::result;
 use extra::tempfile::mkdtemp;
+use std::run;
+use std::run::ProcessOutput;
 use package_path::*;
 use package_id::{PkgId, default_version};
 use package_source::*;
@@ -27,6 +29,12 @@ use path_util::{target_executable_in_workspace, target_library_in_workspace,
                built_bench_in_workspace, built_test_in_workspace,
                built_library_in_workspace, built_executable_in_workspace,
                 installed_library_in_workspace};
+use target::*;
+
+/// Returns the last-modified date as an Option
+fn datestamp(p: &Path) -> Option<libc::time_t> {
+    p.stat().map(|stat| stat.st_mtime)
+}
 
 fn fake_ctxt(sysroot_opt: Option<@Path>) -> Ctx {
     Ctx {
@@ -65,7 +73,12 @@ fn writeFile(file_path: &Path, contents: &str) {
 }
 
 fn mk_empty_workspace(short_name: &LocalPath, version: &Version) -> Path {
-    let workspace = mkdtemp(&os::tmpdir(), "test").expect("couldn't create temp dir");
+    let workspace_dir = mkdtemp(&os::tmpdir(), "test").expect("couldn't create temp dir");
+    mk_workspace(&workspace_dir, short_name);
+    workspace_dir
+}
+
+fn mk_workspace(workspace: &Path, short_name: &LocalPath) {
     // include version number in directory name
     let package_dir = workspace.push("src").push(fmt!("%s%s",
                                                       short_name.to_str(), version.to_str()));
@@ -117,6 +130,130 @@ fn test_sysroot() -> Path {
     // (Did I mention it was a gross hack?)
     let self_path = os::self_exe_path().expect("Couldn't get self_exe path");
     self_path.pop()
+}
+
+fn command_line_test(cmd: &str, args: &[~str]) -> ProcessOutput {
+    debug!("About to run command: %? %?", cmd, args);
+    run::process_output(cmd, args)
+}
+
+fn make_git_repo(short_name: &str) -> Path {
+    let temp_d = mk_temp_workspace(&normalize(RemotePath(Path(short_name))));
+    debug!("Dry run: would initialize %s as a git repository", temp_d.to_str());
+    temp_d
+}
+
+fn add_git_tag(repo: &Path, tag: &str) {
+    debug!("Dry run: would add tag %s to repo %s", tag, repo.to_str());
+}
+
+fn create_local_package(pkgid: &str) -> Path {
+    let parent_dir = mk_temp_workspace(&normalize(RemotePath(Path(pkgid))));
+    debug!("Created empty package dir for %s, returning %s", pkgid, parent_dir.to_str());
+    parent_dir
+}
+
+fn create_local_package_with_version(short_name: &str, version: &str) -> Path {
+    debug!("Dry run -- would create package %s with version %s",
+           short_name, version);
+    create_local_package(short_name)
+        // actually write the version
+}
+
+fn create_local_package_with_test(pkgid: &str) -> Path {
+    debug!("Dry run -- would create package %s with test");
+    create_local_package(pkgid) // Already has tests???
+}
+
+fn create_local_package_with_dep(pkgid: &str, subord_pkgid: &str) -> Path {
+    let package_dir = create_local_package(pkgid);
+    let dependency_package_dir = create_local_package(subord_pkgid);
+    // Write a main.rs file into pkgid that references subord_pkgid
+    writeFile(packageDir, fmt!("extern mod %s\nfn main() {}", subord_pkgid));
+    // Write a lib.rs file into subord_pkgid that has something in it
+    writeFile(dependency_package_dir, ....
+    debug!("Dry run -- would create packages %s and %s in %s", pkgid, subord_pkgid,
+           package_dir.to_str());
+    package_dir
+}
+
+fn create_local_package_with_custom_build_hook(pkgid: &str,
+                                               custom_build_hook: &str) {
+    debug!("Dry run -- would create package %s with custom build hook %s",
+           pkgid, custom_build_hook);
+    create_local_package(pkgid);
+    // actually write the pkg.rs with the custom build hook
+
+}
+
+fn assert_lib_exists(repo: &Path, short_name: &str) {
+    let lib = target_library_in_workspace(&PkgId::new(short_name), repo);
+    assert!(os::path_exists(&lib));
+    assert!(is_rwx(&lib));
+}
+
+fn command_line_test_output(command: &str, args: &[~str]) -> ~[~str] {
+    let mut result = ~[];
+    for str::from_bytes(run::process_output(command, args).output).each_split_char('\n') |s| {
+        result += [s.to_owned()];
+    }
+    result
+}
+
+fn lib_output_file_name(workspace: &Path, parent: &str, short_name: &str) -> Path {
+    debug!("lib_output_file_name: given %s and parent %s and short name %s",
+           workspace.to_str(), parent, short_name);
+    library_in_workspace(workspace.push(parent).to_str(),
+                         short_name,
+                         Build,
+                         workspace,
+                         "build").expect("lib_output_file_name")
+        
+}
+
+fn output_file_name(workspace: &Path, short_name: &str) -> Path {
+    workspace.push(fmt!("%s%s", short_name, os::EXE_SUFFIX))
+}
+
+fn touch_source_file(workspace: &Path, short_name: &str) {
+    use conditions::bad_path::cond;
+    let pkg_src_dir = workspace.push("src").push(short_name);
+    let contents = os::list_dir(&pkg_src_dir);
+    for contents.each() |p| {
+        if Path(copy *p).filetype() == Some(~".rs") {
+            // should be able to do this w/o a process
+            if run::process_output("touch", [p.to_str()]).status != 0 {
+                let _ = cond.raise((copy pkg_src_dir, ~"Bad path"));
+            }
+            break;
+        }
+    }
+}
+
+/// Add a blank line at the end
+fn frob_source_file(workspace: &Path, short_name: &str) {
+    use conditions::bad_path::cond;
+    let pkg_src_dir = workspace.push("src").push(short_name);
+    let contents = os::list_dir(&pkg_src_dir);
+    let mut maybe_p = None; 
+    for contents.each() |p| {
+        if Path(copy *p).filetype() == Some(~".rs") {
+            maybe_p = Some(p);
+            break;
+        }
+    }
+    match maybe_p {
+        Some(p) => {
+            let p = Path(copy *p);
+            let w = io::buffered_file_writer(&p);
+            match w {
+                Err(s) => { let _ = cond.raise((p, fmt!("Bad path: %s", s))); }
+                Ok(w)  => w.write_line("")
+            }
+        }
+        None => fail!(fmt!("frob_source_file failed to find a source file in %s",
+                           pkg_src_dir.to_str()))
+    }
 }
 
 #[test]
@@ -323,3 +460,141 @@ fn test_package_request_version() {
             == temp.push("bin").push("test_pkg_version"));
 
 }
+
+
+// tests above should be converted to shell out (maybe?)
+
+#[test]
+fn rustpkg_install_url_2() {
+    command_line_test("rustpkg", [~"install", ~"github.com/mozilla-servo/rust-http-client"]);
+}
+
+#[test]
+fn rustpkg_library_target() {
+    let foo_repo = make_git_repo("foo");
+    add_git_tag(&foo_repo, "1.0");
+    command_line_test("rustpkg", [~"install", ~"foo"]);
+    assert_lib_exists(&foo_repo, "foo");
+}
+
+#[test]
+fn rustpkg_local_pkg() {
+    create_local_package("foo");
+    command_line_test("rustpkg", [~"install", ~"foo"]);
+}
+
+#[test]
+fn rust_path_test() {
+    mk_workspace(&Path("/home/more_rust"), &normalize(RemotePath(Path("foo"))));
+  //  command_line_test("RUST_PATH=/home/rust:/home/more_rust rustpkg install foo");
+    command_line_test("rustpkg", [~"install", ~"foo"]);
+}
+
+#[test]
+fn install_remove() {
+    command_line_test("rustpkg", [~"install", ~"foo"]);
+    command_line_test("rustpkg", [~"install", ~"bar"]);
+    command_line_test("rustpkg", [~"install", ~"quux"]);
+    let list_output = command_line_test_output("rustpkg", [~"list"]);
+    assert!(list_output.contains(&~"foo"));
+    assert!(list_output.contains(&~"bar"));
+    assert!(list_output.contains(&~"quux"));
+    command_line_test("rustpkg", [~"remove", ~"foo"]);
+    let list_output = command_line_test_output("rustpkg", [~"list"]);
+    assert!(!list_output.contains(&~"foo"));
+    assert!(list_output.contains(&~"bar"));
+    assert!(list_output.contains(&~"quux"));
+}
+
+#[test]
+fn no_rebuilding() {
+    let workspace = create_local_package("foo");
+    command_line_test("rustpkg", [~"build", ~"foo"]);
+    let p_id = PkgId::new("foo");
+    let date = datestamp(&built_library_in_workspace(&p_id,
+                                                    &workspace).expect("no_rebuilding"));
+    command_line_test("rustpkg", [~"build", ~"foo"]);
+    let newdate = datestamp(&built_library_in_workspace(&p_id,
+                                                       &workspace).expect("no_rebuilding (2)"));
+    assert_eq!(date, newdate);
+}
+
+#[test]
+fn no_rebuilding_dep() {
+    let workspace = create_local_package_with_dep("foo", "bar");
+    command_line_test("rustpkg", [~"build", ~"foo"]);
+    let bar_date = datestamp(&lib_output_file_name(&workspace,
+                                                  ".rust",
+                                                  "bar"));
+    let foo_date = datestamp(&output_file_name(&workspace, "foo"));
+    assert!(bar_date < foo_date);
+}
+
+#[test]
+fn do_rebuild_dep_dates_change() {
+    let workspace = create_local_package_with_dep("foo", "bar");
+    command_line_test("rustpkg", [~"build", ~"foo"]);
+    let bar_date = datestamp(&lib_output_file_name(&workspace, "build", "bar"));
+    touch_source_file(&workspace, "bar");
+    command_line_test("rustpkg", [~"build", ~"foo"]);
+    let new_bar_date = datestamp(&lib_output_file_name(&workspace, "build", "bar"));
+    assert!(new_bar_date > bar_date);
+}
+
+#[test]
+fn do_rebuild_dep_only_contents_change() {
+    let workspace = create_local_package_with_dep("foo", "bar");
+    command_line_test("rustpkg", [~"build", ~"foo"]);
+    let bar_date = datestamp(&lib_output_file_name(&workspace, "build", "bar"));
+    frob_source_file(&workspace, "bar");
+// also have to tamper with the datestamp somehow
+    command_line_test("rustpkg", [~"build", ~"foo"]);
+    let new_bar_date = datestamp(&lib_output_file_name(&workspace, "build", "bar"));
+    assert!(new_bar_date > bar_date);
+}
+
+#[test]
+fn test_versions() {
+    create_local_package_with_version("foo", "0.1");
+    create_local_package_with_version("foo", "0.2");
+    command_line_test("rustpkg", [~"install", ~"foo#0.1"]);
+    let output = run::process_output("rustpkg", [~"list"]);
+    // make sure output includes versions
+    assert!(!str::contains(str::from_bytes(output.output), "foo#0.2"));
+}
+
+#[test]
+fn test_build_hooks() {
+    create_local_package_with_custom_build_hook("foo", "frob");
+    command_line_test("rustpkg", [~"do", ~"foo", ~"frob"]);
+}
+
+
+#[test]
+fn test_info() {
+    let expected_info = ~"package foo"; // fill in
+    create_local_package("foo");
+    let output = command_line_test("rustpkg", [~"info", ~"foo"]);
+    assert_eq!(str::from_bytes(output.output), expected_info);
+}
+
+#[test]
+fn test_rustpkg_test() {
+    let expected_results = ~"1 out of 1 tests passed"; // fill in
+    create_local_package_with_test("foo");
+    let output = command_line_test("rustpkg", [~"test", ~"foo"]);
+    assert_eq!(str::from_bytes(output.output), expected_results);
+}
+
+#[test]
+fn test_uninstall() {
+    create_local_package("foo");
+    let _output = command_line_test("rustpkg", [~"info", ~"foo"]);
+    command_line_test("rustpkg", [~"uninstall", ~"foo"]);
+    let output = command_line_test("rustpkg", [~"list"]);
+    assert!(!str::contains(str::from_bytes(output.output), "foo"));
+}
+
+
+/* To do: tests for prefer and unprefer */
+
