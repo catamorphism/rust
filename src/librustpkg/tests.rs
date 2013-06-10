@@ -96,6 +96,7 @@ fn mk_temp_workspace(short_name: &LocalPath, version: &Version) -> Path {
           os::path_is_dir(&package_dir));
     // Create main, lib, test, and bench files
     let package_dir = workspace.push("src").push(fmt!("%s-0.1", short_name.to_str()));
+    debug!("mk_workspace: creating %s", package_dir.to_str());
     assert!(os::mkdir_recursive(&package_dir, u_rwx));
     debug!("Created %s and does it exist? %?", package_dir.to_str(),
           os::path_is_dir(&package_dir));
@@ -132,9 +133,28 @@ fn test_sysroot() -> Path {
     self_path.pop()
 }
 
-fn command_line_test(cmd: &str, args: &[~str]) -> ProcessOutput {
+fn command_line_test(cmd: &str, args: &[~str], cwd: &Path) -> ProcessOutput {
     debug!("About to run command: %? %?", cmd, args);
-    run::process_output(cmd, args)
+    let mut prog = run::Process::new(cmd, args, run::ProcessOptions { env: None,
+                                                           dir: Some(cwd),
+                                                           in_fd: None,
+                                                           out_fd: None,
+                                                           err_fd: None
+                                                          });
+    let output = prog.finish_with_output();
+    io::println(fmt!("Output from command %s with args %? was %s {%s}[%?]",
+                    cmd, args, str::from_bytes(output.output),
+                   str::from_bytes(output.error),
+                   output.status));
+/*
+By the way, rustpkg *wont'* return a nonzero exit code if it fails --
+see #4547
+*/       
+    if output.status != 0 {
+        fail!("Command %s %? failed with exit code %?",
+              cmd, args, output.status);
+    }
+    output
 }
 
 fn make_git_repo(short_name: &str) -> Path {
@@ -169,9 +189,13 @@ fn create_local_package_with_dep(pkgid: &str, subord_pkgid: &str) -> Path {
     let package_dir = create_local_package(pkgid);
     let dependency_package_dir = create_local_package(subord_pkgid);
     // Write a main.rs file into pkgid that references subord_pkgid
-    writeFile(packageDir, fmt!("extern mod %s\nfn main() {}", subord_pkgid));
+    writeFile(&package_dir.push("src").push(fmt!("%s-0.1", pkgid)).push("main.rs"),
+              fmt!("extern mod %s\nfn main() {}",
+                   subord_pkgid));
     // Write a lib.rs file into subord_pkgid that has something in it
-    writeFile(dependency_package_dir, ....
+    writeFile(&dependency_package_dir.push("src").push(fmt!("%s-0.1",
+                                                            subord_pkgid)).push("lib.rs"),
+              "pub fn f() {}");
     debug!("Dry run -- would create packages %s and %s in %s", pkgid, subord_pkgid,
            package_dir.to_str());
     package_dir
@@ -463,6 +487,8 @@ fn test_package_request_version() {
 
 
 // tests above should be converted to shell out (maybe?)
+
+// CHECK EXIT CODES!
 
 #[test]
 fn rustpkg_install_url_2() {
