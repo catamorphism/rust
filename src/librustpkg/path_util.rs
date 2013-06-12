@@ -12,8 +12,9 @@
 
 use core::prelude::*;
 pub use package_path::{RemotePath, LocalPath};
-pub use package_id::{PkgId, Version{;
+pub use package_id::PkgId;
 pub use target::{OutputType, Main, Lib, Test, Bench, Target, Build, Install};
+pub use version::Version;
 use core::libc::consts::os::posix88::{S_IRUSR, S_IWUSR, S_IXUSR};
 use core::os::mkdir_recursive;
 use core::os;
@@ -66,6 +67,8 @@ pub fn first_pkgid_src_in_workspace(pkgid: &PkgId, workspace: &Path) -> Option<P
     None
 }
 
+
+
 /// Figure out what the executable name for <pkgid> in <workspace>'s build
 /// directory is, and if the file exists, return it.
 pub fn built_executable_in_workspace(pkgid: &PkgId, workspace: &Path) -> Option<Path> {
@@ -114,22 +117,20 @@ fn output_in_workspace(pkgid: &PkgId, workspace: &Path, what: OutputType) -> Opt
 /// Figure out what the library name for <pkgid> in <workspace>'s build
 /// directory is, and if the file exists, return it.
 pub fn built_library_in_workspace(pkgid: &PkgId, workspace: &Path) -> Option<Path> {
-                        // passing in local_path here sounds fishy
-    library_in_workspace(pkgid.local_path.to_str(), pkgid.short_name, Build,
-                         workspace, "build")
+    library_in_workspace(pkgid.short_name, Build, workspace, "build")
 }
 
 /// Does the actual searching stuff
 pub fn installed_library_in_workspace(short_name: &str, workspace: &Path) -> Option<Path> {
-    library_in_workspace(short_name, short_name, Install, workspace, "lib")
+    library_in_workspace(short_name, Install, workspace, "lib")
 }
 
 
 /// This doesn't take a PkgId, so we can use it for `extern mod` inference, where we
 /// don't know the entire package ID.
-/// `full_name` is used to figure out the directory to search.
+/// `workspace` is used to figure out the directory to search.
 /// `short_name` is taken as the link name of the library.
-pub fn library_in_workspace(full_name: &str, short_name: &str, where: Target,
+pub fn library_in_workspace(short_name: &str, where: Target,
                         workspace: &Path, prefix: &str) -> Option<Path> {
     debug!("library_in_workspace: checking whether a library named %s exists",
            short_name);
@@ -137,8 +138,11 @@ pub fn library_in_workspace(full_name: &str, short_name: &str, where: Target,
     // We don't know what the hash is, so we have to search through the directory
     // contents
 
+    debug!("short_name = %s where = %? workspace = %s \
+            prefix = %s", short_name, where, workspace.to_str(), prefix);
+
     let dir_to_search = match where {
-        Build => workspace.push(prefix).push(full_name),
+        Build => workspace.push(prefix).push(short_name),
         Install => workspace.push(prefix)
     };
     debug!("Listing directory %s", dir_to_search.to_str());
@@ -214,6 +218,12 @@ pub fn target_executable_in_workspace(pkgid: &PkgId, workspace: &Path) -> Path {
 /// in <workspace>
 /// As a side effect, creates the lib-dir if it doesn't exist
 pub fn target_library_in_workspace(pkgid: &PkgId, workspace: &Path) -> Path {
+    use conditions::bad_path::cond;
+    if !os::path_is_dir(workspace) {
+        cond.raise((copy *workspace,
+                    fmt!("Workspace supplied to target_library_in_workspace \
+                          is not a directory! %s", workspace.to_str())));
+    }
     target_file_in_workspace(pkgid, workspace, Lib, Install)
 }
 
@@ -243,7 +253,9 @@ fn target_file_in_workspace(pkgid: &PkgId, workspace: &Path,
     };
     let result = workspace.push(subdir);
     if !os::path_exists(&result) && !mkdir_recursive(&result, u_rwx) {
-        cond.raise((copy result, fmt!("I couldn't create the %s dir", subdir)));
+        cond.raise((copy result, fmt!("target_file_in_workspace couldn't \
+                                       create the %s dir (pkgid=%s, workspace=%s, what=%?, where=%?",
+                                      subdir, pkgid.to_str(), workspace.to_str(), what, where)));
     }
     mk_output_path(what, where, pkgid, &result)
 }
@@ -269,7 +281,10 @@ pub fn build_pkg_id_in_workspace(pkgid: &PkgId, workspace: &Path) -> Path {
 /// given whether we're building a library and whether we're building tests
 pub fn mk_output_path(what: OutputType, where: Target,
                       pkg_id: &PkgId, workspace: &Path) -> Path {
-    let short_name_with_version = pkg_id.short_name_with_version();
+    // Output name has to have a dash in it, because filesearch expects a library
+    // name to be like libfoo-*.dylib
+    let short_name_with_version = fmt!("%s-%s", pkg_id.short_name,
+                                       pkg_id.version.to_str());
     // Not local_path.dir_path()! For package foo/bar/blat/, we want
     // the executable blat-0.5 to live under blat/
     let dir = match where {
