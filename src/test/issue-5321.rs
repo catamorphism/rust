@@ -1,4 +1,4 @@
-// Copyright 2012 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2013 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,19 +8,15 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-trait double {
-    fn double(self) -> uint;
+
+trait FTErrorMethods {
+    fn succeeded(self) -> bool;
 }
 
-impl double for uint {
-    fn double(self) -> uint { self }
+impl FTErrorMethods for int {
+    fn succeeded(self) -> bool { self == 0 }
 }
 
-impl double for @uint {
-    fn double(self) -> uint { *self * 2u }
-}
-
-pub fn main() {
-    let x = @3u;
-    assert_eq!(x.double(), 6u);
+fn main() {
+    5.succeeded();
 }
