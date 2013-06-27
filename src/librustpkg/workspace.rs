@@ -37,3 +37,15 @@ pub fn pkg_parent_workspaces(pkgid: &PkgId) -> ~[Path] {
     rust_path().filtered(|ws|
         workspace_contains_package_id(pkgid, ws))
 }
+
+pub fn in_workspace() -> bool {
+    let dir_part = copy os::getcwd().pop().components;
+    if  *(dir_part.last()) != ~"src" {
+        usage::build();
+        false
+    }
+    else {
+        true
+    }
+}
+
