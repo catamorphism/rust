@@ -380,11 +380,19 @@ pub enum decl_ {
 }
 
 #[deriving(Eq, Encodable, Decodable,IterBytes)]
+#[cfg(stage0)]
 pub struct arm {
     pats: ~[@pat],
     guard: Option<@expr>,
     body: blk,
 }
+#[cfg(not(stage0))]
+pub struct arm {
+    pats: ~[@pat],
+    guard: Option<@expr>,
+    body: @expr,
+}
+
 
 #[deriving(Eq, Encodable, Decodable,IterBytes)]
 pub struct field_ {

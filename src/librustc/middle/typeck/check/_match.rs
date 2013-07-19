@@ -12,7 +12,11 @@
 use middle::pat_util::{PatIdMap, pat_id_map, pat_is_binding, pat_is_const};
 use middle::ty;
 use middle::typeck::check::demand;
-use middle::typeck::check::{check_block, check_expr_has_type, FnCtxt};
+use middle::typeck::check::{check_expr_has_type, FnCtxt};
+#[cfg(stage0)]
+use middle::typeck::check::check_block;
+#[cfg(not(stage0))]
+use middle::typeck::check::check_expr;
 use middle::typeck::check::{instantiate_path, lookup_def};
 use middle::typeck::check::{structure_of, valid_range_bounds};
 use middle::typeck::infer;
@@ -24,6 +28,7 @@ use syntax::ast_util;
 use syntax::codemap::span;
 use syntax::print::pprust;
 
+#[cfg(stage0)]
 pub fn check_match(fcx: @mut FnCtxt,
                    expr: @ast::expr,
                    discrim: @ast::expr,
@@ -80,6 +85,82 @@ pub fn check_match(fcx: @mut FnCtxt,
         }
         else if guard_bot {
             fcx.write_bot(arm.body.node.id);
+        }
+
+        result_ty =
+            infer::common_supertype(
+                fcx.infcx(),
+                infer::MatchExpression(expr.span),
+                true, // result_ty is "expected" here
+                result_ty,
+                bty);
+    }
+
+    if saw_err {
+        result_ty = ty::mk_err();
+    } else if ty::type_is_bot(discrim_ty) {
+        result_ty = ty::mk_bot();
+    }
+
+    fcx.write_ty(expr.id, result_ty);
+}
+#[cfg(not(stage0))]
+pub fn check_match(fcx: @mut FnCtxt,
+                   expr: @ast::expr,
+                   discrim: @ast::expr,
+                   arms: &[ast::arm]) {
+    let tcx = fcx.ccx.tcx;
+
+    let discrim_ty = fcx.infcx().next_ty_var();
+    check_expr_has_type(fcx, discrim, discrim_ty);
+
+    // Typecheck the patterns first, so that we get types for all the
+    // bindings.
+    for arms.iter().advance |arm| {
+        let pcx = pat_ctxt {
+            fcx: fcx,
+            map: pat_id_map(tcx.def_map, arm.pats[0]),
+        };
+
+        for arm.pats.iter().advance |p| { check_pat(&pcx, *p, discrim_ty);}
+    }
+
+    // The result of the match is the common supertype of all the
+    // arms. Start out the value as bottom, since it's the, well,
+    // bottom the type lattice, and we'll be moving up the lattice as
+    // we process each arm. (Note that any match with 0 arms is matching
+    // on any empty type and is therefore unreachable; should the flow
+    // of execution reach it, we will fail, so bottom is an appropriate
+    // type in that case)
+    let mut result_ty = ty::mk_bot();
+
+    // Now typecheck the blocks.
+    let mut saw_err = ty::type_is_error(discrim_ty);
+    for arms.iter().advance |arm| {
+        let mut guard_err = false;
+        let mut guard_bot = false;
+        match arm.guard {
+          Some(e) => {
+              check_expr_has_type(fcx, e, ty::mk_bool());
+              let e_ty = fcx.expr_ty(e);
+              if ty::type_is_error(e_ty) {
+                  guard_err = true;
+              }
+              else if ty::type_is_bot(e_ty) {
+                  guard_bot = true;
+              }
+          },
+          None => ()
+        }
+        check_expr(fcx, arm.body);
+        let bty = fcx.expr_ty(arm.body);
+        saw_err = saw_err || ty::type_is_error(bty);
+        if guard_err {
+            fcx.write_error(arm.body.id);
+            saw_err = true;
+        }
+        else if guard_bot {
+            fcx.write_bot(arm.body.id);
         }
 
         result_ty =

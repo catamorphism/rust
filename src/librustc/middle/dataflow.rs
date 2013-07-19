@@ -430,6 +430,7 @@ impl<'self, O:DataFlowOperator> PropagationContext<'self, O> {
         }
     }
 
+    #[cfg(stage0)]
     fn walk_expr(&mut self,
                  expr: @ast::expr,
                  in_out: &mut [uint],
@@ -635,6 +636,359 @@ impl<'self, O:DataFlowOperator> PropagationContext<'self, O> {
                     let mut body = reslice(guards).to_owned();
                     self.walk_pat_alternatives(arm.pats, body, loop_scopes);
                     self.walk_block(&arm.body, body, loop_scopes);
+                    join_bits(&self.dfcx.oper, body, in_out);
+                }
+            }
+
+            ast::expr_ret(o_e) => {
+                self.walk_opt_expr(o_e, in_out, loop_scopes);
+
+                // is this a return from a `for`-loop closure?
+                match loop_scopes.iter().position(|s| s.loop_kind == ForLoop) {
+                    Some(i) => {
+                        // if so, add the in_out bits to the state
+                        // upon exit. Remember that we cannot count
+                        // upon the `for` loop function not to invoke
+                        // the closure again etc.
+                        self.break_from_to(expr, &mut loop_scopes[i], in_out);
+                    }
+
+                    None => {}
+                }
+
+                self.reset(in_out);
+            }
+
+            ast::expr_break(label) => {
+                let scope = self.find_scope(expr, label, loop_scopes);
+                self.break_from_to(expr, scope, in_out);
+                self.reset(in_out);
+            }
+
+            ast::expr_again(label) => {
+                let scope = self.find_scope(expr, label, loop_scopes);
+
+                match scope.loop_kind {
+                    TrueLoop => {
+                        self.pop_scopes(expr, scope, in_out);
+                        self.add_to_entry_set(scope.loop_id, reslice(in_out));
+                    }
+
+                    ForLoop => {
+                        // If this `loop` construct is looping back to a `for`
+                        // loop, then `loop` is really just a return from the
+                        // closure. Therefore, we treat it the same as `break`.
+                        // See case for `expr_fn_block` for more details.
+                        self.break_from_to(expr, scope, in_out);
+                    }
+                }
+
+                self.reset(in_out);
+            }
+
+            ast::expr_assign(l, r) |
+            ast::expr_assign_op(_, _, l, r) => {
+                self.walk_expr(r, in_out, loop_scopes);
+                self.walk_expr(l, in_out, loop_scopes);
+            }
+
+            ast::expr_vec(ref exprs, _) => {
+                self.walk_exprs(*exprs, in_out, loop_scopes)
+            }
+
+            ast::expr_repeat(l, r, _) => {
+                self.walk_expr(l, in_out, loop_scopes);
+                self.walk_expr(r, in_out, loop_scopes);
+            }
+
+            ast::expr_struct(_, ref fields, with_expr) => {
+                for fields.iter().advance |field| {
+                    self.walk_expr(field.node.expr, in_out, loop_scopes);
+                }
+                self.walk_opt_expr(with_expr, in_out, loop_scopes);
+            }
+
+            ast::expr_call(f, ref args, _) => {
+                self.walk_call(f.id, expr.id,
+                               f, *args, in_out, loop_scopes);
+            }
+
+            ast::expr_method_call(callee_id, rcvr, _, _, ref args, _) => {
+                self.walk_call(callee_id, expr.id,
+                               rcvr, *args, in_out, loop_scopes);
+            }
+
+            ast::expr_index(callee_id, l, r) |
+            ast::expr_binary(callee_id, _, l, r) if self.is_method_call(expr) => {
+                self.walk_call(callee_id, expr.id,
+                               l, [r], in_out, loop_scopes);
+            }
+
+            ast::expr_unary(callee_id, _, e) if self.is_method_call(expr) => {
+                self.walk_call(callee_id, expr.id,
+                               e, [], in_out, loop_scopes);
+            }
+
+            ast::expr_tup(ref exprs) => {
+                self.walk_exprs(*exprs, in_out, loop_scopes);
+            }
+
+            ast::expr_binary(_, op, l, r) if ast_util::lazy_binop(op) => {
+                self.walk_expr(l, in_out, loop_scopes);
+                let temp = reslice(in_out).to_owned();
+                self.walk_expr(r, in_out, loop_scopes);
+                join_bits(&self.dfcx.oper, temp, in_out);
+            }
+
+            ast::expr_log(l, r) |
+            ast::expr_index(_, l, r) |
+            ast::expr_binary(_, _, l, r) => {
+                self.walk_exprs([l, r], in_out, loop_scopes);
+            }
+
+            ast::expr_lit(*) |
+            ast::expr_path(*) |
+            ast::expr_self => {
+            }
+
+            ast::expr_addr_of(_, e) |
+            ast::expr_copy(e) |
+            ast::expr_loop_body(e) |
+            ast::expr_do_body(e) |
+            ast::expr_cast(e, _) |
+            ast::expr_unary(_, _, e) |
+            ast::expr_paren(e) |
+            ast::expr_vstore(e, _) |
+            ast::expr_field(e, _, _) => {
+                self.walk_expr(e, in_out, loop_scopes);
+            }
+
+            ast::expr_inline_asm(ref inline_asm) => {
+                for inline_asm.inputs.iter().advance |&(_, expr)| {
+                    self.walk_expr(expr, in_out, loop_scopes);
+                }
+                for inline_asm.outputs.iter().advance |&(_, expr)| {
+                    self.walk_expr(expr, in_out, loop_scopes);
+                }
+            }
+
+            ast::expr_block(ref blk) => {
+                self.walk_block(blk, in_out, loop_scopes);
+            }
+
+            ast::expr_mac(*) => {
+                self.tcx().sess.span_bug(expr.span, "unexpanded macro");
+            }
+        }
+
+        self.dfcx.apply_gen_kill(expr.id, in_out);
+    }
+    #[cfg(not(stage0))]
+    fn walk_expr(&mut self,
+                 expr: @ast::expr,
+                 in_out: &mut [uint],
+                 loop_scopes: &mut ~[LoopScope]) {
+        debug!("DataFlowContext::walk_expr(expr=%s, in_out=%s)",
+               expr.repr(self.dfcx.tcx), bits_to_str(reslice(in_out)));
+
+        self.merge_with_entry_set(expr.id, in_out);
+
+        match expr.node {
+            ast::expr_fn_block(ref decl, ref body) => {
+                if self.dfcx.oper.walk_closures() {
+                    // In the absence of once fns, we must assume that
+                    // every function body will execute more than
+                    // once. Thus we treat every function body like a
+                    // loop.
+                    //
+                    // What is subtle and a bit tricky, also, is how
+                    // to deal with the "output" bits---that is, what
+                    // do we consider to be the successor of a
+                    // function body, given that it could be called
+                    // from any point within its lifetime? What we do
+                    // is to add their effects immediately as of the
+                    // point of creation. Of course we have to ensure
+                    // that this is sound for the analyses which make
+                    // use of dataflow.
+                    //
+                    // In the case of the initedness checker (which
+                    // does not currently use dataflow, but I hope to
+                    // convert at some point), we will simply not walk
+                    // closures at all, so it's a moot point.
+                    //
+                    // In the case of the borrow checker, this means
+                    // the loans which would be created by calling a
+                    // function come into effect immediately when the
+                    // function is created. This is guaranteed to be
+                    // earlier than the point at which the loan
+                    // actually comes into scope (which is the point
+                    // at which the closure is *called*). Because
+                    // loans persist until the scope of the loans is
+                    // exited, it is always a safe approximation to
+                    // have a loan begin earlier than it actually will
+                    // at runtime, so this should be sound.
+                    //
+                    // We stil have to be careful in the region
+                    // checker and borrow checker to treat function
+                    // bodies like loops, which implies some
+                    // limitations. For example, a closure cannot root
+                    // a managed box for longer than its body.
+                    //
+                    // General control flow looks like this:
+                    //
+                    //  +- (expr) <----------+
+                    //  |    |               |
+                    //  |    v               |
+                    //  |  (body) -----------+--> (exit)
+                    //  |    |               |
+                    //  |    + (break/loop) -+
+                    //  |                    |
+                    //  +--------------------+
+                    //
+                    // This is a bit more conservative than a loop.
+                    // Note that we must assume that even after a
+                    // `break` occurs (e.g., in a `for` loop) that the
+                    // closure may be reinvoked.
+                    //
+                    // One difference from other loops is that `loop`
+                    // and `break` statements which target a closure
+                    // both simply add to the `break_bits`.
+
+                    // func_bits represents the state when the function
+                    // returns
+                    let mut func_bits = reslice(in_out).to_owned();
+
+                    loop_scopes.push(LoopScope {
+                        loop_id: expr.id,
+                        loop_kind: ForLoop,
+                        break_bits: reslice(in_out).to_owned()
+                    });
+                    for decl.inputs.iter().advance |input| {
+                        self.walk_pat(input.pat, func_bits, loop_scopes);
+                    }
+                    self.walk_block(body, func_bits, loop_scopes);
+
+                    // add the bits from any early return via `break`,
+                    // `continue`, or `return` into `func_bits`
+                    let loop_scope = loop_scopes.pop();
+                    join_bits(&self.dfcx.oper, loop_scope.break_bits, func_bits);
+
+                    // add `func_bits` to the entry bits for `expr`,
+                    // since we must assume the function may be called
+                    // more than once
+                    self.add_to_entry_set(expr.id, reslice(func_bits));
+
+                    // the final exit bits include whatever was present
+                    // in the original, joined with the bits from the function
+                    join_bits(&self.dfcx.oper, func_bits, in_out);
+                }
+            }
+
+            ast::expr_if(cond, ref then, els) => {
+                //
+                //     (cond)
+                //       |
+                //       v
+                //      ( )
+                //     /   \
+                //    |     |
+                //    v     v
+                //  (then)(els)
+                //    |     |
+                //    v     v
+                //   (  succ  )
+                //
+                self.walk_expr(cond, in_out, loop_scopes);
+
+                let mut then_bits = reslice(in_out).to_owned();
+                self.walk_block(then, then_bits, loop_scopes);
+
+                self.walk_opt_expr(els, in_out, loop_scopes);
+                join_bits(&self.dfcx.oper, then_bits, in_out);
+            }
+
+            ast::expr_while(cond, ref blk) => {
+                //
+                //     (expr) <--+
+                //       |       |
+                //       v       |
+                //  +--(cond)    |
+                //  |    |       |
+                //  |    v       |
+                //  v  (blk) ----+
+                //       |
+                //    <--+ (break)
+                //
+
+                self.walk_expr(cond, in_out, loop_scopes);
+
+                let mut body_bits = reslice(in_out).to_owned();
+                loop_scopes.push(LoopScope {
+                    loop_id: expr.id,
+                    loop_kind: TrueLoop,
+                    break_bits: reslice(in_out).to_owned()
+                });
+                self.walk_block(blk, body_bits, loop_scopes);
+                self.add_to_entry_set(expr.id, body_bits);
+                let new_loop_scope = loop_scopes.pop();
+                copy_bits(new_loop_scope.break_bits, in_out);
+            }
+
+            ast::expr_loop(ref blk, _) => {
+                //
+                //     (expr) <--+
+                //       |       |
+                //       v       |
+                //     (blk) ----+
+                //       |
+                //    <--+ (break)
+                //
+
+                let mut body_bits = reslice(in_out).to_owned();
+                self.reset(in_out);
+                loop_scopes.push(LoopScope {
+                    loop_id: expr.id,
+                    loop_kind: TrueLoop,
+                    break_bits: reslice(in_out).to_owned()
+                });
+                self.walk_block(blk, body_bits, loop_scopes);
+                self.add_to_entry_set(expr.id, body_bits);
+
+                let new_loop_scope = loop_scopes.pop();
+                assert_eq!(new_loop_scope.loop_id, expr.id);
+                copy_bits(new_loop_scope.break_bits, in_out);
+            }
+
+            ast::expr_match(discr, ref arms) => {
+                //
+                //    (discr)
+                //     / | \
+                //    |  |  |
+                //    v  v  v
+                //   (..arms..)
+                //    |  |  |
+                //    v  v  v
+                //   (  succ  )
+                //
+                //
+                self.walk_expr(discr, in_out, loop_scopes);
+
+                let mut guards = reslice(in_out).to_owned();
+
+                // We know that exactly one arm will be taken, so we
+                // can start out with a blank slate and just union
+                // together the bits from each arm:
+                self.reset(in_out);
+
+                for arms.iter().advance |arm| {
+                    // in_out reflects the discr and all guards to date
+                    self.walk_opt_expr(arm.guard, guards, loop_scopes);
+
+                    // determine the bits for the body and then union
+                    // them into `in_out`, which reflects all bodies to date
+                    let mut body = reslice(guards).to_owned();
+                    self.walk_pat_alternatives(arm.pats, body, loop_scopes);
+                    self.walk_expr(arm.body, body, loop_scopes);
                     join_bits(&self.dfcx.oper, body, in_out);
                 }
             }

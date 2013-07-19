@@ -1651,6 +1651,7 @@ fn create_bindings_map(bcx: block, pat: @ast::pat) -> BindingsMap {
     return bindings_map;
 }
 
+#[cfg(stage0)]
 pub fn trans_match_inner(scope_cx: block,
                          discr_expr: @ast::expr,
                          arms: &[ast::arm],
@@ -1711,6 +1712,83 @@ pub fn trans_match_inner(scope_cx: block,
         bcx = insert_lllocals(bcx, &arm_data.bindings_map, BindLocal, true);
 
         bcx = controlflow::trans_block(bcx, &arm_data.arm.body, dest);
+        bcx = trans_block_cleanups(bcx, block_cleanups(arm_data.bodycx));
+        arm_cxs.push(bcx);
+    }
+
+    bcx = controlflow::join_blocks(scope_cx, arm_cxs);
+    return bcx;
+
+    fn mk_fail(bcx: block, sp: span, msg: @str,
+               finished: @mut Option<BasicBlockRef>) -> BasicBlockRef {
+        match *finished { Some(bb) => return bb, _ => () }
+        let fail_cx = sub_block(bcx, "case_fallthrough");
+        controlflow::trans_fail(fail_cx, Some(sp), msg);
+        *finished = Some(fail_cx.llbb);
+        return fail_cx.llbb;
+    }
+}
+#[cfg(not(stage0))]
+pub fn trans_match_inner(scope_cx: block,
+                         discr_expr: @ast::expr,
+                         arms: &[ast::arm],
+                         dest: Dest) -> block {
+    let _icx = push_ctxt("match::trans_match_inner");
+    let mut bcx = scope_cx;
+    let tcx = bcx.tcx();
+
+    let discr_datum = unpack_datum!(bcx, {
+        expr::trans_to_datum(bcx, discr_expr)
+    });
+    if bcx.unreachable {
+        return bcx;
+    }
+
+    let mut arm_datas = ~[];
+    let mut matches = ~[];
+    for arms.iter().advance |arm| {
+        let body = scope_block(bcx, arm.body.info(), "case_body");
+        let bindings_map = create_bindings_map(bcx, arm.pats[0]);
+        let arm_data = @ArmData {bodycx: body,
+                                 arm: arm,
+                                 bindings_map: bindings_map};
+        arm_datas.push(arm_data);
+        for arm.pats.iter().advance |p| {
+            matches.push(@Match {pats: ~[*p], data: arm_data});
+        }
+    }
+
+    let t = node_id_type(bcx, discr_expr.id);
+    let chk = {
+        if ty::type_is_empty(tcx, t) {
+            // Special case for empty types
+            let fail_cx = @mut None;
+            let f: mk_fail = || mk_fail(scope_cx, discr_expr.span,
+                            @"scrutinizing value that can't exist", fail_cx);
+            Some(f)
+        } else {
+            None
+        }
+    };
+    let lldiscr = discr_datum.to_zeroable_ref_llval(bcx);
+    compile_submatch(bcx, matches, [lldiscr], chk);
+
+    let mut arm_cxs = ~[];
+    for arm_datas.iter().advance |arm_data| {
+        let mut bcx = arm_data.bodycx;
+
+        // If this arm has a guard, then the various by-value bindings have
+        // already been copied into their homes.  If not, we do it here.  This
+        // is just to reduce code space.  See extensive comment at the start
+        // of the file for more details.
+        if arm_data.arm.guard.is_none() {
+            bcx = store_non_ref_bindings(bcx, &arm_data.bindings_map, None);
+        }
+
+        // insert bindings into the lllocals map and add cleanups
+        bcx = insert_lllocals(bcx, &arm_data.bindings_map, BindLocal, true);
+
+        bcx = expr::trans_into(bcx, arm_data.arm.body, dest);
         bcx = trans_block_cleanups(bcx, block_cleanups(arm_data.bodycx));
         arm_cxs.push(bcx);
     }

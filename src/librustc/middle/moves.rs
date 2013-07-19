@@ -588,6 +588,7 @@ impl VisitContext {
         return true;
     }
 
+    #[cfg(stage0)]
     pub fn consume_arm(&self, arm: &arm, visitor: vt<VisitContext>) {
         for arm.pats.iter().advance |pat| {
             self.use_pat(*pat);
@@ -598,6 +599,18 @@ impl VisitContext {
         }
 
         self.consume_block(&arm.body, visitor);
+    }
+    #[cfg(not(stage0))]
+    pub fn consume_arm(&self, arm: &arm, visitor: vt<VisitContext>) {
+        for arm.pats.iter().advance |pat| {
+            self.use_pat(*pat);
+        }
+
+        for arm.guard.iter().advance |guard| {
+            self.consume_expr(*guard, visitor);
+        }
+
+        self.consume_expr(arm.body, visitor);
     }
 
     pub fn use_pat(&self, pat: @pat) {

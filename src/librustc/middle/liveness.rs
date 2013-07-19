@@ -985,6 +985,7 @@ impl Liveness {
         }
     }
 
+    #[cfg(stage0)]
     pub fn propagate_through_expr(&self, expr: @expr, succ: LiveNode)
                                   -> LiveNode {
         debug!("propagate_through_expr: %s",
@@ -1077,6 +1078,252 @@ impl Liveness {
             for arms.iter().advance |arm| {
                 let body_succ =
                     self.propagate_through_block(&arm.body, succ);
+                let guard_succ =
+                    self.propagate_through_opt_expr(arm.guard, body_succ);
+                let arm_succ =
+                    self.define_bindings_in_arm_pats(arm.pats, guard_succ);
+                self.merge_from_succ(ln, arm_succ, first_merge);
+                first_merge = false;
+            };
+            self.propagate_through_expr(e, ln)
+          }
+
+          expr_ret(o_e) => {
+            // ignore succ and subst exit_ln:
+            self.propagate_through_opt_expr(o_e, self.s.exit_ln)
+          }
+
+          expr_break(opt_label) => {
+              // Find which label this break jumps to
+              let sc = self.find_loop_scope(opt_label, expr.id, expr.span);
+
+              // Now that we know the label we're going to,
+              // look it up in the break loop nodes table
+
+              match self.break_ln.find(&sc) {
+                  Some(&b) => b,
+                  None => self.tcx.sess.span_bug(expr.span,
+                                                 "Break to unknown label")
+              }
+          }
+
+          expr_again(opt_label) => {
+              // Find which label this expr continues to
+              let sc = self.find_loop_scope(opt_label, expr.id, expr.span);
+
+              // Now that we know the label we're going to,
+              // look it up in the continue loop nodes table
+
+              match self.cont_ln.find(&sc) {
+                  Some(&b) => b,
+                  None => self.tcx.sess.span_bug(expr.span,
+                                                 "Loop to unknown label")
+              }
+          }
+
+          expr_assign(l, r) => {
+            // see comment on lvalues in
+            // propagate_through_lvalue_components()
+            let succ = self.write_lvalue(l, succ, ACC_WRITE);
+            let succ = self.propagate_through_lvalue_components(l, succ);
+            self.propagate_through_expr(r, succ)
+          }
+
+          expr_assign_op(_, _, l, r) => {
+            // see comment on lvalues in
+            // propagate_through_lvalue_components()
+            let succ = self.write_lvalue(l, succ, ACC_WRITE|ACC_READ);
+            let succ = self.propagate_through_expr(r, succ);
+            self.propagate_through_lvalue_components(l, succ)
+          }
+
+          // Uninteresting cases: just propagate in rev exec order
+
+          expr_vstore(expr, _) => {
+            self.propagate_through_expr(expr, succ)
+          }
+
+          expr_vec(ref exprs, _) => {
+            self.propagate_through_exprs(*exprs, succ)
+          }
+
+          expr_repeat(element, count, _) => {
+            let succ = self.propagate_through_expr(count, succ);
+            self.propagate_through_expr(element, succ)
+          }
+
+          expr_struct(_, ref fields, with_expr) => {
+            let succ = self.propagate_through_opt_expr(with_expr, succ);
+            do fields.rev_iter().fold(succ) |succ, field| {
+                self.propagate_through_expr(field.node.expr, succ)
+            }
+          }
+
+          expr_call(f, ref args, _) => {
+            // calling a fn with bot return type means that the fn
+            // will fail, and hence the successors can be ignored
+            let t_ret = ty::ty_fn_ret(ty::expr_ty(self.tcx, f));
+            let succ = if ty::type_is_bot(t_ret) {self.s.exit_ln}
+                       else {succ};
+            let succ = self.propagate_through_exprs(*args, succ);
+            self.propagate_through_expr(f, succ)
+          }
+
+          expr_method_call(callee_id, rcvr, _, _, ref args, _) => {
+            // calling a method with bot return type means that the method
+            // will fail, and hence the successors can be ignored
+            let t_ret = ty::ty_fn_ret(ty::node_id_to_type(self.tcx, callee_id));
+            let succ = if ty::type_is_bot(t_ret) {self.s.exit_ln}
+                       else {succ};
+            let succ = self.propagate_through_exprs(*args, succ);
+            self.propagate_through_expr(rcvr, succ)
+          }
+
+          expr_tup(ref exprs) => {
+            self.propagate_through_exprs(*exprs, succ)
+          }
+
+          expr_binary(_, op, l, r) if ast_util::lazy_binop(op) => {
+            let r_succ = self.propagate_through_expr(r, succ);
+
+            let ln = self.live_node(expr.id, expr.span);
+            self.init_from_succ(ln, succ);
+            self.merge_from_succ(ln, r_succ, false);
+
+            self.propagate_through_expr(l, ln)
+          }
+
+          expr_log(l, r) |
+          expr_index(_, l, r) |
+          expr_binary(_, _, l, r) => {
+            self.propagate_through_exprs([l, r], succ)
+          }
+
+          expr_addr_of(_, e) |
+          expr_copy(e) |
+          expr_loop_body(e) |
+          expr_do_body(e) |
+          expr_cast(e, _) |
+          expr_unary(_, _, e) |
+          expr_paren(e) => {
+            self.propagate_through_expr(e, succ)
+          }
+
+          expr_inline_asm(ref ia) =>{
+            let succ = do ia.inputs.rev_iter().fold(succ) |succ, &(_, expr)| {
+                self.propagate_through_expr(expr, succ)
+            };
+            do ia.outputs.rev_iter().fold(succ) |succ, &(_, expr)| {
+                self.propagate_through_expr(expr, succ)
+            }
+          }
+
+          expr_lit(*) => {
+            succ
+          }
+
+          expr_block(ref blk) => {
+            self.propagate_through_block(blk, succ)
+          }
+
+          expr_mac(*) => {
+            self.tcx.sess.span_bug(expr.span, "unexpanded macro");
+          }
+        }
+    }
+    #[cfg(not(stage0))]
+    pub fn propagate_through_expr(&self, expr: @expr, succ: LiveNode)
+                                  -> LiveNode {
+        debug!("propagate_through_expr: %s",
+             expr_to_str(expr, self.tcx.sess.intr()));
+
+        match expr.node {
+          // Interesting cases with control flow or which gen/kill
+
+          expr_path(_) | expr_self => {
+              self.access_path(expr, succ, ACC_READ | ACC_USE)
+          }
+
+          expr_field(e, _, _) => {
+              self.propagate_through_expr(e, succ)
+          }
+
+          expr_fn_block(_, ref blk) => {
+              debug!("%s is an expr_fn_block",
+                   expr_to_str(expr, self.tcx.sess.intr()));
+
+              /*
+              The next-node for a break is the successor of the entire
+              loop. The next-node for a continue is the top of this loop.
+              */
+              self.with_loop_nodes(blk.node.id, succ,
+                  self.live_node(expr.id, expr.span), || {
+
+                 // the construction of a closure itself is not important,
+                 // but we have to consider the closed over variables.
+                 let caps = self.ir.captures(expr);
+                 do caps.rev_iter().fold(succ) |succ, cap| {
+                     self.init_from_succ(cap.ln, succ);
+                     let var = self.variable(cap.var_nid, expr.span);
+                     self.acc(cap.ln, var, ACC_READ | ACC_USE);
+                     cap.ln
+                 }
+              })
+          }
+
+          expr_if(cond, ref then, els) => {
+            //
+            //     (cond)
+            //       |
+            //       v
+            //     (expr)
+            //     /   \
+            //    |     |
+            //    v     v
+            //  (then)(els)
+            //    |     |
+            //    v     v
+            //   (  succ  )
+            //
+            let else_ln = self.propagate_through_opt_expr(els, succ);
+            let then_ln = self.propagate_through_block(then, succ);
+            let ln = self.live_node(expr.id, expr.span);
+            self.init_from_succ(ln, else_ln);
+            self.merge_from_succ(ln, then_ln, false);
+            self.propagate_through_expr(cond, ln)
+          }
+
+          expr_while(cond, ref blk) => {
+            self.propagate_through_loop(expr, Some(cond), blk, succ)
+          }
+
+          // Note that labels have been resolved, so we don't need to look
+          // at the label ident
+          expr_loop(ref blk, _) => {
+            self.propagate_through_loop(expr, None, blk, succ)
+          }
+
+          expr_match(e, ref arms) => {
+            //
+            //      (e)
+            //       |
+            //       v
+            //     (expr)
+            //     / | \
+            //    |  |  |
+            //    v  v  v
+            //   (..arms..)
+            //    |  |  |
+            //    v  v  v
+            //   (  succ  )
+            //
+            //
+            let ln = self.live_node(expr.id, expr.span);
+            self.init_empty(ln, succ);
+            let mut first_merge = true;
+            for arms.iter().advance |arm| {
+                let body_succ =
+                    self.propagate_through_expr(arm.body, succ);
                 let guard_succ =
                     self.propagate_through_opt_expr(arm.guard, body_succ);
                 let arm_succ =

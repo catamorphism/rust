@@ -2380,6 +2380,7 @@ impl Parser {
               self.look_ahead(2) == token::COLON))
     }
 
+    #[cfg(stage0)]
     fn parse_match_expr(&self) -> @expr {
         let lo = self.last_span.lo;
         let discriminant = self.parse_expr();
@@ -2410,10 +2411,40 @@ impl Parser {
                     id: self.get_id(),
                     rules: default_blk,
                 },
-                span: expr.span,
-            };
+     span: expr.span,
+ };
 
             arms.push(ast::arm { pats: pats, guard: guard, body: blk });
+        }
+        let hi = self.span.hi;
+        self.bump();
+        return self.mk_expr(lo, hi, expr_match(discriminant, arms));
+    }
+
+    #[cfg(not(stage0))]
+    fn parse_match_expr(&self) -> @expr {
+        let lo = self.last_span.lo;
+        let discriminant = self.parse_expr();
+        self.expect(&token::LBRACE);
+        let mut arms: ~[arm] = ~[];
+        while *self.token != token::RBRACE {
+            let pats = self.parse_pats();
+            let mut guard = None;
+            if self.eat_keyword(keywords::If) { guard = Some(self.parse_expr()); }
+            self.expect(&token::FAT_ARROW);
+            let expr = self.parse_expr_res(RESTRICT_STMT_EXPR);
+
+            let require_comma =
+                !classify::expr_is_simple_block(expr)
+                && *self.token != token::RBRACE;
+
+            if require_comma {
+                self.expect(&token::COMMA);
+            } else {
+                self.eat(&token::COMMA);
+            }
+
+            arms.push(ast::arm { pats: pats, guard: guard, body: expr });
         }
         let hi = self.span.hi;
         self.bump();

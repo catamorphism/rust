@@ -409,11 +409,20 @@ fn noop_fold_stmt(s: &stmt_, fld: @ast_fold) -> Option<stmt_> {
     }
 }
 
+#[cfg(stage0)]
 fn noop_fold_arm(a: &arm, fld: @ast_fold) -> arm {
     arm {
         pats: a.pats.map(|x| fld.fold_pat(*x)),
         guard: a.guard.map(|x| fld.fold_expr(*x)),
         body: fld.fold_block(&a.body),
+    }
+}
+#[cfg(not(stage0))]
+fn noop_fold_arm(a: &arm, fld: @ast_fold) -> arm {
+    arm {
+        pats: a.pats.map(|x| fld.fold_pat(*x)),
+        guard: a.guard.map(|x| fld.fold_expr(*x)),
+        body: fld.fold_expr(a.body),
     }
 }
 

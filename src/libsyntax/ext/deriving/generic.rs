@@ -567,6 +567,61 @@ impl<'self> MethodDef<'self> {
     }
     ~~~
     */
+    #[cfg(stage0)]
+    fn expand_struct_method_body(&self,
+                                 cx: @ExtCtxt,
+                                 span: span,
+                                 struct_def: &struct_def,
+                                 type_ident: ident,
+                                 self_args: &[@expr],
+                                 nonself_args: &[@expr])
+        -> @expr {
+
+        let mut raw_fields = ~[]; // ~[[fields of self],
+                                 // [fields of next Self arg], [etc]]
+        let mut patterns = ~[];
+        for uint::range(0, self_args.len()) |i| {
+            let (pat, ident_expr) = create_struct_pattern(cx, span,
+                                                          type_ident, struct_def,
+                                                          fmt!("__self_%u", i), ast::m_imm);
+            patterns.push(pat);
+            raw_fields.push(ident_expr);
+        };
+
+        // transpose raw_fields
+        let fields = match raw_fields {
+            [ref self_arg, .. rest] => {
+                do self_arg.iter().enumerate().transform |(i, &(opt_id, field))| {
+                    let other_fields = do rest.map |l| {
+                        match &l[i] {
+                            &(_, ex) => ex
+                        }
+                    };
+                    (opt_id, field, other_fields)
+                }.collect()
+            }
+            [] => { cx.span_bug(span, "No self arguments to non-static \
+                                       method in generic `deriving`") }
+        };
+
+        // body of the inner most destructuring match
+        let mut body = self.call_substructure_method(
+            cx, span,
+            type_ident,
+            self_args,
+            nonself_args,
+            &Struct(fields));
+
+        // make a series of nested matches, to destructure the
+        // structs. This is actually right-to-left, but it shoudn't
+        // matter.
+        for self_args.iter().zip(patterns.iter()).advance |(&arg_expr, &pat)| {
+            body = cx.expr_match(span, arg_expr,
+                                 ~[ cx.arm(span, ~[pat], cx.blk_expr(body)) ])
+        }
+        body
+    }
+    #[cfg(not(stage0))]
     fn expand_struct_method_body(&self,
                                  cx: @ExtCtxt,
                                  span: span,
@@ -699,6 +754,152 @@ impl<'self> MethodDef<'self> {
     current position are variant `n`, `None` otherwise (including on
     the first call).
     */
+    #[cfg(stage0)]
+    fn build_enum_match(&self,
+                        cx: @ExtCtxt, span: span,
+                        enum_def: &enum_def,
+                        type_ident: ident,
+                        self_args: &[@expr],
+                        nonself_args: &[@expr],
+                        matching: Option<uint>,
+                        matches_so_far: &mut ~[(uint, ast::variant,
+                                              ~[(Option<ident>, @expr)])],
+                        match_count: uint) -> @expr {
+        if match_count == self_args.len() {
+            // we've matched against all arguments, so make the final
+            // expression at the bottom of the match tree
+            if matches_so_far.len() == 0 {
+                cx.span_bug(span, "no self match on an enum in generic \
+                                   `deriving`");
+            }
+            // we currently have a vec of vecs, where each
+            // subvec is the fields of one of the arguments,
+            // but if the variants all match, we want this as
+            // vec of tuples, where each tuple represents a
+            // field.
+
+            let substructure;
+
+            // most arms don't have matching variants, so do a
+            // quick check to see if they match (even though
+            // this means iterating twice) instead of being
+            // optimistic and doing a pile of allocations etc.
+            match matching {
+                Some(variant_index) => {
+                    // `ref` inside let matches is buggy. Causes havoc wih rusc.
+                    // let (variant_index, ref self_vec) = matches_so_far[0];
+                    let (variant, self_vec) = match matches_so_far[0] {
+                        (_, ref v, ref s) => (v, s)
+                    };
+
+                    let mut enum_matching_fields = vec::from_elem(self_vec.len(), ~[]);
+
+                    for matches_so_far.tail().iter().advance |triple| {
+                        match triple {
+                            &(_, _, ref other_fields) => {
+                                for other_fields.iter().enumerate().advance |(i, pair)| {
+                                    enum_matching_fields[i].push(pair.second());
+                                }
+                            }
+                        }
+                    }
+                    let field_tuples =
+                        do self_vec.iter()
+                           .zip(enum_matching_fields.iter())
+                           .transform |(&(id, self_f), other)| {
+                        (id, self_f, copy *other)
+                    }.collect();
+                    substructure = EnumMatching(variant_index, variant, field_tuples);
+                }
+                None => {
+                    substructure = EnumNonMatching(*matches_so_far);
+                }
+            }
+            self.call_substructure_method(cx, span, type_ident,
+                                          self_args, nonself_args,
+                                          &substructure)
+
+        } else {  // there are still matches to create
+            let current_match_str = if match_count == 0 {
+                ~"__self"
+            } else {
+                fmt!("__arg_%u", match_count)
+            };
+
+            let mut arms = ~[];
+
+            // the code for nonmatching variants only matters when
+            // we've seen at least one other variant already
+            if self.const_nonmatching && match_count > 0 {
+                // make a matching-variant match, and a _ match.
+                let index = match matching {
+                    Some(i) => i,
+                    None => cx.span_bug(span, "Non-matching variants when required to \
+                                               be matching in generic `deriving`")
+                };
+
+                // matching-variant match
+                let variant = &enum_def.variants[index];
+                let (pattern, idents) = create_enum_variant_pattern(cx, span,
+                                                                    variant,
+                                                                    current_match_str,
+                                                                    ast::m_imm);
+
+                matches_so_far.push((index, /*bad*/ copy *variant, idents));
+                let arm_expr = self.build_enum_match(cx, span,
+                                                     enum_def,
+                                                     type_ident,
+                                                     self_args, nonself_args,
+                                                     matching,
+                                                     matches_so_far,
+                                                     match_count + 1);
+                matches_so_far.pop();
+                arms.push(cx.arm(span, ~[ pattern ], cx.blk_expr(arm_expr)));
+
+                if enum_def.variants.len() > 1 {
+                    let e = &EnumNonMatching(&[]);
+                    let wild_expr = self.call_substructure_method(cx, span, type_ident,
+                                                                  self_args, nonself_args,
+                                                                  e);
+                    let wild_arm = cx.arm(span,
+                                          ~[ cx.pat_wild(span) ],
+                                          cx.blk_expr(wild_expr));
+                    arms.push(wild_arm);
+                }
+            } else {
+                // create an arm matching on each variant
+                for enum_def.variants.iter().enumerate().advance |(index, variant)| {
+                    let (pattern, idents) = create_enum_variant_pattern(cx, span,
+                                                                       variant,
+                                                                       current_match_str,
+                                                                       ast::m_imm);
+
+                    matches_so_far.push((index, /*bad*/ copy *variant, idents));
+                    let new_matching =
+                        match matching {
+                            _ if match_count == 0 => Some(index),
+                            Some(i) if index == i => Some(i),
+                            _ => None
+                        };
+                    let arm_expr = self.build_enum_match(cx, span,
+                                                         enum_def,
+                                                         type_ident,
+                                                         self_args, nonself_args,
+                                                         new_matching,
+                                                         matches_so_far,
+                                                         match_count + 1);
+                    matches_so_far.pop();
+
+                    let arm = cx.arm(span, ~[ pattern ], cx.blk_expr(arm_expr));
+                    arms.push(arm);
+                }
+            }
+
+            // match foo { arm, arm, arm, ... }
+            cx.expr_match(span, self_args[match_count], arms)
+        }
+    }
+    #[cfg(not(stage0))]
     fn build_enum_match(&self,
                         cx: @ExtCtxt, span: span,
                         enum_def: &enum_def,

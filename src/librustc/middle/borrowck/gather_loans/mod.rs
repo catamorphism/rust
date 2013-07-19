@@ -174,6 +174,7 @@ fn gather_loans_in_local(local: @ast::local,
     visit::visit_local(local, (this, vt));
 }
 
+#[cfg(stage0)]
 fn gather_loans_in_expr(ex: @ast::expr,
                         (this, vt): (@mut GatherLoanCtxt,
                                      visit::vt<@mut GatherLoanCtxt>)) {
@@ -241,6 +242,123 @@ fn gather_loans_in_expr(ex: @ast::expr,
         for arms.iter().advance |arm| {
             for arm.pats.iter().advance |pat| {
                 this.gather_pat(cmt, *pat, Some((arm.body.node.id, ex.id)));
+            }
+        }
+        visit::visit_expr(ex, (this, vt));
+      }
+
+      ast::expr_index(_, _, arg) |
+      ast::expr_binary(_, _, _, arg)
+      if this.bccx.method_map.contains_key(&ex.id) => {
+          // Arguments in method calls are always passed by ref.
+          //
+          // Currently these do not use adjustments, so we have to
+          // hardcode this check here (note that the receiver DOES use
+          // adjustments).
+          let scope_r = ty::re_scope(ex.id);
+          let arg_cmt = this.bccx.cat_expr(arg);
+          this.guarantee_valid(arg.id, arg.span, arg_cmt, m_imm, scope_r);
+          visit::visit_expr(ex, (this, vt));
+      }
+
+      // see explanation attached to the `root_ub` field:
+      ast::expr_while(cond, ref body) => {
+          // during the condition, can only root for the condition
+          this.push_repeating_id(cond.id);
+          (vt.visit_expr)(cond, (this, vt));
+          this.pop_repeating_id(cond.id);
+
+          // during body, can only root for the body
+          this.push_repeating_id(body.node.id);
+          (vt.visit_block)(body, (this, vt));
+          this.pop_repeating_id(body.node.id);
+      }
+
+      // see explanation attached to the `root_ub` field:
+      ast::expr_loop(ref body, _) => {
+          this.push_repeating_id(body.node.id);
+          visit::visit_expr(ex, (this, vt));
+          this.pop_repeating_id(body.node.id);
+      }
+
+      ast::expr_fn_block(*) => {
+          gather_moves::gather_captures(this.bccx, this.move_data, ex);
+          visit::visit_expr(ex, (this, vt));
+      }
+
+      _ => {
+        visit::visit_expr(ex, (this, vt));
+      }
+    }
+}
+#[cfg(not(stage0))]
+fn gather_loans_in_expr(ex: @ast::expr,
+                        (this, vt): (@mut GatherLoanCtxt,
+                                     visit::vt<@mut GatherLoanCtxt>)) {
+    let bccx = this.bccx;
+    let tcx = bccx.tcx;
+
+    debug!("gather_loans_in_expr(expr=%?/%s)",
+           ex.id, pprust::expr_to_str(ex, tcx.sess.intr()));
+
+    this.id_range.add(ex.id);
+
+    {
+        let r = ex.get_callee_id();
+        for r.iter().advance |callee_id| {
+            this.id_range.add(*callee_id);
+        }
+    }
+
+    // If this expression is borrowed, have to ensure it remains valid:
+    {
+        let r = tcx.adjustments.find(&ex.id);
+        for r.iter().advance |&adjustments| {
+            this.guarantee_adjustments(ex, *adjustments);
+        }
+    }
+
+    // If this expression is a move, gather it:
+    if this.bccx.is_move(ex.id) {
+        let cmt = this.bccx.cat_expr(ex);
+        gather_moves::gather_move_from_expr(
+            this.bccx, this.move_data, ex, cmt);
+    }
+
+    // Special checks for various kinds of expressions:
+    match ex.node {
+      ast::expr_addr_of(mutbl, base) => {
+        let base_cmt = this.bccx.cat_expr(base);
+
+        // make sure that the thing we are pointing out stays valid
+        // for the lifetime `scope_r` of the resulting ptr:
+        let scope_r = ty_region(tcx, ex.span, ty::expr_ty(tcx, ex));
+        this.guarantee_valid(ex.id, ex.span, base_cmt, mutbl, scope_r);
+        visit::visit_expr(ex, (this, vt));
+      }
+
+      ast::expr_assign(l, _) | ast::expr_assign_op(_, _, l, _) => {
+          let l_cmt = this.bccx.cat_expr(l);
+          match opt_loan_path(l_cmt) {
+              Some(l_lp) => {
+                  gather_moves::gather_assignment(this.bccx, this.move_data,
+                                                  ex.id, ex.span,
+                                                  l_lp, l.id);
+              }
+              None => {
+                  // This can occur with e.g. `*foo() = 5`.  In such
+                  // cases, there is no need to check for conflicts
+                  // with moves etc, just ignore.
+              }
+          }
+          visit::visit_expr(ex, (this, vt));
+      }
+
+      ast::expr_match(ex_v, ref arms) => {
+        let cmt = this.bccx.cat_expr(ex_v);
+        for arms.iter().advance |arm| {
+            for arm.pats.iter().advance |pat| {
+                this.gather_pat(cmt, *pat, Some((arm.body.id, ex.id)));
             }
         }
         visit::visit_expr(ex, (this, vt));

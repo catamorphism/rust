@@ -557,11 +557,19 @@ pub fn visit_expr<E: Copy>(ex: @expr, (e, v): (E, vt<E>)) {
     (v.visit_expr_post)(ex, (e, v));
 }
 
+#[cfg(stage0)]
 pub fn visit_arm<E: Copy>(a: &arm, (e, v): (E, vt<E>)) {
     for a.pats.iter().advance |p| { (v.visit_pat)(*p, (copy e, v)); }
     visit_expr_opt(a.guard, (copy e, v));
     (v.visit_block)(&a.body, (copy e, v));
 }
+#[cfg(not(stage0))]
+pub fn visit_arm<E: Copy>(a: &arm, (e, v): (E, vt<E>)) {
+    for a.pats.iter().advance |p| { (v.visit_pat)(*p, (copy e, v)); }
+    visit_expr_opt(a.guard, (copy e, v));
+    (v.visit_expr)(a.body, (copy e, v));
+}
+
 
 // Simpler, non-context passing interface. Always walks the whole tree, simply
 // calls the given functions on the nodes.

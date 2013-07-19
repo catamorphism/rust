@@ -141,6 +141,9 @@ pub trait AstBuilder {
     fn pat_struct(&self, span: span,
                   path: ast::Path, field_pats: ~[ast::field_pat]) -> @ast::pat;
 
+    #[cfg(stage0)]
+    fn arm(&self, span: span, pats: ~[@ast::pat], blk: ast::blk) -> ast::arm;
+    #[cfg(not(stage0))]
     fn arm(&self, span: span, pats: ~[@ast::pat], expr: @ast::expr) -> ast::arm;
     fn arm_unreachable(&self, span: span) -> ast::arm;
 
@@ -577,14 +580,28 @@ impl AstBuilder for @ExtCtxt {
         self.pat(span, pat)
     }
 
+    #[cfg(stage0)]
+    fn arm(&self, _span: span, pats: ~[@ast::pat], blk: ast::blk) -> ast::arm {
+        ast::arm {
+            pats: pats,
+            guard: None,
+            body: blk
+        }
+    }
+    #[cfg(not(stage0))]
     fn arm(&self, _span: span, pats: ~[@ast::pat], expr: @ast::expr) -> ast::arm {
         ast::arm {
             pats: pats,
             guard: None,
-            body: self.blk_expr(expr)
+            body: expr
         }
     }
 
+    #[cfg(stage0)]
+    fn arm_unreachable(&self, span: span) -> ast::arm {
+        self.arm(span, ~[self.pat_wild(span)], self.blk_expr(self.expr_unreachable(span)))
+    }
+    #[cfg(not(stage0))]
     fn arm_unreachable(&self, span: span) -> ast::arm {
         self.arm(span, ~[self.pat_wild(span)], self.expr_unreachable(span))
     }

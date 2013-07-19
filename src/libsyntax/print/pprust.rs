@@ -18,7 +18,6 @@ use attr;
 use codemap::{CodeMap, BytePos};
 use codemap;
 use diagnostic;
-use parse::classify::expr_is_simple_block;
 use parse::token::{ident_interner, ident_to_str};
 use parse::{comments, token};
 use parse;
@@ -1253,37 +1252,10 @@ pub fn print_expr(s: @ps, expr: &ast::expr) {
             }
             word_space(s, "=>");
 
-            // Extract the expression from the extra block the parser adds
-            // in the case of foo => expr
-            if arm.body.node.view_items.is_empty() &&
-                arm.body.node.stmts.is_empty() &&
-                arm.body.node.rules == ast::default_blk &&
-                arm.body.node.expr.is_some()
-            {
-                match arm.body.node.expr {
-                    Some(expr) => {
-                        match expr.node {
-                            ast::expr_block(ref blk) => {
-                                // the block will close the pattern's ibox
-                                print_block_unclosed_indent(
-                                    s, blk, indent_unit);
-                            }
-                            _ => {
-                                end(s); // close the ibox for the pattern
-                                print_expr(s, expr);
-                            }
-                        }
-                        if !expr_is_simple_block(expr)
-                            && i < len - 1 {
-                            word(s.s, ",");
-                        }
-                        end(s); // close enclosing cbox
-                    }
-                    None => fail!()
-                }
-            } else {
-                // the block will close the pattern's ibox
-                print_block_unclosed_indent(s, &arm.body, indent_unit);
+            end(s); // close the ibox for the pattern
+            print_expr(s, expr);
+            if i < len - 1 {
+                word(s.s, ",");
             }
         }
         bclose_(s, expr.span, indent_unit);

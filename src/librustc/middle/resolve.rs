@@ -4071,6 +4071,7 @@ impl Resolver {
         }
     }
 
+    #[cfg(stage0)]
     pub fn resolve_arm(@mut self, arm: &arm, visitor: ResolveVisitor) {
         self.value_ribs.push(@Rib(NormalRibKind));
 
@@ -4086,6 +4087,25 @@ impl Resolver {
 
         visit_expr_opt(arm.guard, ((), visitor));
         self.resolve_block(&arm.body, visitor);
+
+        self.value_ribs.pop();
+    }
+    #[cfg(not(stage0))]
+    pub fn resolve_arm(@mut self, arm: &arm, visitor: ResolveVisitor) {
+        self.value_ribs.push(@Rib(NormalRibKind));
+
+        let bindings_list = @mut HashMap::new();
+        for arm.pats.iter().advance |pattern| {
+            self.resolve_pattern(*pattern, RefutableMode, Immutable,
+                                 Some(bindings_list), visitor);
+        }
+
+        // This has to happen *after* we determine which
+        // pat_idents are variants
+        self.check_consistent_bindings(arm);
+
+        visit_expr_opt(arm.guard, ((), visitor));
+        self.resolve_expr(arm.body, visitor);
 
         self.value_ribs.pop();
     }

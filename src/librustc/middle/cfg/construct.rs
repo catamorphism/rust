@@ -159,6 +159,7 @@ impl CFGBuilder {
         }
     }
 
+    #[cfg(stage0)]
     fn expr(&mut self, expr: @ast::expr, pred: CFGIndex) -> CFGIndex {
         match expr.node {
             ast::expr_block(ref blk) => {
@@ -299,6 +300,263 @@ impl CFGBuilder {
                     guard_exit = self.opt_expr(arm.guard, guard_exit); // 2
                     let pats_exit = self.pats_any(arm.pats, guard_exit); // 3
                     let body_exit = self.block(&arm.body, pats_exit);    // 4
+                    self.add_contained_edge(body_exit, expr_exit);       // 5
+                }
+                expr_exit
+            }
+
+            ast::expr_binary(_, op, l, r) if ast_util::lazy_binop(op) => {
+                //
+                //     [pred]
+                //       |
+                //       v 1
+                //      [l]
+                //       |
+                //      / \
+                //     /   \
+                //    v 2  *
+                //   [r]   |
+                //    |    |
+                //    v 3  v 4
+                //   [..exit..]
+                //
+                let l_exit = self.expr(l, pred);                         // 1
+                let r_exit = self.expr(r, l_exit);                       // 2
+                self.add_node(expr.id, [l_exit, r_exit])                 // 3,4
+            }
+
+            ast::expr_ret(v) => {
+                let v_exit = self.opt_expr(v, pred);
+                let loop_scope = self.loop_scopes[0];
+                self.add_exiting_edge(expr, v_exit,
+                                      loop_scope, loop_scope.break_index);
+                self.add_node(expr.id, [])
+            }
+
+            ast::expr_break(label) => {
+                let loop_scope = self.find_scope(expr, label);
+                self.add_exiting_edge(expr, pred,
+                                      loop_scope, loop_scope.break_index);
+                self.add_node(expr.id, [])
+            }
+
+            ast::expr_again(label) => {
+                let loop_scope = self.find_scope(expr, label);
+                self.add_exiting_edge(expr, pred,
+                                      loop_scope, loop_scope.continue_index);
+                self.add_node(expr.id, [])
+            }
+
+            ast::expr_vec(ref elems, _) => {
+                self.straightline(expr, pred, *elems)
+            }
+
+            ast::expr_call(func, ref args, _) => {
+                self.call(expr, pred, func, *args)
+            }
+
+            ast::expr_method_call(_, rcvr, _, _, ref args, _) => {
+                self.call(expr, pred, rcvr, *args)
+            }
+
+            ast::expr_index(_, l, r) |
+            ast::expr_binary(_, _, l, r) if self.is_method_call(expr) => {
+                self.call(expr, pred, l, [r])
+            }
+
+            ast::expr_unary(_, _, e) if self.is_method_call(expr) => {
+                self.call(expr, pred, e, [])
+            }
+
+            ast::expr_tup(ref exprs) => {
+                self.straightline(expr, pred, *exprs)
+            }
+
+            ast::expr_struct(_, ref fields, base) => {
+                let base_exit = self.opt_expr(base, pred);
+                let field_exprs: ~[@ast::expr] =
+                    fields.iter().transform(|f| f.node.expr).collect();
+                self.straightline(expr, base_exit, field_exprs)
+            }
+
+            ast::expr_repeat(elem, count, _) => {
+                self.straightline(expr, pred, [elem, count])
+            }
+
+            ast::expr_assign(l, r) |
+            ast::expr_assign_op(_, _, l, r) => {
+                self.straightline(expr, pred, [r, l])
+            }
+
+            ast::expr_log(l, r) |
+            ast::expr_index(_, l, r) |
+            ast::expr_binary(_, _, l, r) => { // NB: && and || handled earlier
+                self.straightline(expr, pred, [l, r])
+            }
+
+            ast::expr_addr_of(_, e) |
+            ast::expr_copy(e) |
+            ast::expr_loop_body(e) |
+            ast::expr_do_body(e) |
+            ast::expr_cast(e, _) |
+            ast::expr_unary(_, _, e) |
+            ast::expr_paren(e) |
+            ast::expr_vstore(e, _) |
+            ast::expr_field(e, _, _) => {
+                self.straightline(expr, pred, [e])
+            }
+
+            ast::expr_mac(*) |
+            ast::expr_inline_asm(*) |
+            ast::expr_self |
+            ast::expr_fn_block(*) |
+            ast::expr_lit(*) |
+            ast::expr_path(*) => {
+                self.straightline(expr, pred, [])
+            }
+        }
+    }
+    #[cfg(not(stage0))]
+    fn expr(&mut self, expr: @ast::expr, pred: CFGIndex) -> CFGIndex {
+        match expr.node {
+            ast::expr_block(ref blk) => {
+                let blk_exit = self.block(blk, pred);
+                self.add_node(expr.id, [blk_exit])
+            }
+
+            ast::expr_if(cond, ref then, None) => {
+                //
+                //     [pred]
+                //       |
+                //       v 1
+                //     [cond]
+                //       |
+                //      / \
+                //     /   \
+                //    v 2   *
+                //  [then]  |
+                //    |     |
+                //    v 3   v 4
+                //   [..expr..]
+                //
+                let cond_exit = self.expr(cond, pred);                // 1
+                let then_exit = self.block(then, cond_exit);          // 2
+                self.add_node(expr.id, [cond_exit, then_exit])        // 3,4
+            }
+
+            ast::expr_if(cond, ref then, Some(otherwise)) => {
+                //
+                //     [pred]
+                //       |
+                //       v 1
+                //     [cond]
+                //       |
+                //      / \
+                //     /   \
+                //    v 2   v 3
+                //  [then][otherwise]
+                //    |     |
+                //    v 4   v 5
+                //   [..expr..]
+                //
+                let cond_exit = self.expr(cond, pred);                // 1
+                let then_exit = self.block(then, cond_exit);          // 2
+                let else_exit = self.expr(otherwise, cond_exit);      // 3
+                self.add_node(expr.id, [then_exit, else_exit])        // 4, 5
+            }
+
+            ast::expr_while(cond, ref body) => {
+                //
+                //         [pred]
+                //           |
+                //           v 1
+                //       [loopback] <--+ 5
+                //           |         |
+                //           v 2       |
+                //   +-----[cond]      |
+                //   |       |         |
+                //   |       v 4       |
+                //   |     [body] -----+
+                //   v 3
+                // [expr]
+                //
+                // Note that `break` and `loop` statements
+                // may cause additional edges.
+
+                // NOTE: Is the condition considered part of the loop?
+                let loopback = self.add_dummy_node([pred]);           // 1
+                let cond_exit = self.expr(cond, loopback);            // 2
+                let expr_exit = self.add_node(expr.id, [cond_exit]);  // 3
+                self.loop_scopes.push(LoopScope {
+                    loop_id: expr.id,
+                    continue_index: loopback,
+                    break_index: expr_exit
+                });
+                let body_exit = self.block(body, cond_exit);          // 4
+                self.add_contained_edge(body_exit, loopback);         // 5
+                expr_exit
+            }
+
+            ast::expr_loop(ref body, _) => {
+                //
+                //     [pred]
+                //       |
+                //       v 1
+                //   [loopback] <---+
+                //       |      4   |
+                //       v 3        |
+                //     [body] ------+
+                //
+                //     [expr] 2
+                //
+                // Note that `break` and `loop` statements
+                // may cause additional edges.
+
+                let loopback = self.add_dummy_node([pred]);           // 1
+                let expr_exit = self.add_node(expr.id, []);           // 2
+                self.loop_scopes.push(LoopScope {
+                    loop_id: expr.id,
+                    continue_index: loopback,
+                    break_index: expr_exit,
+                });
+                let body_exit = self.block(body, loopback);           // 3
+                self.add_contained_edge(body_exit, loopback);         // 4
+                self.loop_scopes.pop();
+                expr_exit
+            }
+
+            ast::expr_match(discr, ref arms) => {
+                //
+                //     [pred]
+                //       |
+                //       v 1
+                //    [discr]
+                //       |
+                //       v 2
+                //    [guard1]
+                //      /  \
+                //     |    \
+                //     v 3  |
+                //  [pat1]  |
+                //     |
+                //     v 4  |
+                // [body1]  v
+                //     |  [guard2]
+                //     |    /   \
+                //     | [body2] \
+                //     |    |   ...
+                //     |    |    |
+                //     v 5  v    v
+                //   [....expr....]
+                //
+                let discr_exit = self.expr(discr, pred);                 // 1
+
+                let expr_exit = self.add_node(expr.id, []);
+                let mut guard_exit = discr_exit;
+                for arms.iter().advance |arm| {
+                    guard_exit = self.opt_expr(arm.guard, guard_exit); // 2
+                    let pats_exit = self.pats_any(arm.pats, guard_exit); // 3
+                    let body_exit = self.expr(arm.body, pats_exit);    // 4
                     self.add_contained_edge(body_exit, expr_exit);       // 5
                 }
                 expr_exit
