@@ -21,11 +21,13 @@ use container::Container;
 use cmp::Eq;
 use iterator::{Iterator, IteratorUtil};
 use libc;
+use num;
 use option::{None, Option, Some};
 use str::{OwnedStr, Str, StrSlice, StrVector};
 use to_str::ToStr;
+use uint;
 use ascii::{AsciiCast, AsciiStr};
-use vec::{OwnedVector, ImmutableVector};
+use vec::{OwnedVector, ImmutableVector, OwnedCopyableVector};
 
 #[cfg(windows)]
 pub use Path = self::WindowsPath;
@@ -1055,6 +1057,40 @@ pub mod windows {
     }
 }
 
+/// Find the relative path from one file to another
+pub fn get_relative_to(abs1: &Path, abs2: &Path) -> Path {
+    assert!(abs1.is_absolute);
+    assert!(abs2.is_absolute);
+    let abs1 = abs1.normalize();
+    let abs2 = abs2.normalize();
+    debug!("finding relative path from %s to %s",
+           abs1.to_str(), abs2.to_str());
+    let split1: &[~str] = abs1.components;
+    let split2: &[~str] = abs2.components;
+    let len1 = split1.len();
+    let len2 = split2.len();
+    assert!(len1 > 0);
+    assert!(len2 > 0);
+
+    let max_common_path = num::min(len1, len2) - 1;
+    let mut start_idx = 0;
+    while start_idx < max_common_path
+        && split1[start_idx] == split2[start_idx] {
+        start_idx += 1;
+    }
+
+    let mut path = ~[];
+    for uint::range(start_idx, len1 - 1) |_i| { path.push(~".."); };
+
+    path.push_all(split2.slice(start_idx + 1, len2));
+
+    return if !path.is_empty() {
+        Path("").push_many(path)
+    } else {
+        Path(".")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use option::{None, Some};
@@ -1339,6 +1375,75 @@ mod tests {
         assert!(!&WindowsPath("C:\\a\\b\\c").is_ancestor_of(&WindowsPath("")));
         assert!(!&WindowsPath("").is_ancestor_of(&WindowsPath("C:\\a\\b\\c")));
 
+    }
+
+    #[test]
+    fn test_relative_to1() {
+        let p1 = Path("/usr/bin/rustc");
+        let p2 = Path("/usr/lib/mylib");
+        let res = get_relative_to(&p1, &p2);
+        assert_eq!(res, Path("../lib"));
+    }
+
+    #[test]
+    fn test_relative_to2() {
+        let p1 = Path("/usr/bin/rustc");
+        let p2 = Path("/usr/bin/../lib/mylib");
+        let res = get_relative_to(&p1, &p2);
+        assert_eq!(res, Path("../lib"));
+    }
+
+    #[test]
+    fn test_relative_to3() {
+        let p1 = Path("/usr/bin/whatever/rustc");
+        let p2 = Path("/usr/lib/whatever/mylib");
+        let res = get_relative_to(&p1, &p2);
+        assert_eq!(res, Path("../../lib/whatever"));
+    }
+
+    #[test]
+    fn test_relative_to4() {
+        let p1 = Path("/usr/bin/whatever/../rustc");
+        let p2 = Path("/usr/lib/whatever/mylib");
+        let res = get_relative_to(&p1, &p2);
+        assert_eq!(res, Path("../lib/whatever"));
+    }
+
+    #[test]
+    fn test_relative_to5() {
+        let p1 = Path("/usr/bin/whatever/../rustc");
+        let p2 = Path("/usr/lib/whatever/../mylib");
+        let res = get_relative_to(&p1, &p2);
+        assert_eq!(res, Path("../lib"));
+    }
+
+    #[test]
+    fn test_relative_to6() {
+        let p1 = Path("/1");
+        let p2 = Path("/2/3");
+        let res = get_relative_to(&p1, &p2);
+        assert_eq!(res, Path("2"));
+    }
+
+    #[test]
+    fn test_relative_to7() {
+        let p1 = Path("/1/2");
+        let p2 = Path("/3");
+        let res = get_relative_to(&p1, &p2);
+        assert_eq!(res, Path(".."));
+    }
+
+    #[test]
+    fn test_relative_to8() {
+        let p1 = Path("/home/brian/Dev/rust/build/").push_rel(
+            &Path("stage2/lib/rustc/i686-unknown-linux-gnu/lib/librustc.so"));
+        let p2 = Path("/home/brian/Dev/rust/build/stage2/bin/..").push_rel(
+            &Path("lib/rustc/i686-unknown-linux-gnu/lib/libstd.so"));
+        let res = get_relative_to(&p1, &p2);
+        debug!("test_relative_tu8: %s vs. %s",
+               res.to_str(),
+               Path(".").to_str());
+        assert_eq!(res, Path("."));
     }
 
 }
