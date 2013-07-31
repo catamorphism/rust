@@ -406,7 +406,7 @@ pub fn id_visitor<T: Clone>(vfn: @fn(NodeId, T)) -> visit::vt<T> {
 
         visit_view_item: |vi, (t, vt)| {
             match vi.node {
-              view_item_extern_mod(_, _, id) => vfn(id, t.clone()),
+              view_item_extern_mod(_, _, _, id) => vfn(id, t.clone()),
               view_item_use(ref vps) => {
                   foreach vp in vps.iter() {
                       match vp.node {
