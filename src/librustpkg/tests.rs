@@ -1060,6 +1060,19 @@ fn test_macro_pkg_script() {
         os::EXE_SUFFIX))));
 }
 
+#[test]
+fn pkgid_pointing_to_subdir() {
+    // The actual repo is mockgithub.com/mozilla/some_repo
+    // rustpkg should recognize that and treat the part after some_repo/ as a subdir
+    let foo_id = PkgId::new("mockgithub.com/mozilla/some_repo/extras/foo");
+    let bar_id = PkgId::new("mockgithub.com/mozilla/some_repo/extras/bar");
+    /* 
+           Then the code should go line:
+           extern mod foo = "mockgithub.com/mozilla/some_repo/extras/foo";
+    */
+
+}
+
 /// Returns true if p exists and is executable
 fn is_executable(p: &Path) -> bool {
     use std::libc::consts::os::posix88::{S_IXUSR};
