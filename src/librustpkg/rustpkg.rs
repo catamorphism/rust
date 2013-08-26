@@ -29,7 +29,6 @@ use std::run;
 use std::str;
 
 pub use std::path::Path;
-use std::hashmap::HashMap;
 
 use rustc::driver::{driver, session};
 use rustc::metadata::filesearch;
@@ -43,8 +42,8 @@ use path_util::{U_RWX, in_rust_path};
 use path_util::{built_executable_in_workspace, built_library_in_workspace, default_workspace};
 use path_util::{target_executable_in_workspace, target_library_in_workspace};
 use source_control::is_git_dir;
-use workspace::{each_pkg_parent_workspace, pkg_parent_workspaces, cwd_to_workspace};
-use context::Ctx;
+use workspace::{each_pkg_parent_workspace, pkg_parent_workspaces, in_workspace, cwd_to_workspace};
+use context::{BuildCtx, Ctx};
 use package_id::PkgId;
 use package_source::PkgSrc;
 
@@ -64,6 +63,7 @@ mod target;
 mod tests;
 mod util;
 mod version;
+pub mod workcache_support;
 mod workspace;
 
 pub mod usage;
@@ -133,7 +133,7 @@ impl<'self> PkgScript<'self> {
     /// Returns a pair of an exit code and list of configs (obtained by
     /// calling the package script's configs() function if it exists
     // FIXME (#4432): Use workcache to only compile the script when changed
-    fn run_custom(&self, sysroot: @Path) -> (~[~str], ExitCode) {
+    fn run_custom(&self, sysroot: &Path) -> (~[~str], ExitCode) {
         let sess = self.sess;
 
         debug!("Working directory = %s", self.build_dir.to_str());
@@ -184,8 +184,7 @@ pub trait CtxMethods {
     fn unprefer(&self, _id: &str, _vers: Option<~str>);
 }
 
-impl CtxMethods for Ctx {
-
+impl CtxMethods for BuildCtx {
     fn run(&self, cmd: &str, args: ~[~str]) {
         match cmd {
             "build" => {
@@ -376,7 +375,7 @@ impl CtxMethods for Ctx {
             // Find crates inside the workspace
             src.find_crates();
             // Build it!
-            src.build(self, cfgs);
+            src.build(self, workspace.clone(), cfgs);
         }
     }
 
@@ -521,12 +520,11 @@ pub fn main_args(args: &[~str]) {
         };
     }
 
-    let sroot = Some(@filesearch::get_or_default_sysroot());
+    let sroot = filesearch::get_or_default_sysroot();
     debug!("Using sysroot: %?", sroot);
-    Ctx {
-        sysroot_opt: sroot, // Currently, only tests override this
-        json: json,
-        dep_cache: @mut HashMap::new()
+    BuildCtx {
+        cx: Ctx { sysroot_opt: sroot }, // Currently, only tests override this
+        workcache_cx: api::default_ctxt(default_workspace()).workcache_cx // ???
     }.run(cmd, args);
 }
 

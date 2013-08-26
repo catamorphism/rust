@@ -18,6 +18,7 @@ use messages::*;
 use source_control::{git_clone, git_clone_general};
 use path_util::pkgid_src_in_workspace;
 use util::compile_crate;
+use workcache_support;
 
 // An enumeration of the unpacked source of a package workspace.
 // This contains a list of files found in the source workspace.
@@ -31,7 +32,7 @@ pub struct PkgSrc {
 }
 
 condition! {
-    build_err: (~str) -> ();
+    build_err: (~str) -> ~str;
 }
 
 impl PkgSrc {
@@ -181,43 +182,66 @@ impl PkgSrc {
     }
 
     fn build_crates(&self,
-                    ctx: &Ctx,
+                    ctx: BuildCtx,
+                    dst_dir: Path,
                     src_dir: &Path,
                     crates: &[Crate],
                     cfgs: &[~str],
                     what: OutputType) {
         for crate in crates.iter() {
-            let path = &src_dir.push_rel(&crate.file).normalize();
+            let path = src_dir.push_rel(&crate.file).normalize();
             note(fmt!("build_crates: compiling %s", path.to_str()));
-            note(fmt!("build_crates: using as workspace %s", self.root.to_str()));
 
-            let result = compile_crate(ctx,
-                                       &self.id,
-                                       path,
-                                       // compile_crate wants the workspace
-                                       &self.root,
-                                       crate.flags,
-                                       crate.cfgs + cfgs,
-                                       false,
-                                       what);
-            if !result {
-                build_err::cond.raise(fmt!("build failure on %s",
-                                           path.to_str()));
-            }
-            debug!("Result of compiling %s was %?",
-                   path.to_str(), result);
+            let subcx = ctx.clone();
+            let p_id = self.id.clone();
+            let crate_flags = crate.flags.clone();
+            let path_str = path.to_str();
+            let other_path_str = fmt!("rustpkg-build_crates %s", path_str);
+            let cfgs = crate.cfgs + cfgs;
+
+            let result = do ctx.workcache_cx.with_prep(other_path_str) |prep| {
+                let subpath = path.clone();
+                debug!("Declaring input: %s", path_str);
+                prep.declare_input("file",
+                                   path_str,
+                                   workcache_support::digest_file_with_date(&path.clone()));
+                let subcx2 = subcx.clone();
+                let p_id2 = p_id.clone();
+                let cflags = crate_flags.clone();
+                let dst_dir_copy = dst_dir.clone();
+                let path_str_clone = path_str.clone();
+                let cfgs_clone = cfgs.clone();
+                do prep.exec |exe| {
+                    // compile_crate should return the path of the output artifact
+                    match compile_crate(&subcx2,
+                                  exe,
+                                  &p_id2,
+                                  &subpath,
+                                  &dst_dir_copy.clone(),
+                                  cflags,
+                                  cfgs_clone.clone(),
+                                  false,
+                                        what) {
+                        Some(p) => p.to_str(),
+                        None   => build_err::cond.raise(fmt!("build failure on %s",
+                                                             path_str_clone))
+
+                    }
+                }
+            };
+            debug!("Result of compiling %s was %s", path_str, result);
         }
     }
 
-    pub fn build(&self, ctx: &Ctx, cfgs: ~[~str]) {
+    pub fn build(&self, ctx: &BuildCtx, dst_dir: Path, cfgs: ~[~str]) {
         let dir = self.check_dir();
         debug!("Building libs in %s", dir.to_str());
-        self.build_crates(ctx, &dir, self.libs, cfgs, Lib);
+        self.build_crates(ctx.clone(), dst_dir.clone(), &dir, self.libs, cfgs, Lib);
         debug!("Building mains");
-        self.build_crates(ctx, &dir, self.mains, cfgs, Main);
+        self.build_crates(ctx.clone(), dst_dir.clone(), &dir, self.mains, cfgs, Main);
         debug!("Building tests");
-        self.build_crates(ctx, &dir, self.tests, cfgs, Test);
+        self.build_crates(ctx.clone(), dst_dir.clone(), &dir, self.tests, cfgs, Test);
         debug!("Building benches");
-        self.build_crates(ctx, &dir, self.benchs, cfgs, Bench);
+        self.build_crates(ctx.clone(), dst_dir, &dir, self.benchs, cfgs, Bench);
     }
 }

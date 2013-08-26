@@ -12,17 +12,15 @@
 
 use digest::Digest;
 use json;
+use json::ToJson;
 use sha1::Sha1;
 use serialize::{Encoder, Encodable, Decoder, Decodable};
 use arc::{Arc,RWArc};
 use treemap::TreeMap;
-
 use std::cell::Cell;
 use std::comm::{PortOne, oneshot};
 use std::either::{Either, Left, Right};
-use std::io;
-use std::run;
-use std::task;
+use std::{io, os, task};
 
 /**
 *
@@ -123,11 +121,15 @@ struct Database {
 impl Database {
 
     pub fn new(p: Path) -> Database {
-        Database {
+        let mut rslt = Database {
             db_filename: p,
             db_cache: TreeMap::new(),
             db_dirty: false
+        };
+        if os::path_exists(&rslt.db_filename) {
+            rslt.load();
         }
+        rslt
     }
 
     pub fn prepare(&self,
@@ -154,6 +156,45 @@ impl Database {
         self.db_cache.insert(k,v);
         self.db_dirty = true
     }
+
+    fn save(&self) {
+        let f = io::file_writer(&self.db_filename, [io::Create, io::Truncate]).unwrap();
+        json::to_pretty_writer(f, &self.db_cache.to_json());
+
+// What what
+      //  self.db_dirty = false;
+    }
+
+    fn load(&mut self) {
+        assert!(!self.db_dirty);
+        assert!(os::path_exists(&self.db_filename));
+        let f = io::file_reader(&self.db_filename);
+        match f {
+            // NOTE should be condition
+            Err(e) => fail!("Error loading workcache database from %s: %s",
+                            self.db_filename.to_str(),
+                            e.to_str()),
+            Ok(r) =>
+                match json::from_reader(r) {
+                    // NOTE should be condition
+                    Err(e) => fail!("Error loading workcache database from %s: %s",
+                                    self.db_filename.to_str(),
+                                    e.to_str()),
+                    Ok(r) => {
+                        let mut decoder = json::Decoder(r);
+                        self.db_cache = Decodable::decode(&mut decoder);
+                    }
+            }
+        }
+    }
+}
+
+impl Drop for Database {
+    fn drop(&self) {
+        if self.db_dirty {
+            self.save();
+        }
+    }
 }
 
 struct Logger {
@@ -172,12 +213,20 @@ impl Logger {
     }
 }
 
+type FreshnessMap = TreeMap<~str,extern fn(&str,&str)->bool>;
+
 #[deriving(Clone)]
 struct Context {
     db: RWArc<Database>,
     logger: RWArc<Logger>,
     cfg: Arc<json::Object>,
-    freshness: Arc<TreeMap<~str,extern fn(&str,&str)->bool>>
+    /// Map from kinds (source, exe, url, etc.) to a freshness function.
+    /// The freshness function takes a name (e.g. file path) and value
+    /// (e.g. hash of file contents) and determines whether it's up-to-date.
+    /// For example, in the file case, this would read the file off disk,
+    /// hash it, and return the result of comparing the given hash and the
+    /// read hash for equality.
+    freshness: Arc<FreshnessMap>
 }
 
 struct Prep<'self> {
@@ -230,11 +279,18 @@ impl Context {
     pub fn new(db: RWArc<Database>,
                lg: RWArc<Logger>,
                cfg: Arc<json::Object>) -> Context {
+        Context::new_with_freshness(db, lg, cfg, Arc::new(TreeMap::new()))
+    }
+
+    pub fn new_with_freshness(db: RWArc<Database>,
+               lg: RWArc<Logger>,
+               cfg: Arc<json::Object>,
+               freshness: Arc<FreshnessMap>) -> Context {
         Context {
             db: db,
             logger: lg,
             cfg: cfg,
-            freshness: Arc::new(TreeMap::new())
+            freshness: freshness
         }
     }
 
@@ -249,6 +305,16 @@ impl Context {
 
 }
 
+impl Exec {
+    pub fn discover_input(&mut self, dependency_kind:&str,
+       // Discovered input
+       dependency_name: &str, dependency_val: &str) {
+        debug!("Discovering input %s %s %s", dependency_kind, dependency_name, dependency_val);
+        self.discovered_inputs.insert(WorkKey::new(dependency_kind, dependency_name),
+                                 dependency_val.to_owned());
+    }
+}
+
 impl<'self> Prep<'self> {
     fn new(ctxt: &'self Context, fn_name: &'self str) -> Prep<'self> {
         Prep {
@@ -260,7 +326,8 @@ impl<'self> Prep<'self> {
 }
 
 impl<'self> Prep<'self> {
-    fn declare_input(&mut self, kind:&str, name:&str, val:&str) {
+    pub fn declare_input(&mut self, kind:&str, name:&str, val:&str) {
+        debug!("Declaring input %s %s %s", kind, name, val);
         self.declared_inputs.insert(WorkKey::new(kind, name),
                                  val.to_owned());
     }
@@ -269,6 +336,7 @@ impl<'self> Prep<'self> {
                 name: &str, val: &str) -> bool {
         let k = kind.to_owned();
         let f = self.ctxt.freshness.get().find(&k);
+        debug!("freshness for: %s/%s/%s/%s", cat, kind, name, val)
         let fresh = match f {
             None => fail!("missing freshness-function for '%s'", kind),
             Some(f) => (*f)(name, val)
@@ -294,19 +362,21 @@ impl<'self> Prep<'self> {
         return true;
     }
 
-    fn exec<T:Send +
+    pub fn exec<T:Send +
         Encodable<json::Encoder> +
         Decodable<json::Decoder>>(
-            &'self self, blk: ~fn(&Exec) -> T) -> T {
+            &'self self, blk: ~fn(&mut Exec) -> T) -> T {
         self.exec_work(blk).unwrap()
     }
 
     fn exec_work<T:Send +
         Encodable<json::Encoder> +
         Decodable<json::Decoder>>( // FIXME(#5121)
-            &'self self, blk: ~fn(&Exec) -> T) -> Work<'self, T> {
+            &'self self, blk: ~fn(&mut Exec) -> T) -> Work<'self, T> {
         let mut bo = Some(blk);
 
+        debug!("exec_work: getting declared inputs %?",
+               self.declared_inputs);
         let cached = do self.ctxt.db.read |db| {
             db.prepare(self.fn_name, &self.declared_inputs)
         };
@@ -316,21 +386,23 @@ impl<'self> Prep<'self> {
             if self.all_fresh("declared input",&self.declared_inputs) &&
                self.all_fresh("discovered input", disc_in) &&
                self.all_fresh("discovered output", disc_out) => {
+                debug!("Cache hit!");
                 Left(json_decode(*res))
             }
 
             _ => {
+                debug!("Cache miss!");
                 let (port, chan) = oneshot();
                 let blk = bo.take_unwrap();
                 let chan = Cell::new(chan);
 
                 do task::spawn {
-                    let exe = Exec {
+                    let mut exe = Exec {
                         discovered_inputs: WorkMap::new(),
                         discovered_outputs: WorkMap::new(),
                     };
                     let chan = chan.take();
-                    let v = blk(&exe);
+                    let v = blk(&mut exe);
                     chan.send((exe, v));
                 }
                 Right(port)
@@ -371,9 +443,10 @@ impl<'self, T:Send +
 }
 
 
-//#[test]
+#[test]
 fn test() {
     use std::io::WriterUtil;
+    use std::run;
 
     let pth = Path("foo.c");
     {
@@ -402,3 +475,5 @@ fn test() {
     };
     io::println(s);
 }
+
+// NOTE tests for load/save

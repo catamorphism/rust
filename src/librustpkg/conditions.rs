@@ -12,9 +12,14 @@
 
 pub use std::path::Path;
 pub use package_id::PkgId;
+pub use std::libc;
 
 condition! {
     bad_path: (super::Path, ~str) -> super::Path;
+}
+
+condition! {
+    bad_stat: (super::Path, ~str) -> super::libc::stat;
 }
 
 condition! {

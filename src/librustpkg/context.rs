@@ -10,51 +10,65 @@
 
 // Context data structure used by rustpkg
 
-
-use std::hashmap::HashMap;
 use std::os;
+use extra::workcache;
 
+// NOTE: aaaaargh
+#[deriving(Clone)]
 pub struct Ctx {
-    // Sysroot -- if this is None, uses rustc filesearch's
-    // idea of the default
-    sysroot_opt: Option<@Path>,
-    // I'm not sure what this is for
-    json: bool,
-    // Cache of hashes of things already installed
-    // though I'm not sure why the value is a bool
-    dep_cache: @mut HashMap<~str, bool>,
+    // Sysroot
+    sysroot_opt: Path // Not sure if this should be an Option, but
+                      // workcache ctxt needs it to figure out where
+                      // to put the database file
+}
+
+#[deriving(Clone)]
+pub struct BuildCtx {
+    // Context for workcache
+    workcache_cx: workcache::Context,
+    // Everything else
+    cx: Ctx
+}
+
+impl BuildCtx {
+    pub fn sysroot_opt(&self) -> Path {
+        self.cx.sysroot_opt.clone() // NOTE: :-(
+    }
+
+    pub fn sysroot_to_use(&self) -> Option<@Path> {
+        self.cx.sysroot_to_use()
+    }
+}
+
+impl Ctx {
+    pub fn sysroot_opt(&self) -> Path {
+        self.sysroot_opt.clone() // NOTE: :-(
+    }
 }
 
 impl Ctx {
     /// Debugging
     pub fn sysroot_opt_str(&self) -> ~str {
-        match self.sysroot_opt {
-            None => ~"[none]",
-            Some(p) => p.to_str()
-        }
+        self.sysroot_opt.to_str()
     }
 
     // Hack so that rustpkg can run either out of a rustc target dir,
     // or the host dir
     pub fn sysroot_to_use(&self) -> Option<@Path> {
-        if !in_target(self.sysroot_opt) {
-            self.sysroot_opt
+        Some(@(if !in_target(&self.sysroot_opt) {
+            self.sysroot_opt.clone() // :-(
         }
         else {
-            self.sysroot_opt.map(|p| { @p.pop().pop().pop() })
+            self.sysroot_opt.pop().pop().pop()
         }
-    }
+    ))
+   }
 }
 
 /// We assume that if ../../rustc exists, then we're running
 /// rustpkg from a Rust target directory. This is part of a
 /// kludgy hack used to adjust the sysroot.
-pub fn in_target(sysroot_opt: Option<@Path>) -> bool {
-    match sysroot_opt {
-        None => false,
-        Some(p) => {
-            debug!("Checking whether %s is in target", p.to_str());
-            os::path_is_dir(&p.pop().pop().push("rustc"))
-        }
-    }
+pub fn in_target(sysroot_opt: &Path) -> bool {
+    debug!("Checking whether %s is in target", sysroot_opt.to_str());
+    os::path_is_dir(&sysroot_opt.pop().pop().push("rustc"))
 }

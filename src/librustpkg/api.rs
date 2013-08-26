@@ -13,19 +13,52 @@ use crate::*;
 use package_id::*;
 use package_source::*;
 use version::Version;
+use workcache_support::*;
 
+use extra::arc::{Arc,RWArc};
+use extra::workcache;
+use extra::workcache::*;
 use std::os;
-use std::hashmap::*;
+use extra::treemap::TreeMap;
 
 /// Convenience functions intended for calling from pkg.rs
 
-fn default_ctxt(p: @Path) -> Ctx {
-    Ctx { sysroot_opt: Some(p), json: false, dep_cache: @mut HashMap::new() }
+/// p is where to put the cache file for dependencies
+pub fn default_ctxt(p: Path) -> BuildCtx {
+    new_default_ctx(new_workcache_cx(&p), p)
 }
 
-pub fn build_lib(sysroot: @Path, root: Path, name: ~str, version: Version,
-                 lib: Path) {
+pub fn new_default_ctx(c: Context, p: Path) -> BuildCtx {
+    BuildCtx {
+        cx: Ctx { sysroot_opt: p },
+        workcache_cx: c
+    }
+}
 
+fn file_is_fresh(path: &str, in_hash: &str) -> bool {
+// NOTE: Probably won't work; the in_hash doesn't take the date
+// into account
+    in_hash == digest_file_with_date(&Path(path))
+}
+
+pub fn new_workcache_cx(p: &Path) -> Context {
+    let db_file = p.push("rustpkg_db.json"); // ??? probably wrong
+    let db = RWArc::new(Database::new(db_file));
+    let lg = RWArc::new(Logger::new());
+    let cfg = Arc::new(TreeMap::new());
+    let mut rslt: FreshnessMap = TreeMap::new();
+// NOTE: Here's where we should set up freshness functions for all the types
+// of things we'd like to handle in rustpkg
+// * file (source file)
+// * url  (version-control URL)
+// * exe  (executable)
+// * lib  (library)
+    rslt.insert(~"file", file_is_fresh);
+    workcache::Context::new_with_freshness(db, lg, cfg, Arc::new(rslt))
+}
+
+pub fn build_lib(sysroot: Path, root: Path, dest: Path, name: ~str, version: Version,
+                 lib: Path) {
     let pkg_src = PkgSrc {
         root: root,
         id: PkgId{ version: version, ..PkgId::new(name)},
@@ -34,10 +67,11 @@ pub fn build_lib(sysroot: @Path, root: Path, name: ~str, version: Version,
         tests: ~[],
         benchs: ~[]
     };
-    pkg_src.build(&default_ctxt(sysroot), ~[]);
+    pkg_src.build(&default_ctxt(sysroot), dest, ~[]);
 }
 
-pub fn build_exe(sysroot: @Path, root: Path, name: ~str, version: Version, main: Path) {
+pub fn build_exe(sysroot: Path, root: Path, dest: Path, name: ~str, version: Version,
+                 main: Path) {
     let pkg_src = PkgSrc {
         root: root,
         id: PkgId{ version: version, ..PkgId::new(name)},
@@ -46,11 +80,10 @@ pub fn build_exe(sysroot: @Path, root: Path, name: ~str, version: Version, main:
         tests: ~[],
         benchs: ~[]
     };
-    pkg_src.build(&default_ctxt(sysroot), ~[]);
-
+    pkg_src.build(&default_ctxt(sysroot), dest, ~[]);
 }
 
-pub fn install_lib(sysroot: @Path,
+pub fn install_lib(sysroot: Path,
                    workspace: Path,
                    name: ~str,
                    lib_path: Path,
@@ -69,14 +102,13 @@ pub fn install_lib(sysroot: @Path,
         benchs: ~[]
     };
     let cx = default_ctxt(sysroot);
-    pkg_src.build(&cx, ~[]);
+    pkg_src.build(&cx, workspace.clone(), ~[]);
     cx.install_no_build(&workspace, &pkg_id);
 }
 
-pub fn install_exe(sysroot: @Path, workspace: Path, name: ~str, version: Version) {
+pub fn install_exe(sysroot: Path, workspace: Path, name: ~str, version: Version) {
     default_ctxt(sysroot).install(&workspace, &PkgId{ version: version,
                                             ..PkgId::new(name)});
-
 }
 
 fn mk_crate(p: Path) -> Crate {

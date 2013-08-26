@@ -10,10 +10,15 @@
 
 // rustpkg unit tests
 
-use context::Ctx;
+use context::{BuildCtx, Ctx};
 use std::hashmap::HashMap;
-use std::{io, libc, os, run, str};
+use std::{io, libc, os, result, run, str};
+use extra::arc::Arc;
+use extra::arc::RWArc;
 use extra::tempfile::mkdtemp;
+use extra::workcache;
+use extra::workcache::{Context, Database, Logger};
+use extra::treemap::TreeMap;
 use std::run::ProcessOutput;
 use installed_packages::list_installed_packages;
 use package_id::{PkgId};
@@ -32,11 +37,15 @@ fn datestamp(p: &Path) -> Option<libc::time_t> {
     p.stat().map(|stat| stat.st_mtime)
 }
 
-fn fake_ctxt(sysroot_opt: Option<@Path>) -> Ctx {
-    Ctx {
-        sysroot_opt: sysroot_opt,
-        json: false,
-        dep_cache: @mut HashMap::new()
+fn fake_ctxt(sysroot_opt: Path) -> BuildCtx {
+    let bcx = Context::new(RWArc::new(Database::new(Path("db.json"))),
+                           RWArc::new(Logger::new()),
+                           Arc::new(TreeMap::new()));
+    BuildCtx {
+        workcache_cx: bcx,
+        cx: Ctx {
+                sysroot_opt: sysroot_opt
+        }
     }
 }
 
@@ -376,7 +385,6 @@ fn touch_source_file(workspace: &Path, pkgid: &PkgId) {
             if run::process_output("touch", [p.to_str()]).status != 0 {
                 let _ = cond.raise((pkg_src_dir.clone(), ~"Bad path"));
             }
-            break;
         }
     }
 }
@@ -425,7 +433,7 @@ fn test_install_valid() {
 
     let sysroot = test_sysroot();
     debug!("sysroot = %s", sysroot.to_str());
-    let ctxt = fake_ctxt(Some(@sysroot));
+    let ctxt = fake_ctxt(sysroot);
     let temp_pkg_id = fake_pkg();
     let temp_workspace = mk_temp_workspace(&temp_pkg_id.path, &NoVersion).pop().pop();
     debug!("temp_workspace = %s", temp_workspace.to_str());
@@ -454,7 +462,8 @@ fn test_install_invalid() {
     use conditions::nonexistent_package::cond;
     use cond1 = conditions::missing_pkg_files::cond;
 
-    let ctxt = fake_ctxt(None);
+    let sysroot = test_sysroot();
+    let ctxt = fake_ctxt(sysroot);
     let pkgid = fake_pkg();
     let temp_workspace = mkdtemp(&os::tmpdir(), "test").expect("couldn't create temp dir");
     let mut error_occurred = false;
@@ -866,7 +875,7 @@ fn install_check_duplicates() {
 }
 
 #[test]
-#[ignore(reason = "Workcache not yet implemented -- see #7075")]
+// #[ignore(reason = "Workcache not yet implemented -- see #7075")]
 fn no_rebuilding() {
     let p_id = PkgId::new("foo");
     let workspace = create_local_package(&p_id);
@@ -878,6 +887,8 @@ fn no_rebuilding() {
                                                        &workspace).expect("no_rebuilding (2)"));
     assert_eq!(date, newdate);
 }
+
+// NOTE need a test that changes to "intermediate" files trigger recompilation, too
 
 #[test]
 #[ignore(reason = "Workcache not yet implemented -- see #7075")]
@@ -902,6 +913,7 @@ fn do_rebuild_dep_dates_change() {
     let p_id = PkgId::new("foo");
     let dep_id = PkgId::new("bar");
     let workspace = create_local_package_with_dep(&p_id, &dep_id);
+    debug!("workspace = %s", workspace.to_str());
     command_line_test([~"build", ~"foo"], &workspace);
     let bar_lib_name = lib_output_file_name(&workspace, "build", "bar");
     let bar_date = datestamp(&bar_lib_name);
