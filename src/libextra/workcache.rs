@@ -159,7 +159,7 @@ impl Database {
 
     fn save(&self) {
         let f = io::file_writer(&self.db_filename, [io::Create, io::Truncate]).unwrap();
-        json::to_pretty_writer(f, &self.db_cache.to_json());
+        self.db_cache.to_json().to_pretty_writer(f);
 
 // What what
       //  self.db_dirty = false;

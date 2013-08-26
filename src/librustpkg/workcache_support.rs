@@ -31,5 +31,4 @@ pub fn digest_file_with_date(path: &Path) -> ~str {
         }
         Err(e) => cond.raise((path.clone(), fmt!("Couldn't read file: %s", e))).to_str()
     }
-   
 }

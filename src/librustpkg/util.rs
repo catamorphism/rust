@@ -349,8 +349,6 @@ pub fn find_and_install_dependencies(ctxt: &BuildCtx,
     debug!("In find_and_install_dependencies...");
     let my_workspace = (*workspace).clone();
     let ctxt_clone = ctxt.clone();
-// Borrow check complaining. Rewrite this as a proper iterator?
-xxx
     do c.each_view_item |vi| {
         let my_ctxt = ctxt_clone.clone();
         debug!("A view item!");
