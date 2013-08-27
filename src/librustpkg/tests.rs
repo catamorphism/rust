@@ -1062,14 +1062,38 @@ fn test_macro_pkg_script() {
 
 #[test]
 fn pkgid_pointing_to_subdir() {
+// NOTE: This is wrong, some_repo should really be a local github repo
     // The actual repo is mockgithub.com/mozilla/some_repo
     // rustpkg should recognize that and treat the part after some_repo/ as a subdir
     let foo_id = PkgId::new("mockgithub.com/mozilla/some_repo/extras/foo");
     let bar_id = PkgId::new("mockgithub.com/mozilla/some_repo/extras/bar");
-    /* 
-           Then the code should go line:
-           extern mod foo = "mockgithub.com/mozilla/some_repo/extras/foo";
-    */
+
+    let workspace = mkdtemp(&os::tmpdir(), "parent_repo").expect("Couldn't create temp dir");
+    assert!(os::mkdir_recursive(&workspace.push_many([~"src", ~"mockgithub.com",
+                                                     ~"mozilla", ~"some_repo"]), U_RWX));
+
+    let foo_dir = workspace.push_many([~"src", ~"mockgithub.com", ~"mozilla", ~"some_repo",
+                                       ~"extras", ~"foo"]);
+    let bar_dir = workspace.push_many([~"src", ~"mockgithub.com", ~"mozilla", ~"some_repo",
+                                       ~"extras", ~"bar"]);
+    assert!(os::mkdir_recursive(&foo_dir, U_RWX));
+    assert!(os::mkdir_recursive(&bar_dir, U_RWX));
+    writeFile(&foo_dir.push("lib.rs"), "pub fn f() {}");
+    writeFile(&bar_dir.push("lib.rs"), "pub fn g() {}");
+
+    let workspace_importer = mk_empty_workspace(&Path("testpkg"), &NoVersion);
+    debug!("Creating a file in %s", workspace_importer.to_str());
+    writeFile(&workspace_importer.push_many([~"src", ~"testpkg-0.1", ~"main.rs"]),
+              "extern mod foo = \"mockgithub.com/mozilla/some_repo/extras/foo\";\n
+               extern mod bar = \"mockgithub.com/mozilla/some_repo/extras/bar\";\n
+               use foo::f; use bar::g; \n
+               fn main() { f(); g(); }");
+
+    debug!("RUST_PATH=%s", workspace.to_str());
+    command_line_test_with_env([~"install", ~"testpkg"],
+                               &workspace_importer,
+                               Some(~[(~"RUST_PATH", workspace.to_str())]));
+    assert_executable_exists(&workspace_importer, "testpkg");
 
 }
 

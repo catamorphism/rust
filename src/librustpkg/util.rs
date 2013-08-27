@@ -24,6 +24,8 @@ use search::find_library_in_search_path;
 use path_util::{target_library_in_workspace, U_RWX};
 pub use target::{OutputType, Main, Lib, Bench, Test};
 
+use rustc::metadata::filesearch::rust_path;
+
 // It would be nice to have the list of commands in just one place -- for example,
 // you could update the match in rustpkg.rc but forget to update this list. I think
 // that should be fixed.
@@ -361,7 +363,13 @@ pub fn find_and_install_dependencies(ctxt: &Ctx,
                     }
                     None => {
                         // Try to install it
+                        debug!("Didn't find compiled library for %s in search path, \
+                               trying to install it now, and I'm assuming it's in %s \
+                               RUST_PATH=%?",
+                               lib_name, my_workspace.to_str(), rust_path());
                         let pkg_id = PkgId::new(lib_name);
+ // NOTE it's this next line that's very, very wrong
+xxx
                         my_ctxt.install(&my_workspace, &pkg_id);
                         // Also, add an additional search path
                         debug!("let installed_path...")

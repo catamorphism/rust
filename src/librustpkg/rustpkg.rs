@@ -200,6 +200,7 @@ impl CtxMethods for Ctx {
                     // The package id is presumed to be the first command-line
                     // argument
                     let pkgid = PkgId::new(args[0].clone());
+                    debug!("Parsed pkg id: %s", pkgid.to_str());
                     do each_pkg_parent_workspace(&pkgid) |workspace| {
                         debug!("found pkg %s in workspace %s, trying to build",
                                pkgid.to_str(), workspace.to_str());
