@@ -908,7 +908,7 @@ fn no_rebuilding_dep() {
 // when the behavior was "always rebuild libraries" (now it's "never rebuild
 // libraries if they already exist"). They can be un-ignored once #7075 is done.
 #[test]
-#[ignore(reason = "Workcache not yet implemented -- see #7075")]
+// #[ignore(reason = "Workcache not yet implemented -- see #7075")]
 fn do_rebuild_dep_dates_change() {
     let p_id = PkgId::new("foo");
     let dep_id = PkgId::new("bar");

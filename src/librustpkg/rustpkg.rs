@@ -522,6 +522,7 @@ pub fn main_args(args: &[~str]) {
 
     let sroot = filesearch::get_or_default_sysroot();
     debug!("Using sysroot: %?", sroot);
+    debug!("Will store workcache in %s", default_workspace().to_str());
     BuildCtx {
         cx: Ctx { sysroot_opt: sroot }, // Currently, only tests override this
         workcache_cx: api::default_ctxt(default_workspace()).workcache_cx // ???

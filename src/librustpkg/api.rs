@@ -43,6 +43,7 @@ fn file_is_fresh(path: &str, in_hash: &str) -> bool {
 
 pub fn new_workcache_cx(p: &Path) -> Context {
     let db_file = p.push("rustpkg_db.json"); // ??? probably wrong
+    debug!("Workcache database file: %s", db_file.to_str());
     let db = RWArc::new(Database::new(db_file));
     let lg = RWArc::new(Logger::new());
     let cfg = Arc::new(TreeMap::new());

@@ -25,7 +25,7 @@ use search::{find_library_in_search_path, find_installed_library_in_rust_path};
 use path_util::{target_library_in_workspace, U_RWX};
 pub use target::{OutputType, Main, Lib, Bench, Test};
 use version::NoVersion;
-use workcache_support::digest_file_with_date;
+use workcache_support::{digest_file_with_date, digest_only_date};
 
 // It would be nice to have the list of commands in just one place -- for example,
 // you could update the match in rustpkg.rc but forget to update this list. I think
@@ -364,8 +364,10 @@ pub fn find_and_install_dependencies(ctxt: &BuildCtx,
                         // Say that [path for c] has a discovered dependency on
                         // installed_path
                         // NOTE: argh
-                        exec.discover_input("file", (*installed_path).to_str(),
-                                            digest_file_with_date(installed_path));
+// NOTE: For binary files, we only hash the datestamp, not the contents.
+// I'm not sure what the right thing is.
+                        exec.discover_input("binary", (*installed_path).to_str(),
+                                            digest_only_date(installed_path));
                     }
                     None => {
                         // FIXME #8711: need to parse version out of path_opt
