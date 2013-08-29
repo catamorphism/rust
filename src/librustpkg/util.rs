@@ -21,11 +21,13 @@ use rustc::back::link::output_type_exe;
 use rustc::driver::session::{lib_crate, bin_crate};
 use context::{in_target, BuildCtx};
 use package_id::PkgId;
-use search::{find_library_in_search_path, find_installed_library_in_rust_path};
 use path_util::{target_library_in_workspace, U_RWX};
+use search::{find_library_in_search_path, find_installed_library_in_rust_path};
+use path_util::{installed_library_in_workspace, U_RWX};
+
 pub use target::{OutputType, Main, Lib, Bench, Test};
-use version::NoVersion;
-use workcache_support::{digest_file_with_date, digest_only_date};
+// use version::NoVersion;
+use workcache_support::digest_only_date;
 
 // It would be nice to have the list of commands in just one place -- for example,
 // you could update the match in rustpkg.rc but forget to update this list. I think
@@ -387,20 +389,23 @@ pub fn find_and_install_dependencies(ctxt: &BuildCtx,
                                my_ctxt.install(&my_workspace, &pkg_id);
                                // Also, add an additional search path
                                debug!("let installed_path...")
-                               let installed_path = target_library_in_workspace(&pkg_id,
-                                                                         &my_workspace).pop();
+                        debug!("let installed_path...")
+                        let installed_library = installed_library_in_workspace(pkg_id.short_name,
+                            &my_workspace).expect(fmt!("rustpkg failed to install dependency %s",
+                                                  pkg_id.to_str()));
+                        let install_dir = installed_library.pop();
                                debug!("Great, I installed %s, and it's in %s",
-                                   lib_name, installed_path.to_str());
-                               save(installed_path);
+                                   lib_name, install_dir.to_str());
+                               save(install_dir);
                                // Say that [path for c] has a discovered dependency on
                                // installed_path
                                // NOTE: argh
-                               exec.discover_input("file", installed_path.to_str(),
-                                            digest_file_with_date(&installed_path));
+// NOTE: What kind of thing is installed_path? I get an error saying it's a directory
+                               exec.discover_input("binary", installed_library.to_str(),
+                                            digest_only_date(&installed_library));
 
                            }
                     }
-                }
               }
             }
             // Ignore `use`s

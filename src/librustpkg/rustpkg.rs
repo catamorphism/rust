@@ -473,6 +473,7 @@ pub fn main_args(args: &[~str]) {
                  getopts::optflag("j"), getopts::optflag("json"),
                  getopts::optmulti("c"), getopts::optmulti("cfg"),
                  getopts::optflag("v"), getopts::optflag("version")];
+
     let matches = &match getopts::getopts(args, opts) {
         result::Ok(m) => m,
         result::Err(f) => {
@@ -483,7 +484,7 @@ pub fn main_args(args: &[~str]) {
     };
     let help = getopts::opt_present(matches, "h") ||
                getopts::opt_present(matches, "help");
-    let json = getopts::opt_present(matches, "j") ||
+    let _json = getopts::opt_present(matches, "j") ||
                getopts::opt_present(matches, "json");
 
     if getopts::opt_present(matches, "v") ||

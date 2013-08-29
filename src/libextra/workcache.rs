@@ -12,7 +12,7 @@
 
 use digest::Digest;
 use json;
-use json::ToJson;
+// use json::ToJson;
 use sha1::Sha1;
 use serialize::{Encoder, Encodable, Decoder, Decodable};
 use arc::{Arc,RWArc};
@@ -158,8 +158,9 @@ impl Database {
     }
 
     fn save(&self) {
-        let f = io::file_writer(&self.db_filename, [io::Create, io::Truncate]).unwrap();
-        self.db_cache.to_json().to_pretty_writer(f);
+        let _f = io::file_writer(&self.db_filename, [io::Create, io::Truncate]).unwrap();
+// NOTE: !!!!!
+//        self.db_cache.to_json().to_pretty_writer(f);
 
 // What what
       //  self.db_dirty = false;
