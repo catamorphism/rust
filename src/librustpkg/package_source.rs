@@ -99,8 +99,8 @@ impl PkgSrc {
         }
 
         let url = fmt!("https://%s", self.id.path.to_str());
-        note(fmt!("Fetching package: git clone %s %s [version=%s]",
-                  url, local.to_str(), self.id.version.to_str()));
+        debug!("Fetching package: git clone %s %s [version=%s]",
+                  url, local.to_str(), self.id.version.to_str());
         if git_clone_general(url, &local, &self.id.version) {
             Some(local)
         }

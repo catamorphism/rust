@@ -11,12 +11,10 @@
 // rustpkg unit tests
 
 use context::{BuildCtx, Ctx};
-use std::hashmap::HashMap;
-use std::{io, libc, os, result, run, str};
+use std::{io, libc, os, run, str};
 use extra::arc::Arc;
 use extra::arc::RWArc;
 use extra::tempfile::mkdtemp;
-use extra::workcache;
 use extra::workcache::{Context, Database, Logger};
 use extra::treemap::TreeMap;
 use std::run::ProcessOutput;
@@ -438,7 +436,14 @@ fn test_install_valid() {
     let temp_workspace = mk_temp_workspace(&temp_pkg_id.path, &NoVersion).pop().pop();
     debug!("temp_workspace = %s", temp_workspace.to_str());
     // should have test, bench, lib, and main
-    ctxt.install(&temp_workspace, &temp_pkg_id);
+    do ctxt.workcache_cx.with_prep("install") |prep| {
+        let sub_ws = temp_workspace.clone();
+        let sub_pkg_id = temp_pkg_id.clone();
+        let sub_cx = ctxt.clone();
+        do prep.exec |exec| {
+            sub_cx.install(exec, &sub_ws, &sub_pkg_id);
+        }
+    };
     // Check that all files exist
     let exec = target_executable_in_workspace(&temp_pkg_id, &temp_workspace);
     debug!("exec = %s", exec.to_str());
@@ -475,7 +480,14 @@ fn test_install_invalid() {
             error_occurred = true;
             temp_workspace.clone()
         }).inside {
-            ctxt.install(&temp_workspace, &pkgid);
+            do ctxt.workcache_cx.with_prep("install") |prep| {
+                let sub_ws = temp_workspace.clone();
+                let sub_pkgid = pkgid.clone();
+                let sub_cx = ctxt.clone();
+                do prep.exec |exec| {
+                    sub_cx.install(exec, &sub_ws, &sub_pkgid);
+                }
+            ;}
         }
     }
     assert!(error_occurred && error1_occurred);

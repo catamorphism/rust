@@ -31,7 +31,7 @@ pub fn default_ctxt(p: Path) -> BuildCtx {
 pub fn new_default_ctx(c: Context, p: Path) -> BuildCtx {
     BuildCtx {
         cx: Ctx { sysroot_opt: p },
-        workcache_cx: c
+        workcache_cx: c,
     }
 }
 
@@ -40,6 +40,13 @@ fn file_is_fresh(path: &str, in_hash: &str) -> bool {
 // into account
     in_hash == digest_file_with_date(&Path(path))
 }
+
+fn binary_is_fresh(path: &str, in_hash: &str) -> bool {
+// NOTE: Probably won't work; the in_hash doesn't take the date
+// into account
+    in_hash == digest_only_date(&Path(path))
+}
+
 
 pub fn new_workcache_cx(p: &Path) -> Context {
     let db_file = p.push("rustpkg_db.json"); // ??? probably wrong
@@ -55,6 +62,7 @@ pub fn new_workcache_cx(p: &Path) -> Context {
 // * exe  (executable)
 // * lib  (library)
     rslt.insert(~"file", file_is_fresh);
+    rslt.insert(~"binary", binary_is_fresh);
     workcache::Context::new_with_freshness(db, lg, cfg, Arc::new(rslt))
 }
 
@@ -108,8 +116,17 @@ pub fn install_lib(sysroot: Path,
 }
 
 pub fn install_exe(sysroot: Path, workspace: Path, name: ~str, version: Version) {
-    default_ctxt(sysroot).install(&workspace, &PkgId{ version: version,
-                                            ..PkgId::new(name)});
+    let nm = fmt!("install %s", name);
+    let cx = default_ctxt(sysroot);
+    do cx.workcache_cx.with_prep(nm) |prep| {
+       let sub_version = version.clone();
+       let sub_workspace = workspace.clone();
+       let sub_name = name.clone();
+       let mycx = cx.clone();
+       do prep.exec |exec| {
+          mycx.install(exec, &sub_workspace, &PkgId{ version: sub_version.clone(),
+                                            ..PkgId::new(sub_name)});
+       }};
 }
 
 fn mk_crate(p: Path) -> Crate {

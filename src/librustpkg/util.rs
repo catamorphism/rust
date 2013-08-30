@@ -26,7 +26,7 @@ use path_util::{installed_library_in_workspace, U_RWX};
 
 pub use target::{OutputType, Main, Lib, Bench, Test};
 use version::NoVersion;
-use workcache_support::digest_only_date;
+use workcache_support::{digest_file_with_date, digest_only_date};
 
 // It would be nice to have the list of commands in just one place -- for example,
 // you could update the match in rustpkg.rc but forget to update this list. I think
@@ -272,7 +272,7 @@ pub fn compile_input(ctxt: &BuildCtx,
 
     debug!("calling compile_crate_from_input, workspace = %s,
            building_library = %?", out_dir.to_str(), sess.building_library);
-    compile_crate_from_input(&input, &out_dir, sess, crate)
+    compile_crate_from_input(exec, &input, &out_dir, sess, crate)
 }
 
 // Should use workcache to avoid recompiling when not necessary
@@ -280,7 +280,8 @@ pub fn compile_input(ctxt: &BuildCtx,
 // If crate_opt is present, then finish compilation. If it's None, then
 // call compile_upto and return the crate
 // also, too many arguments
-pub fn compile_crate_from_input(input: &driver::input,
+pub fn compile_crate_from_input(exec: &mut workcache::Exec,
+                                input: &driver::input,
  // should be of the form <workspace>/build/<pkg id's path>
                                 out_dir: &Path,
                                 sess: session::Session,
@@ -309,6 +310,15 @@ pub fn compile_crate_from_input(input: &driver::input,
                                            // possibly wrong
     if driver::stop_after_phase_5(sess) { return Some(outputs.out_filename); }
     driver::phase_6_link_output(sess, &translation, outputs);
+
+    // Register dependency on the source file
+    match input {
+       &driver::file_input(ref in_path) => {
+           exec.discover_input("file", in_path.to_str(), digest_file_with_date(in_path));
+       }
+       &driver::str_input(*) => () // shouldn't happen, though
+    }
+
     Some(outputs.out_filename)
 }
 
@@ -385,7 +395,10 @@ pub fn find_and_install_dependencies(ctxt: &BuildCtx,
                                       lib_name.to_str());
                                // Try to install it
                                let pkg_id = PkgId::new(lib_name);
-                               my_ctxt.install(&my_workspace, &pkg_id);
+// when we install, do we add a note to the workcache that says:
+// binary depends on source?
+// I don't think we do
+                               my_ctxt.install(exec, &my_workspace, &pkg_id);
                                // Also, add an additional search path
                                debug!("let installed_path...")
                         debug!("let installed_path...")

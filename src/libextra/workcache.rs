@@ -105,11 +105,26 @@ impl WorkKey {
     }
 }
 
+// NOTE the key should be a WorkKey, but working around #8883/lack of correct json instance
 #[deriving(Clone, Eq, Encodable, Decodable)]
-struct WorkMap(TreeMap<WorkKey, ~str>);
+struct WorkMap(TreeMap<~str, KindMap>);
+
+#[deriving(Clone, Eq, Encodable, Decodable)]
+struct KindMap(TreeMap<~str, ~str>);
 
 impl WorkMap {
     fn new() -> WorkMap { WorkMap(TreeMap::new()) }
+
+    fn insert_work_key(&mut self, k: WorkKey, val: ~str) {
+        let WorkKey { kind, name } = k;
+        match self.find_mut(&name) {
+            Some(&KindMap(ref mut m)) => { m.insert(kind, val); return; }
+            None => ()
+        }
+        let mut new_map = TreeMap::new();
+        new_map.insert(kind, val);
+        self.insert(name, KindMap(new_map));
+    }
 }
 
 struct Database {
@@ -319,7 +334,7 @@ impl Exec {
        // Discovered input
        dependency_name: &str, dependency_val: &str) {
         debug!("Discovering input %s %s %s", dependency_kind, dependency_name, dependency_val);
-        self.discovered_inputs.insert(WorkKey::new(dependency_kind, dependency_name),
+        self.discovered_inputs.insert_work_key(WorkKey::new(dependency_kind, dependency_name),
                                  dependency_val.to_owned());
     }
 }
@@ -337,7 +352,7 @@ impl<'self> Prep<'self> {
 impl<'self> Prep<'self> {
     pub fn declare_input(&mut self, kind:&str, name:&str, val:&str) {
         debug!("Declaring input %s %s %s", kind, name, val);
-        self.declared_inputs.insert(WorkKey::new(kind, name),
+        self.declared_inputs.insert_work_key(WorkKey::new(kind, name),
                                  val.to_owned());
     }
 
@@ -363,10 +378,12 @@ impl<'self> Prep<'self> {
     }
 
     fn all_fresh(&self, cat: &str, map: &WorkMap) -> bool {
-        for (k, v) in map.iter() {
-            if ! self.is_fresh(cat, k.kind, k.name, *v) {
-                return false;
+        for (k_name, kindmap) in map.iter() {
+            for (k_kind, v) in kindmap.iter() {
+               if ! self.is_fresh(cat, *k_kind, *k_name, *v) {
+                  return false;
             }
+          }
         }
         return true;
     }

@@ -30,6 +30,7 @@ use std::str;
 
 pub use std::path::Path;
 
+use extra::workcache;
 use rustc::driver::{driver, session};
 use rustc::metadata::filesearch;
 use rustc::metadata::filesearch::rust_path;
@@ -133,7 +134,7 @@ impl<'self> PkgScript<'self> {
     /// Returns a pair of an exit code and list of configs (obtained by
     /// calling the package script's configs() function if it exists
     // FIXME (#4432): Use workcache to only compile the script when changed
-    fn run_custom(&self, sysroot: &Path) -> (~[~str], ExitCode) {
+    fn run_custom(&self, exec: &mut workcache::Exec, sysroot: &Path) -> (~[~str], ExitCode) {
         let sess = self.sess;
 
         debug!("Working directory = %s", self.build_dir.to_str());
@@ -142,7 +143,8 @@ impl<'self> PkgScript<'self> {
         debug!("Building output filenames with script name %s",
                driver::source_name(&self.input));
         let exe = self.build_dir.push(~"pkg" + util::exe_suffix());
-        util::compile_crate_from_input(&self.input,
+        util::compile_crate_from_input(exec,
+                                       &self.input,
                                        &self.build_dir,
                                        sess,
                                        crate);
@@ -173,10 +175,10 @@ impl<'self> PkgScript<'self> {
 pub trait CtxMethods {
     fn run(&self, cmd: &str, args: ~[~str]);
     fn do_cmd(&self, _cmd: &str, _pkgname: &str);
-    fn build(&self, workspace: &Path, pkgid: &PkgId);
+    fn build(&self, exec: &mut workcache::Exec, workspace: &Path, pkgid: &PkgId);
     fn clean(&self, workspace: &Path, id: &PkgId);
     fn info(&self);
-    fn install(&self, workspace: &Path, id: &PkgId);
+    fn install(&self, exec: &mut workcache::Exec, workspace: &Path, id: &PkgId);
     fn install_no_build(&self, workspace: &Path, id: &PkgId);
     fn prefer(&self, _id: &str, _vers: Option<~str>);
     fn test(&self);
@@ -191,7 +193,13 @@ impl CtxMethods for BuildCtx {
                 if args.len() < 1 {
                     match cwd_to_workspace() {
                         None => { usage::build(); return }
-                        Some((ws, pkgid)) => self.build(&ws, &pkgid)
+                        Some((ws, pkgid)) => do
+                             self.workcache_cx.with_prep(fmt!("build %s", pkgid.to_str())) |prep| {
+                                 let sub_ws = ws.clone();
+                                 let sub_pkgid = pkgid.clone();
+                                 let sub_self = self.clone();
+                                 prep.exec (|exec| { sub_self.build(exec, &sub_ws.clone(), &sub_pkgid.clone()) })
+                        }
                     }
                 }
                 else {
@@ -201,7 +209,12 @@ impl CtxMethods for BuildCtx {
                     do each_pkg_parent_workspace(&pkgid) |workspace| {
                         debug!("found pkg %s in workspace %s, trying to build",
                                pkgid.to_str(), workspace.to_str());
-                        self.build(workspace, &pkgid);
+                        do self.workcache_cx.with_prep(fmt!("build %s", pkgid.to_str())) |prep| {
+                            let sub_pkgid = pkgid.clone();
+                            let sub_self = self.clone();
+                            let sub_workspace = workspace.clone();
+                            prep.exec(|exec| { sub_self.build(exec, &sub_workspace.clone(), &sub_pkgid.clone()) });
+                        };
                         true
                     };
                 }
@@ -238,7 +251,12 @@ impl CtxMethods for BuildCtx {
                 if args.len() < 1 {
                     match cwd_to_workspace() {
                         None => { usage::install(); return }
-                        Some((ws, pkgid)) => self.install(&ws, &pkgid)
+                        Some((ws, pkgid)) => do self.workcache_cx.with_prep(fmt!("build %s", pkgid.to_str()))
+                             |prep| {
+                                 let ws_clone = ws.clone();
+                                 let sub_pkgid = pkgid.clone();
+                                 let sub_self = self.clone();
+                                 prep.exec (|exec| sub_self.install(exec, &ws_clone.clone(), &sub_pkgid.clone())) }
                     }
                 }
                 else {
@@ -253,11 +271,21 @@ impl CtxMethods for BuildCtx {
                         assert!(!rp.is_empty());
                         let src = PkgSrc::new(&rp[0], &pkgid);
                         src.fetch_git();
-                        self.install(&rp[0], &pkgid);
+                        do self.workcache_cx.with_prep(fmt!("build %s", pkgid.to_str())) |prep| {
+                             let sub_rp = rp.clone();
+                             let sub_pkgid = pkgid.clone();
+                             let sub_self = self.clone();
+                             prep.exec(|exec| { sub_self.install(exec, &sub_rp[0], &sub_pkgid.clone()) });
+                        };
                     }
                     else {
                         do each_pkg_parent_workspace(&pkgid) |workspace| {
-                            self.install(workspace, &pkgid);
+                           do self.workcache_cx.with_prep(fmt!("build %s", pkgid.to_str())) |prep| {
+                                let sub_ws = workspace.clone();
+                                let sub_pkgid = pkgid.clone();
+                                let sub_self = self.clone();
+                                prep.exec(|exec| { sub_self.install(exec, &sub_ws.clone(), &sub_pkgid.clone()); })
+                            }
                             true
                         };
                     }
@@ -317,7 +345,7 @@ impl CtxMethods for BuildCtx {
         fail!("`do` not yet implemented");
     }
 
-    fn build(&self, workspace: &Path, pkgid: &PkgId) {
+    fn build(&self, exec: &mut workcache::Exec, workspace: &Path, pkgid: &PkgId) {
         debug!("build: workspace = %s (in Rust path? %? is git dir? %? \
                 pkgid = %s", workspace.to_str(),
                in_rust_path(workspace), is_git_dir(&workspace.push_rel(&pkgid.path)),
@@ -336,7 +364,7 @@ impl CtxMethods for BuildCtx {
             let default_ws = default_workspace();
             debug!("Calling build recursively with %? and %?", default_ws.to_str(),
                    pkgid.to_str());
-            return self.build(&default_ws, pkgid);
+            return self.build(exec, &default_ws, pkgid);
         }
 
         // Create the package source
@@ -347,14 +375,19 @@ impl CtxMethods for BuildCtx {
         let pkg_src_dir = src_dir;
         let mut custom = false;
         debug!("Package source directory = %?", pkg_src_dir);
-        let cfgs = match pkg_src_dir.chain_ref(|p| src.package_script_option(p)) {
+        let cfgs = do self.workcache_cx.with_prep("build pkg") |prep| {
+            match pkg_src_dir.chain_ref(|p| src.package_script_option(p)) {
             Some(package_script_path) => {
+                prep.declare_input("file", package_script_path.to_str(),
+                    workcache_support::digest_file_with_date(&package_script_path));
+
                 let sysroot = self.sysroot_to_use().expect("custom build needs a sysroot");
                 let pscript = PkgScript::parse(sysroot,
                                                package_script_path,
                                                workspace,
                                                pkgid);
-                let (cfgs, hook_result) = pscript.run_custom(sysroot);
+                let sysroot_copy = (*sysroot).clone();
+                let (cfgs, hook_result) = pscript.run_custom(exec, &sysroot_copy);
                 debug!("Command return code = %?", hook_result);
                 if hook_result != 0 {
                     fail!("Error running custom build command")
@@ -367,7 +400,7 @@ impl CtxMethods for BuildCtx {
                 debug!("No package script, continuing");
                 ~[]
             }
-        };
+        }};
 
         // If there was a package script, it should have finished
         // the build already. Otherwise...
@@ -400,10 +433,10 @@ impl CtxMethods for BuildCtx {
         fail!("info not yet implemented");
     }
 
-    fn install(&self, workspace: &Path, id: &PkgId)  {
+    fn install(&self, exec: &mut workcache::Exec, workspace: &Path, id: &PkgId)  {
         // FIXME #7402: Use RUST_PATH to determine target dir
         // Also should use workcache to not build if not necessary.
-        self.build(workspace, id);
+        self.build(exec, workspace, id);
         debug!("install: workspace = %s, id = %s", workspace.to_str(),
                id.to_str());
         self.install_no_build(workspace, id);
