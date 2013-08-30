@@ -42,7 +42,7 @@ use path_util::{U_RWX, in_rust_path};
 use path_util::{built_executable_in_workspace, built_library_in_workspace, default_workspace};
 use path_util::{target_executable_in_workspace, target_library_in_workspace};
 use source_control::is_git_dir;
-use workspace::{each_pkg_parent_workspace, pkg_parent_workspaces, in_workspace, cwd_to_workspace};
+use workspace::{each_pkg_parent_workspace, pkg_parent_workspaces, cwd_to_workspace};
 use context::{BuildCtx, Ctx};
 use package_id::PkgId;
 use package_source::PkgSrc;

@@ -21,12 +21,11 @@ use rustc::back::link::output_type_exe;
 use rustc::driver::session::{lib_crate, bin_crate};
 use context::{in_target, BuildCtx};
 use package_id::PkgId;
-use path_util::{target_library_in_workspace, U_RWX};
 use search::{find_library_in_search_path, find_installed_library_in_rust_path};
 use path_util::{installed_library_in_workspace, U_RWX};
 
 pub use target::{OutputType, Main, Lib, Bench, Test};
-// use version::NoVersion;
+use version::NoVersion;
 use workcache_support::digest_only_date;
 
 // It would be nice to have the list of commands in just one place -- for example,
@@ -406,8 +405,7 @@ pub fn find_and_install_dependencies(ctxt: &BuildCtx,
 
                            }
                     }
-              }
-            }
+             }}}
             // Ignore `use`s
             _ => ()
         }

@@ -12,7 +12,7 @@
 
 use digest::Digest;
 use json;
-// use json::ToJson;
+use json::ToJson;
 use sha1::Sha1;
 use serialize::{Encoder, Encodable, Decoder, Decodable};
 use arc::{Arc,RWArc};
@@ -158,9 +158,8 @@ impl Database {
     }
 
     fn save(&self) {
-        let _f = io::file_writer(&self.db_filename, [io::Create, io::Truncate]).unwrap();
-// NOTE: !!!!!
-//        self.db_cache.to_json().to_pretty_writer(f);
+        let f = io::file_writer(&self.db_filename, [io::Create, io::Truncate]).unwrap();
+        self.db_cache.to_json().to_pretty_writer(f);
 
 // What what
       //  self.db_dirty = false;
@@ -182,6 +181,14 @@ impl Database {
                                     self.db_filename.to_str(),
                                     e.to_str()),
                     Ok(r) => {
+// I suspect this is going wrong because json requires
+// the TreeMap keys to be strs, and in our case it's a WorkKey.
+// *but why???*
+// I guess as a workaround, could make the map hierarchal. but still...
+// can we encode a TreeMap as a list rather than as an object?
+// this is weird, ask erickt about it
+// Actually, no, I bet that's a red herring. I think we're trying
+// to call digest_file() on a binary file
                         let mut decoder = json::Decoder(r);
                         self.db_cache = Decodable::decode(&mut decoder);
                     }
@@ -255,6 +262,7 @@ fn json_encode<T:Encodable<json::Encoder>>(t: &T) -> ~str {
 
 // FIXME(#5121)
 fn json_decode<T:Decodable<json::Decoder>>(s: &str) -> T {
+    debug!("json decoding: %s", s);
     do io::with_str_reader(s) |rdr| {
         let j = json::from_reader(rdr).unwrap();
         let mut decoder = json::Decoder(j);
