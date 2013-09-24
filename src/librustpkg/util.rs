@@ -426,21 +426,30 @@ pub fn find_and_install_dependencies(context: &BuildContext,
                         // Try to install it
                         let pkg_id = PkgId::new(lib_name);
                         let workspaces = pkg_parent_workspaces(&context.context, &pkg_id);
-                        let dep_workspace = if workspaces.is_empty() {
+                        let source_workspace = if workspaces.is_empty() {
                             error(fmt!("Couldn't find package %s, which is needed by %s, \
-                                            in any of the workspaces in the RUST_PATH (%?)",
-                                            lib_name, parent.to_str(), rust_path()));
+                                in any of the workspaces in the RUST_PATH (%s)",
+                                lib_name,
+                                parent.to_str(),
+                                rust_path().map(|s| s.to_str()).connect(":")));
                             cond.raise((pkg_id.clone(), ~"Dependency not found"))
                         }
                         else {
                             workspaces[0]
                         };
                         let (outputs_disc, inputs_disc) =
-                            context.install(PkgSrc::new(dep_workspace.clone(),
-                                false, pkg_id), &JustOne(Path(lib_crate_filename)));
+                            context.install(PkgSrc::new(source_workspace.clone(),
+                        // Use the rust_path_hack to search for dependencies iff
+                        // we were already using it
+                                                        context.context.use_rust_path_hack,
+                                                        pkg_id),
+                                            &JustOne(Path(lib_crate_filename)));
                         debug!("Installed %s, returned %? dependencies and \
                                %? transitive dependencies",
                                lib_name, outputs_disc.len(), inputs_disc.len());
+                        // It must have installed *something*...
+                        assert!(!outputs_disc.is_empty());
+                        let target_workspace = outputs_disc[0].pop();
                         for dep in outputs_disc.iter() {
                             debug!("Discovering a binary input: %s", dep.to_str());
                             exec.discover_input("binary", dep.to_str(),
@@ -460,15 +469,8 @@ pub fn find_and_install_dependencies(context: &BuildContext,
                             }
                         }
                         // Also, add an additional search path
-                        debug!("Adding additional search path: %s", lib_name);
-                        let installed_library =
-                            installed_library_in_workspace(&Path(lib_name), &dep_workspace)
-                                .expect(fmt!("rustpkg failed to install dependency %s",
-                                              lib_name));
-                        let install_dir = installed_library.pop();
-                        debug!("Installed %s into %s [%?]", lib_name, install_dir.to_str(),
-                               datestamp(&installed_library));
-                        save(install_dir);
+                        debug!("Installed %s into %s", lib_name, target_workspace.to_str());
+                        save(target_workspace);
                     }
                 }}
             // Ignore `use`s

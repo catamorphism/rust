@@ -421,11 +421,18 @@ fn dir_has_file(dir: &Path, file: &str) -> bool {
 pub fn find_dir_using_rust_path_hack(p: &PkgId) -> Option<Path> {
     let rp = rust_path();
     for dir in rp.iter() {
-        debug!("In find_dir_using_rust_path_hack: checking dir %s", dir.to_str());
-        if dir_has_file(dir, "lib.rs") || dir_has_file(dir, "main.rs")
-            || dir_has_file(dir, "test.rs") || dir_has_file(dir, "bench.rs") {
-            debug!("Did find id %s in dir %s", p.to_str(), dir.to_str());
-            return Some(dir.clone());
+        // Require that the parent directory match the package ID
+        // Note that this only matches if the package ID being searched for
+        // has a name that's a single component
+        debug!("dir = %s path = %s parent? %?", dir.to_str(), p.path.to_str(), is_parent_of(dir, &p.path));
+        debug!("dir = %s path = %s parent? %?", dir.to_str(), versionize(&p.path, &p.version).to_str(), is_parent_of(dir, &versionize(&p.path, &p.version)));
+        if is_parent_of(dir, &p.path) || is_parent_of(dir, &versionize(&p.path, &p.version)) {
+            debug!("In find_dir_using_rust_path_hack: checking dir %s", dir.to_str());
+            if dir_has_file(dir, "lib.rs") || dir_has_file(dir, "main.rs")
+                || dir_has_file(dir, "test.rs") || dir_has_file(dir, "bench.rs") {
+                debug!("Did find id %s in dir %s", p.to_str(), dir.to_str());
+                return Some(dir.clone());
+            }
         }
         debug!("Didn't find id %s in dir %s", p.to_str(), dir.to_str())
     }
@@ -440,3 +447,41 @@ pub fn user_set_rust_path() -> bool {
         Some(_)         => true
     }
 }
+
+
+// should be in std::path
+pub fn is_parent_of(parent: &Path, child: &Path) -> bool {
+    if !parent.is_absolute() || child.is_absolute()
+        || parent.components.len() < child.components.len()
+        || parent.components.is_empty() {
+        return false;
+    }
+
+    let child_components = child.components().len();
+    let parent_components = parent.components().len();
+    let to_drop = parent.components.len() - child_components;
+    debug!("===== %? %? %?", child_components, parent_components, to_drop);
+    debug!("------ %? %?", parent.components.slice(to_drop, parent_components), child.components);
+    parent.components.slice(to_drop, parent_components) == child.components
+}
+
+#[test]
+fn test_is_parent_of() {
+    // NOTE: non-windows
+    assert!(is_parent_of(&Path("/a/b/c/d/e"), &Path("c/d/e")));
+    assert!(!is_parent_of(&Path("a/b/c/d/e"), &Path("c/d/e")));
+    assert!(!is_parent_of(&Path("/a/b/c/d/e"), &Path("/c/d/e")));
+    assert!(!is_parent_of(&Path(""), &Path("")));
+    assert!(!is_parent_of(&Path(""), &Path("a/b/c")));
+    // I don't know what the next one means
+    assert!(is_parent_of(&Path("/a/b/c"), &Path("")));
+    assert!(is_parent_of(&Path("/a/b/c"), &Path("a/b/c"))); 
+    assert!(!is_parent_of(&Path("/a/b/c"), &Path("d/e/f"))); 
+}
+
+// NOTE: meh
+fn versionize(p: &Path, v: &Version) -> Path {
+    let q = p.file_path().to_str();
+    p.with_filename(fmt!("%s-%s", q, v.to_str()))
+}
+ 
