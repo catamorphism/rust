@@ -291,7 +291,7 @@ fn command_line_test_with_env(args: &[~str], cwd: &Path, env: Option<~[(~str, ~s
                    output.status);
     if output.status != 0 {
         debug!("Command {} {:?} failed with exit code {:?}; its output was --- {} ---",
-              cmd, args, output.status,
+               cmd, args, output.status,
               str::from_utf8(output.output) + str::from_utf8(output.error));
         Fail(output.status)
     }
@@ -612,7 +612,6 @@ fn test_install_valid() {
 }
 
 #[test]
-#[ignore]
 fn test_install_invalid() {
     let sysroot = test_sysroot();
     let pkgid = fake_pkg();
@@ -628,8 +627,11 @@ fn test_install_invalid() {
                                   pkgid.clone());
         ctxt.install(pkg_src, &WhatToBuild::new(MaybeCustom, Everything));
     };
-    assert!(result.unwrap_err()
-            .to_str().contains("supplied path for package dir does not exist"));
+    let x = result.unwrap_err();
+    assert!(x.is::<~str>());
+    let error_string = *x.move::<~str>().unwrap();
+    debug!("result error = {}", error_string);
+    assert!(error_string.contains("supplied path for package dir does not exist"));
 }
 
 #[test]
@@ -660,7 +662,6 @@ fn test_install_valid_external() {
 }
 
 #[test]
-#[ignore(reason = "9994")]
 fn test_install_invalid_external() {
     let cwd = os::getcwd();
     command_line_test_expect_fail([~"install", ~"foo"],
@@ -2380,6 +2381,19 @@ fn test_c_dependency_yes_rebuilding() {
                             it didn't rebuild and should have"),
         Fail(status) if status == 65 => (),
         Fail(_) => fail!("test_c_dependency_yes_rebuilding failed for some other reason")
+    }
+}
+
+#[test]
+fn test_bad_package_id_url() {
+    // Checking that the error message is right
+// NOTE: need a way to look at the output here, check that it contains a hint
+// about using URLs
+    match command_line_test_partial([~"install", ~"git://github.com/mozilla/servo.git"],
+                                    &os::getcwd()) {
+        Fail(69) => (), // ok
+        Fail(x)  => fail!("test_bad_package_id_url: failed the wrong way [{}]", x),
+        Success(*)  => fail!("test_bad_package_id_url: succeeded but should have failed")
     }
 }
 
